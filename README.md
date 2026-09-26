@@ -149,4 +149,4 @@ StiloNotes/
 
 ## 📄 License
 
-GPL-3.0-or-later © 2026 Asif Ali Rizvan
+GPL-3.0-or-later © 2026 Mohammed Asif Ali Rizvan

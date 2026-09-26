@@ -317,94 +317,6 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
-    /* Floating Toolbar */
-    #floating-toolbar {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--toolbar-bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--toolbar-border);
-      border-radius: 28px;
-      padding: 5px 10px;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-      box-shadow: var(--toolbar-shadow);
-      z-index: 1000;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-    }
-
-    .tb-btn {
-      background: transparent;
-      border: none;
-      border-radius: 18px;
-      width: 34px;
-      height: 34px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--text-color);
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background-color 0.15s ease, color 0.15s ease;
-    }
-
-    .tb-btn:hover {
-      background-color: var(--toolbar-btn-hover);
-    }
-
-    .tb-btn.active {
-      background-color: var(--toolbar-btn-active);
-      color: var(--accent-color);
-    }
-
-    .tb-separator {
-      width: 1px;
-      height: 18px;
-      background-color: var(--toolbar-border);
-      margin: 0 3px;
-    }
-
-    .tb-popup {
-      position: absolute;
-      bottom: 46px;
-      left: 0;
-      background: var(--toolbar-bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--toolbar-border);
-      border-radius: 12px;
-      box-shadow: var(--toolbar-shadow);
-      padding: 5px;
-      display: none;
-      flex-direction: column;
-      min-width: 150px;
-      z-index: 1100;
-    }
-
-    .tb-popup.show {
-      display: flex;
-    }
-
-    .tb-popup-item {
-      background: transparent;
-      border: none;
-      border-radius: 8px;
-      padding: 7px 12px;
-      text-align: left;
-      font-size: 13.5px;
-      color: var(--text-color);
-      cursor: pointer;
-      transition: background-color 0.12s ease;
-    }
-
-    .tb-popup-item:hover {
-      background-color: var(--toolbar-btn-hover);
-    }
   </style>
 </head>
 <body>
@@ -413,49 +325,7 @@
     <div id="editor" contenteditable="true" spellcheck="true"></div>
   </div>
 
-  <!-- Floating Formatting Toolbar -->
-  <div id="floating-toolbar">
-    <div style="position: relative;">
-      <button class="tb-btn" id="btn-heading" title="Heading" onclick="toggleHeadingMenu(event)">H <span style="font-size: 9px; margin-left: 1px;">▾</span></button>
-      <div class="tb-popup" id="menu-heading">
-        <button class="tb-popup-item" onclick="applyHeading('h1')"><b>Heading 1</b></button>
-        <button class="tb-popup-item" onclick="applyHeading('h2')">Heading 2</button>
-        <button class="tb-popup-item" onclick="applyHeading('h3')">Heading 3</button>
-        <button class="tb-popup-item" onclick="applyHeading('p')">Paragraph</button>
-      </div>
-    </div>
 
-    <button class="tb-btn" id="btn-todo" title="Todo Checklist (- [ ])" onclick="insertTodoItem()">☑</button>
-
-    <div style="position: relative;">
-      <button class="tb-btn" id="btn-list" title="Lists" onclick="toggleListMenu(event)">≔ <span style="font-size: 9px; margin-left: 1px;">▾</span></button>
-      <div class="tb-popup" id="menu-list">
-        <button class="tb-popup-item" onclick="applyList('insertUnorderedList')">• Bullet List</button>
-        <button class="tb-popup-item" onclick="applyList('insertOrderedList')">1. Numbered List</button>
-      </div>
-    </div>
-
-    <div class="tb-separator"></div>
-
-    <button class="tb-btn" id="btn-bold" title="Bold (Ctrl+B)" onclick="applyFormat('bold')"><b>B</b></button>
-    <button class="tb-btn" id="btn-italic" title="Italic (Ctrl+I)" onclick="applyFormat('italic')"><i>I</i></button>
-    <button class="tb-btn" id="btn-highlight" title="Highlight" onclick="applyHighlight()">🖍️</button>
-    <button class="tb-btn" id="btn-link" title="Link" onclick="promptLink()">🔗</button>
-    <button class="tb-btn" id="btn-table" title="Table" onclick="insertTable()">▦</button>
-    <button class="tb-btn" id="btn-image" title="Image" onclick="triggerImagePicker()">🖼️</button>
-
-    <div class="tb-separator"></div>
-
-    <div style="position: relative;">
-      <button class="tb-btn" id="btn-more" title="More Tools" onclick="toggleMoreMenu(event)">⋮</button>
-      <div class="tb-popup" id="menu-more">
-        <button class="tb-popup-item" onclick="applyFormat('strikeThrough')">Strikethrough (~~)</button>
-        <button class="tb-popup-item" onclick="insertCodeBlock()">Code Block (```)</button>
-        <button class="tb-popup-item" onclick="insertQuote()">Blockquote (&gt;)</button>
-        <button class="tb-popup-item" onclick="insertDivider()">Divider (---)</button>
-      </div>
-    </div>
-  </div>
 
   <script>
     const editor = document.getElementById('editor');
@@ -1170,6 +1040,7 @@
       else if (command === 'number') applyList('insertOrderedList');
       else if (command === 'bold') applyFormat('bold');
       else if (command === 'italic') applyFormat('italic');
+      else if (command === 'underline') applyFormat('underline');
       else if (command === 'strike') applyFormat('strikeThrough');
       else if (command === 'highlight') applyHighlight();
       else if (command === 'quote') insertQuote();

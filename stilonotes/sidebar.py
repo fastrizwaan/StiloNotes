@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Asif Ali Rizvan
+# SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from typing import Optional
@@ -7,11 +7,39 @@ from gi.repository import Adw, Gtk, Gio, GLib, GObject, Pango
 from stilonotes.database import NoteDatabase
 
 
+def _build_category_tree(categories):
+    """
+    Given a flat list of Category objects whose names may contain '/' separators,
+    return an ordered list of (full_name, depth, display_name) tuples that
+    represents a breadth-first tree walk.
+    """
+    # Build a prefix-tree from names
+    tree = {}  # node: {child_name: subtree}
+    for cat in categories:
+        parts = cat.name.split("/")
+        node = tree
+        for part in parts:
+            if part not in node:
+                node[part] = {}
+            node = node[part]
+
+    result = []
+
+    def walk(node, prefix, depth):
+        for key in sorted(node.keys()):
+            full = f"{prefix}/{key}" if prefix else key
+            result.append((full, depth, key))
+            walk(node[key], full, depth + 1)
+
+    walk(tree, "", 0)
+    return result
+
+
 class Sidebar(Adw.Bin):
     __gtype_name__ = "Sidebar"
 
     __gsignals__ = {
-        "filter-changed": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
+        "filter-changed":  (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
         "close-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
@@ -29,12 +57,10 @@ class Sidebar(Adw.Bin):
     def _build_ui(self):
         self.toolbar_view = Adw.ToolbarView()
 
-        # HeaderBar for Sidebar
         self.header_bar = Adw.HeaderBar()
         self.header_bar.set_show_end_title_buttons(False)
         self.header_bar.set_show_start_title_buttons(False)
 
-        # Close button (visible on mobile / overlay)
         self.close_btn = Gtk.Button()
         self.close_btn.set_icon_name("go-previous-symbolic")
         self.close_btn.set_tooltip_text("Close Categories")
@@ -42,18 +68,15 @@ class Sidebar(Adw.Bin):
         self.close_btn.set_visible(False)
         self.header_bar.pack_start(self.close_btn)
 
-        # Centered Window Title
         self.window_title = Adw.WindowTitle(title="Categories")
         self.header_bar.set_title_widget(self.window_title)
 
-        # Add Category button
         self.add_cat_btn = Gtk.Button()
         self.add_cat_btn.set_icon_name("folder-new-symbolic")
-        self.add_cat_btn.set_tooltip_text("New Category")
+        self.add_cat_btn.set_tooltip_text("New Category (use / for nested, e.g. Work/Projects)")
         self.add_cat_btn.connect("clicked", self._on_add_category_clicked)
         self.header_bar.pack_end(self.add_cat_btn)
 
-        # Main Menu button (visible when pinned / desktop)
         self.menu_btn = Gtk.MenuButton()
         self.menu_btn.set_icon_name("open-menu-symbolic")
         self.menu_btn.set_tooltip_text("Main Menu")
@@ -62,7 +85,6 @@ class Sidebar(Adw.Bin):
 
         self.toolbar_view.add_top_bar(self.header_bar)
 
-        # ScrolledWindow with navigation-sidebar ListBox
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_vexpand(True)
         scrolled.set_hexpand(True)
@@ -81,13 +103,12 @@ class Sidebar(Adw.Bin):
 
     def _create_main_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
-        menu.append("Preferences", "app.preferences")
-        menu.append("Keyboard Shortcuts", "app.shortcuts")
+        menu.append("Preferences",       "app.preferences")
+        menu.append("Keyboard Shortcuts","app.shortcuts")
         menu.append("About Stilo Notes", "app.about")
         return menu
 
     def show_buttons(self, show_close: bool, show_menu: bool):
-        """Toggle close button vs main menu button based on sidebar pin / responsive mode."""
         self.close_btn.set_visible(show_close)
         self.menu_btn.set_visible(show_menu)
 
@@ -95,7 +116,6 @@ class Sidebar(Adw.Bin):
         """Reload categories and counts."""
         self._updating = True
         try:
-            # Clear existing rows
             while True:
                 row = self.listbox.get_row_at_index(0)
                 if not row:
@@ -107,29 +127,40 @@ class Sidebar(Adw.Bin):
             # 1. All Notes
             self._add_row("all", "", "All Notes", "view-grid-symbolic", counts.get("all", 0))
 
-            # 2. Uncategorized
-            self._add_row("uncategorized", "", "Uncategorized", "view-grid-symbolic", counts.get("uncategorized", 0))
+            # 2. Favorites (pinned)
+            fav_count = counts.get("favorites", 0)
+            self._add_row("favorites", "", "Favorites", "starred-symbolic", fav_count)
 
-            # 3. Categories
+            # 3. Uncategorized
+            self._add_row("uncategorized", "", "Uncategorized", "folder-open-symbolic",
+                          counts.get("uncategorized", 0))
+
+            # 4. Nested categories tree
             categories = self.db.get_categories()
-            for cat in categories:
-                self._add_row("category", cat.name, cat.name, cat.icon or "folder-symbolic", cat.count, is_user_category=True)
+            tree_items = _build_category_tree(categories)
+            for full_name, depth, display_name in tree_items:
+                # Pick icon based on depth
+                icon = "folder-symbolic" if depth == 0 else "folder-open-symbolic"
+                self._add_row("category", full_name, display_name, icon,
+                              counts.get(f"cat:{full_name}", 0),
+                              is_user_category=True, depth=depth)
 
-            # 4. Trash
+            # 5. Trash
             self._add_row("trash", "", "Trash", "user-trash-symbolic", counts.get("trash", 0))
 
-            # Re-select active filter
             self._restore_active_selection()
         finally:
             self._updating = False
 
-    def _add_row(self, filter_type: str, category_name: str, title: str, icon_name: str, count: int, is_user_category: bool = False):
+    def _add_row(self, filter_type: str, category_name: str, title: str,
+                 icon_name: str, count: int, is_user_category: bool = False, depth: int = 0):
         row = Gtk.ListBoxRow()
         row._filter_type = filter_type
         row._category_name = category_name
 
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        box.set_margin_start(10)
+        # Indent nested categories
+        box.set_margin_start(10 + depth * 16)
         box.set_margin_end(10)
         box.set_margin_top(8)
         box.set_margin_bottom(8)
@@ -161,18 +192,27 @@ class Sidebar(Adw.Bin):
 
     def _setup_category_context_menu(self, row: Gtk.ListBoxRow, category_name: str):
         gesture = Gtk.GestureClick.new()
-        gesture.set_button(3)  # Right click
+        gesture.set_button(3)
 
         def on_right_click(_g, _n, _x, _y):
             menu = Gio.Menu()
-            menu.append("Rename Category", f"cat.rename::{category_name}")
-            menu.append("Delete Category", f"cat.delete::{category_name}")
+            s1 = Gio.Menu()
+            s1.append("Add Subcategory…", f"cat.add-sub::{category_name}")
+            s1.append("Rename Category…", f"cat.rename::{category_name}")
+            menu.append_section(None, s1)
+            s2 = Gio.Menu()
+            s2.append("Delete Category",  f"cat.delete::{category_name}")
+            menu.append_section(None, s2)
 
             popover = Gtk.PopoverMenu.new_from_model(menu)
             popover.set_parent(row)
             popover.set_has_arrow(False)
 
             action_group = Gio.SimpleActionGroup.new()
+
+            act_sub = Gio.SimpleAction.new("add-sub", GLib.VariantType.new("s"))
+            act_sub.connect("activate", lambda _a, p: self._on_add_subcategory(p.get_string()))
+            action_group.add_action(act_sub)
 
             act_rename = Gio.SimpleAction.new("rename", GLib.VariantType.new("s"))
             act_rename.connect("activate", lambda _a, p: self._on_rename_category(p.get_string()))
@@ -189,27 +229,31 @@ class Sidebar(Adw.Bin):
         row.add_controller(gesture)
 
     def _restore_active_selection(self):
-        for i in range(100):
+        for i in range(300):
             row = self.listbox.get_row_at_index(i)
             if not row:
                 break
-            if getattr(row, "_filter_type", None) == self.active_filter_type and getattr(row, "_category_name", None) == self.active_category_name:
+            if (getattr(row, "_filter_type", None) == self.active_filter_type and
+                    getattr(row, "_category_name", None) == self.active_category_name):
                 self.listbox.select_row(row)
                 break
 
     def _on_row_activated(self, _lb, row):
         if self._updating or not row or not hasattr(row, "_filter_type"):
             return
-        if self.active_filter_type == row._filter_type and self.active_category_name == row._category_name:
+        if (self.active_filter_type == row._filter_type and
+                self.active_category_name == row._category_name):
             return
         self.active_filter_type = row._filter_type
         self.active_category_name = row._category_name
         self.emit("filter-changed", self.active_filter_type, self.active_category_name)
 
+    # ── Add category dialog ───────────────────────────────────────────────
+
     def _on_add_category_clicked(self, _btn):
         dialog = Adw.AlertDialog.new(
             "New Category",
-            "Enter a name for the new category:"
+            "Enter a name. Use / for nested categories (e.g. Work/Projects):"
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("create", "Create")
@@ -218,25 +262,60 @@ class Sidebar(Adw.Bin):
         dialog.set_close_response("cancel")
 
         entry = Gtk.Entry()
-        entry.set_placeholder_text("e.g. Ideas, Journal, Work")
+        entry.set_placeholder_text("e.g. Ideas  or  Work/Projects")
         entry.set_activates_default(True)
         dialog.set_extra_child(entry)
 
         def on_response(_d, response):
             if response == "create":
-                name = entry.get_text().strip()
+                name = entry.get_text().strip().strip("/")
                 if name:
-                    self.db.create_category(name)
+                    self._create_category_with_parents(name)
                     self.refresh()
 
         dialog.connect("response", on_response)
-        parent = self.get_root() or self
-        dialog.present(parent)
+        dialog.present(self.get_root() or self)
+
+    def _on_add_subcategory(self, parent_name: str):
+        dialog = Adw.AlertDialog.new(
+            f"New Subcategory under '{parent_name}'",
+            "Enter the subcategory name:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("create", "Create")
+        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("create")
+        dialog.set_close_response("cancel")
+
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("e.g. Reports")
+        entry.set_activates_default(True)
+        dialog.set_extra_child(entry)
+
+        def on_response(_d, response):
+            if response == "create":
+                sub = entry.get_text().strip().strip("/")
+                if sub:
+                    full = f"{parent_name}/{sub}"
+                    self._create_category_with_parents(full)
+                    self.refresh()
+
+        dialog.connect("response", on_response)
+        dialog.present(self.get_root() or self)
+
+    def _create_category_with_parents(self, full_name: str):
+        """Create a category and any missing ancestor categories."""
+        parts = full_name.split("/")
+        for i in range(len(parts)):
+            ancestor = "/".join(parts[:i + 1])
+            self.db.create_category(ancestor)
+
+    # ── Rename dialog ─────────────────────────────────────────────────────
 
     def _on_rename_category(self, old_name: str):
         dialog = Adw.AlertDialog.new(
-            f"Rename Category '{old_name}'",
-            "Enter a new name for this category:"
+            f"Rename '{old_name}'",
+            "Enter a new name:"
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("rename", "Rename")
@@ -251,23 +330,42 @@ class Sidebar(Adw.Bin):
 
         def on_response(_d, response):
             if response == "rename":
-                new_name = entry.get_text().strip()
+                new_name = entry.get_text().strip().strip("/")
                 if new_name and new_name != old_name:
                     with self.db.get_connection() as conn:
-                        conn.execute("UPDATE categories SET name = ? WHERE name = ?", (new_name, old_name))
-                        conn.execute("UPDATE notes SET category = ? WHERE category = ?", (new_name, old_name))
+                        # Rename category and any children (prefix rename)
+                        conn.execute(
+                            "UPDATE categories SET name = ? WHERE name = ?",
+                            (new_name, old_name)
+                        )
+                        # Rename child categories: old_name/... → new_name/...
+                        conn.execute(
+                            "UPDATE categories SET name = replace(name, ?, ?) WHERE name LIKE ?",
+                            (old_name + "/", new_name + "/", old_name + "/%")
+                        )
+                        # Update notes
+                        conn.execute(
+                            "UPDATE notes SET category = ? WHERE category = ?",
+                            (new_name, old_name)
+                        )
+                        conn.execute(
+                            "UPDATE notes SET category = replace(category, ?, ?) WHERE category LIKE ?",
+                            (old_name + "/", new_name + "/", old_name + "/%")
+                        )
                     if self.active_category_name == old_name:
                         self.active_category_name = new_name
                     self.refresh()
 
         dialog.connect("response", on_response)
-        parent = self.get_root() or self
-        dialog.present(parent)
+        dialog.present(self.get_root() or self)
+
+    # ── Delete dialog ─────────────────────────────────────────────────────
 
     def _on_delete_category(self, name: str):
         dialog = Adw.AlertDialog.new(
-            f"Delete Category '{name}'?",
-            "Notes inside this category will remain, but their category will be cleared."
+            f"Delete '{name}'?",
+            "Notes inside will remain but their category will be cleared.\n"
+            "All subcategories will also be deleted."
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("delete", "Delete")
@@ -277,12 +375,19 @@ class Sidebar(Adw.Bin):
 
         def on_response(_d, response):
             if response == "delete":
-                self.db.delete_category(name)
-                if self.active_category_name == name:
+                with self.db.get_connection() as conn:
+                    # Delete this category and all children
+                    conn.execute("DELETE FROM categories WHERE name = ?", (name,))
+                    conn.execute("DELETE FROM categories WHERE name LIKE ?", (name + "/%",))
+                    # Clear notes' category
+                    conn.execute("UPDATE notes SET category = '' WHERE category = ?", (name,))
+                    conn.execute(
+                        "UPDATE notes SET category = '' WHERE category LIKE ?", (name + "/%",)
+                    )
+                if self.active_category_name == name or self.active_category_name.startswith(name + "/"):
                     self.active_filter_type = "all"
                     self.active_category_name = ""
                 self.refresh()
 
         dialog.connect("response", on_response)
-        parent = self.get_root() or self
-        dialog.present(parent)
+        dialog.present(self.get_root() or self)

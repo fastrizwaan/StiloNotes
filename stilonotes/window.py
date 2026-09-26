@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Asif Ali Rizvan
+# SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from typing import Optional
@@ -50,6 +50,7 @@ class StiloWindow(Adw.ApplicationWindow):
         self.editor.connect("note-duplicated", self._on_editor_note_duplicated)
         self.editor.connect("note-category-changed", self._on_editor_category_changed)
         self.editor.connect("back", self._on_editor_back)
+        self.editor.connect("toggle-app-theme", lambda _ed: self._toggle_theme())
 
         self.editor_page = Adw.NavigationPage.new(self.editor, "Editor")
         self.editor_page.set_can_pop(True)
@@ -174,8 +175,9 @@ class StiloWindow(Adw.ApplicationWindow):
 
     def _on_editor_note_pin_toggled(self, _ed, note_id: str):
         self.db.toggle_pin_note(note_id)
+        # Reflect current note pin state in the star button
         if self.editor.current_note and self.editor.current_note.id == note_id:
-            self.editor.current_note.is_pinned = not self.editor.current_note.is_pinned
+            self.editor._update_star_btn(self.editor.current_note.is_pinned)
         self.index_view.refresh(update_sidebar=True)
 
     def _on_editor_note_duplicated(self, _ed, note_id: str):

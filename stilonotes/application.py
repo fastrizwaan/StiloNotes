@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Asif Ali Rizvan
+# SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import sys
@@ -68,9 +68,9 @@ class StiloApplication(Adw.Application):
         about.set_application_name(APP_NAME)
         about.set_application_icon(APP_ID)
         about.set_version(VERSION)
-        about.set_developer_name("Asif Ali Rizvan")
-        about.set_developers(["Asif Ali Rizvan <fast.rizwaan@gmail.com>"])
-        about.set_artists(["Asif Ali Rizvan"])
+        about.set_developer_name("Mohammed Asif Ali Rizvan")
+        about.set_developers(["Mohammed Asif Ali Rizvan <fast.rizwaan@gmail.com>"])
+        about.set_artists(["Mohammed Asif Ali Rizvan"])
         about.set_license_type(Gtk.License.GPL_3_0)
         about.set_comments("Iotas inspired rich text notes with dynamic WebKit Markdown rendering")
         about.set_website("https://github.com/fastrizwaan/StiloNotes")

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Asif Ali Rizvan
+# SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import json
@@ -181,15 +181,17 @@ Enjoy writing with Stilo Notes!
                 query += " AND is_trashed = 0"
 
             # Category / Tab filters
-            if filter_type == "pinned":
+            if filter_type in ("pinned", "favorites"):
                 query += " AND is_pinned = 1"
             elif filter_type == "todo":
                 query += " AND has_todo = 1"
             elif filter_type == "uncategorized":
                 query += " AND (category = '' OR category IS NULL)"
             elif filter_type == "category" and category_name:
-                query += " AND category = ?"
+                # Match exact category OR any sub-category (Work/Projects matches Work/Projects/...)
+                query += " AND (category = ? OR category LIKE ?)"
                 params.append(category_name)
+                params.append(category_name + "/%")
 
             # Search query
             if search_query:
@@ -487,7 +489,7 @@ Enjoy writing with Stilo Notes!
             conn.commit()
 
     def get_counts(self) -> Dict[str, int]:
-        """Return counts for standard tabs."""
+        """Return counts for standard tabs plus per-category counts."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0")
@@ -505,13 +507,33 @@ Enjoy writing with Stilo Notes!
             cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 1")
             trash_cnt = cursor.fetchone()["cnt"]
 
-            return {
+            # Per-category counts (include subcategory notes in parent count)
+            cursor.execute(
+                "SELECT category, COUNT(*) as cnt FROM notes "
+                "WHERE is_trashed = 0 AND category != '' AND category IS NOT NULL "
+                "GROUP BY category"
+            )
+            cat_rows = cursor.fetchall()
+            cat_counts: Dict[str, int] = {}
+            for row in cat_rows:
+                cat = row["category"]
+                cnt = row["cnt"]
+                # Add to the exact category and all ancestors
+                parts = cat.split("/")
+                for i in range(len(parts)):
+                    ancestor = "/".join(parts[:i + 1])
+                    cat_counts[f"cat:{ancestor}"] = cat_counts.get(f"cat:{ancestor}", 0) + cnt
+
+            result = {
                 "all": all_cnt,
                 "pinned": pinned_cnt,
+                "favorites": pinned_cnt,
                 "todo": todo_cnt,
                 "uncategorized": uncat_cnt,
-                "trash": trash_cnt
+                "trash": trash_cnt,
             }
+            result.update(cat_counts)
+            return result
 
     def get_setting(self, key: str, default: str = "") -> str:
         try:
