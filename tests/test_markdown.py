@@ -36,17 +36,13 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("- [x] Finished task", back_md)
 
     def test_inline_formatting(self):
-        md = "**Bold** and *Italic* and ==Highlight== and ~~Strike~~ and `Code` and #tag"
+        md = "**Bold** and *Italic* and ==Highlight== and ~~Strike~~ and `Code`"
         html = markdown_to_html(md)
         self.assertIn("<strong>Bold</strong>", html)
         self.assertIn("<em>Italic</em>", html)
         self.assertIn('<mark class="stilo-highlight">Highlight</mark>', html)
         self.assertIn("<del>Strike</del>", html)
         self.assertIn('<code class="stilo-inline-code">Code</code>', html)
-        self.assertIn('<span class="stilo-tag" data-tag="tag">#tag</span>', html)
-
-        tags = extract_tags(md)
-        self.assertEqual(tags, ["tag"])
 
     def test_title_and_excerpt_extraction(self):
         md = "# My Great Journey\nHere is what happened today on the road.\nIt was amazing."

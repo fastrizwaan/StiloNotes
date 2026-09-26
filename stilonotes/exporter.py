@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import html
+import os
 import re
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 from gi.repository import Gtk, Gio, GLib
 
 from stilonotes.models import Note
@@ -82,3 +83,38 @@ th {{ background: #f8f8f8; }}
             print("Export cancelled or failed:", e)
 
     dialog.save(parent_window, None, on_save_finish)
+
+def export_notes_dialog(parent_window: Gtk.Window, notes: List[Note], on_complete: Optional[Callable[[str], None]] = None):
+    """Present a folder selection dialog to export multiple notes as Markdown files."""
+    if not notes:
+        return
+    dialog = Gtk.FileDialog()
+    dialog.set_title("Export Selected Notes")
+
+    def on_folder_finish(dialog, result):
+        try:
+            target_folder = dialog.select_folder_finish(result)
+            if target_folder:
+                folder_path = target_folder.get_path()
+                saved_count = 0
+                for note in notes:
+                    clean_title = re.sub(r'[\\/*?:"<>|]', "", note.title or "Untitled").strip() or "Untitled"
+                    filename = f"{clean_title}.md"
+                    filepath = os.path.join(folder_path, filename)
+                    counter = 1
+                    while os.path.exists(filepath):
+                        filename = f"{clean_title} ({counter}).md"
+                        filepath = os.path.join(folder_path, filename)
+                        counter += 1
+
+                    content = note.content_markdown or html_to_markdown(note.content_html)
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    saved_count += 1
+
+                if on_complete:
+                    on_complete(f"Exported {saved_count} notes to {target_folder.get_basename()}")
+        except Exception as e:
+            print("Folder export cancelled or failed:", e)
+
+    dialog.select_folder(parent_window, None, on_folder_finish)

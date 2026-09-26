@@ -18,6 +18,7 @@ class IndexRow(Gtk.ListBoxRow):
         "delete": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "restore": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "perm-delete": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "toggled": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
     }
 
     def __init__(self, note: Note, selection_mode: bool = False, show_category_pill: bool = True):
@@ -44,6 +45,7 @@ class IndexRow(Gtk.ListBoxRow):
         self.checkbox = Gtk.CheckButton()
         self.checkbox.set_valign(Gtk.Align.CENTER)
         self.checkbox.set_margin_end(12)
+        self.checkbox.connect("toggled", lambda _cb: self.emit("toggled", self.checkbox.get_active()))
         self.revealer.set_child(self.checkbox)
         box.append(self.revealer)
 
@@ -163,6 +165,7 @@ class NotesList(Gtk.Box):
         "note-deleted": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-duplicated": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "new-note-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        "selection-changed": (GObject.SignalFlags.RUN_FIRST, None, (int,)),
     }
 
     def __init__(self, db):
@@ -399,6 +402,7 @@ class NotesList(Gtk.Box):
         row.connect("delete", lambda _r, nid: self.emit("note-deleted", nid))
         row.connect("restore", lambda _r, nid: self._on_restore(nid))
         row.connect("perm-delete", lambda _r, nid: self._on_perm_delete(nid))
+        row.connect("toggled", lambda _r, _a: self.emit("selection-changed", len(self.get_checked_notes())))
         self._all_rows.append(row)
         return row
 
@@ -422,6 +426,10 @@ class NotesList(Gtk.Box):
         self.selection_mode = enabled
         for row in self._all_rows:
             row.set_selection_mode(enabled)
+            if not enabled:
+                row.set_checked(False)
+        if not enabled:
+            self.emit("selection-changed", 0)
 
     def get_checked_notes(self) -> List[Note]:
         return [row.note for row in self._all_rows if row.is_checked()]
@@ -429,3 +437,9 @@ class NotesList(Gtk.Box):
     def select_all(self, checked: bool = True):
         for row in self._all_rows:
             row.set_checked(checked)
+        self.emit("selection-changed", len(self.get_checked_notes()))
+
+    def clear_all_checkboxes(self):
+        for row in self._all_rows:
+            row.set_checked(False)
+        self.emit("selection-changed", 0)

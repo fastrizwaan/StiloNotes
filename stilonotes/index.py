@@ -7,6 +7,8 @@ from gi.repository import Adw, Gtk, Gio, GLib, GObject
 from stilonotes.database import NoteDatabase
 from stilonotes.notes_list import NotesList
 from stilonotes.sidebar import Sidebar
+from stilonotes.selection_header_bar import SelectionHeaderBar
+from stilonotes.exporter import export_note_dialog, export_notes_dialog
 
 
 class IndexView(Adw.BreakpointBin):
@@ -24,7 +26,6 @@ class IndexView(Adw.BreakpointBin):
 
         self.active_filter_type = "all"
         self.active_category_name = ""
-        self.active_tag_name = ""
         self.search_query = ""
 
         self._build_ui()
@@ -109,7 +110,7 @@ class IndexView(Adw.BreakpointBin):
 
         search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.search_entry = Gtk.SearchEntry()
-        self.search_entry.set_placeholder_text("Search notes or #tags…")
+        self.search_entry.set_placeholder_text("Search notes…")
         self.search_entry.set_hexpand(True)
         self.search_entry.connect("search-changed", self._on_search_text_changed)
         self.search_entry.connect("stop-search", lambda _e: self.exit_search())
@@ -124,30 +125,13 @@ class IndexView(Adw.BreakpointBin):
         self.header_stack.add_named(self.search_header, "search")
 
         # Selection Headerbar
-        self.selection_header = Adw.HeaderBar()
-        self.selection_header.set_show_back_button(False)
-        self.selection_header.set_show_end_title_buttons(False)
-        self.selection_header.set_show_start_title_buttons(False)
-
-        done_select_btn = Gtk.Button(label="Done")
-        done_select_btn.add_css_class("suggested-action")
-        done_select_btn.connect("clicked", lambda _b: self.exit_selection_mode())
-        self.selection_header.pack_start(done_select_btn)
-
-        select_all_btn = Gtk.Button(label="Select All")
-        select_all_btn.add_css_class("flat")
-        select_all_btn.connect("clicked", lambda _b: self.notes_list.select_all(True))
-        self.selection_header.pack_start(select_all_btn)
-
-        self.selection_title = Adw.WindowTitle(title="Select Notes")
-        self.selection_header.set_title_widget(self.selection_title)
-
-        delete_selected_btn = Gtk.Button()
-        delete_selected_btn.set_icon_name("user-trash-symbolic")
-        delete_selected_btn.add_css_class("destructive-action")
-        delete_selected_btn.set_tooltip_text("Delete Selected")
-        delete_selected_btn.connect("clicked", lambda _b: self._on_delete_selected())
-        self.selection_header.pack_end(delete_selected_btn)
+        self.selection_header = SelectionHeaderBar()
+        self.selection_header.connect("abort", lambda _shb: self.exit_selection_mode())
+        self.selection_header.connect("select-all", lambda _shb: self.notes_list.select_all(True))
+        self.selection_header.connect("categories-changed", self._on_selection_categories_changed)
+        self.selection_header.connect("set-favourite", self._on_selection_toggle_favourite)
+        self.selection_header.connect("export", self._on_selection_export)
+        self.selection_header.connect("delete", self._on_selection_delete)
 
         self.header_stack.add_named(self.selection_header, "selection")
 
@@ -161,6 +145,7 @@ class IndexView(Adw.BreakpointBin):
         self.notes_list.connect("note-pin-toggled", lambda _nl, _id: self.refresh())
         self.notes_list.connect("note-deleted", lambda _nl, nid: self._on_note_deleted(nid))
         self.notes_list.connect("note-duplicated", lambda _nl, nid: self._on_note_duplicated(nid))
+        self.notes_list.connect("selection-changed", self._on_selection_changed)
 
         self.toast_overlay.set_child(self.notes_list)
         self.toolbar_view.set_content(self.toast_overlay)
@@ -213,9 +198,7 @@ class IndexView(Adw.BreakpointBin):
             self.sidebar.refresh()
 
         # Update title
-        if self.active_tag_name:
-            self.window_title.set_title(f"#{self.active_tag_name}")
-        elif self.active_filter_type == "all":
+        if self.active_filter_type == "all":
             self.window_title.set_title("All Notes")
         elif self.active_filter_type == "uncategorized":
             self.window_title.set_title("Uncategorized")
@@ -231,7 +214,6 @@ class IndexView(Adw.BreakpointBin):
         notes = self.db.get_notes(
             filter_type=self.active_filter_type,
             category_name=self.active_category_name,
-            tag_name=self.active_tag_name,
             search_query=self.search_query
         )
         self.notes_list.set_notes(
@@ -244,17 +226,11 @@ class IndexView(Adw.BreakpointBin):
     def _on_sidebar_filter_changed(self, _sb, filter_type: str, category_name: str):
         self.active_filter_type = filter_type
         self.active_category_name = category_name
-        self.active_tag_name = ""
 
         if self.split_view.get_collapsed():
             self.split_view.set_show_sidebar(False)
 
         self.refresh(update_sidebar=False)
-
-    def filter_by_tag(self, tag_name: str):
-        self.active_tag_name = tag_name
-        self.active_filter_type = "all"
-        self.refresh()
 
     def enter_search(self):
         self.header_stack.set_visible_child_name("search")
@@ -270,22 +246,75 @@ class IndexView(Adw.BreakpointBin):
         self.search_query = entry.get_text().strip()
         self.refresh(update_sidebar=False)
 
+    def _on_selection_changed(self, _nl, count: int):
+        checked = self.notes_list.get_checked_notes()
+        self.selection_header.set_selected_notes(checked)
+
     def enter_selection_mode(self):
         self.notes_list.set_selection_mode(True)
+        cats = [c.name for c in self.db.get_categories()]
+        self.selection_header.set_categories_model(cats)
+        self.selection_header.activate()
         self.header_stack.set_visible_child_name("selection")
 
     def exit_selection_mode(self):
+        self.selection_header.deactivate()
         self.notes_list.set_selection_mode(False)
         self.header_stack.set_visible_child_name("main")
 
-    def _on_delete_selected(self):
+    def _on_selection_categories_changed(self, _shb, new_category: str):
         checked = self.notes_list.get_checked_notes()
         if not checked:
             return
-        for n in checked:
-            self.db.delete_note(n.id)
+        ids = [n.id for n in checked]
+        self.db.set_notes_category(ids, new_category)
         self.exit_selection_mode()
         self.refresh()
+        msg = f"Changed category to '{new_category}' for {len(ids)} notes" if new_category else f"Removed category from {len(ids)} notes"
+        self.toast_overlay.add_toast(Adw.Toast.new(msg))
+
+    def _on_selection_toggle_favourite(self, _shb):
+        checked = self.notes_list.get_checked_notes()
+        if not checked:
+            return
+        set_count = len([n for n in checked if n.is_pinned])
+        unset_count = len(checked) - set_count
+        new_state = False if set_count >= unset_count else True
+        ids = [n.id for n in checked]
+        self.db.set_notes_pinned(ids, new_state)
+        self.exit_selection_mode()
+        self.refresh()
+        msg = f"Added {len(ids)} notes to Favorites" if new_state else f"Removed {len(ids)} notes from Favorites"
+        self.toast_overlay.add_toast(Adw.Toast.new(msg))
+
+    def _on_selection_export(self, _shb):
+        checked = self.notes_list.get_checked_notes()
+        if not checked:
+            return
+        root = self.get_root()
+        if len(checked) == 1:
+            export_note_dialog(root, checked[0], on_complete=lambda msg: self.toast_overlay.add_toast(Adw.Toast.new(msg)))
+        else:
+            export_notes_dialog(root, checked, on_complete=lambda msg: self.toast_overlay.add_toast(Adw.Toast.new(msg)))
+
+    def _on_selection_delete(self, _shb):
+        checked = self.notes_list.get_checked_notes()
+        if not checked:
+            return
+        ids = [n.id for n in checked]
+        if self.active_filter_type == "trash":
+            self.db.delete_notes(ids, permanent=True)
+            self.exit_selection_mode()
+            self.refresh()
+            self.toast_overlay.add_toast(Adw.Toast.new(f"Permanently deleted {len(ids)} notes"))
+        else:
+            self.db.delete_notes(ids, permanent=False)
+            self.exit_selection_mode()
+            self.refresh()
+            toast = Adw.Toast.new(f"Moved {len(ids)} notes to Trash")
+            toast.set_button_label("Undo")
+            toast.connect("button-clicked", lambda _t: (self.db.restore_notes(ids), self.refresh()))
+            self.toast_overlay.add_toast(toast)
 
     def _on_note_deleted(self, note_id: str):
         self.db.delete_note(note_id)

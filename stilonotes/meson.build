@@ -38,6 +38,7 @@ sources = [
   'markdown_utils.py',
   'models.py',
   'notes_list.py',
+  'selection_header_bar.py',
   'sidebar.py',
   'window.py',
 ]

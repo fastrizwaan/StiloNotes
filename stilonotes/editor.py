@@ -25,7 +25,6 @@ class NoteEditor(Gtk.Box):
         "note-pin-toggled": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-duplicated": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-category-changed": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
-        "tag-clicked": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "back": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
@@ -152,9 +151,6 @@ class NoteEditor(Gtk.Box):
         try:
             ucm.register_script_message_handler("contentChanged")
             ucm.connect("script-message-received::contentChanged", self._on_js_content_changed)
-
-            ucm.register_script_message_handler("tagClicked")
-            ucm.connect("script-message-received::tagClicked", self._on_js_tag_clicked)
 
             ucm.register_script_message_handler("pickImage")
             ucm.connect("script-message-received::pickImage", self._on_js_pick_image)
@@ -431,20 +427,12 @@ class NoteEditor(Gtk.Box):
                 new_excerpt,
                 new_html,
                 new_md,
-                new_tags,
+                [],
                 has_todo
             )
             self.update_stats_popover()
         except Exception as e:
             print("Error parsing content change:", e)
-
-    def _on_js_tag_clicked(self, _ucm, js_result):
-        try:
-            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
-            tag_name = val.to_string() if hasattr(val, "to_string") else str(val)
-            self.emit("tag-clicked", tag_name)
-        except Exception as e:
-            print("Error parsing tag click:", e)
 
     def _on_js_pick_image(self, _ucm, _js_result):
         dialog = Gtk.FileDialog()

@@ -49,17 +49,8 @@ def check_has_todo(content: str) -> bool:
 
 
 def extract_tags(text: str) -> List[str]:
-    """Extract distinct #tags from markdown or HTML."""
-    if not text:
-        return []
-    clean = re.sub(r'<[^>]+>', ' ', text)
-    matches = re.findall(r'(?:^|\s)#([a-zA-Z0-9_\-]+)', clean)
-    tags = []
-    for m in matches:
-        tag = m.lower()
-        if tag not in tags:
-            tags.append(tag)
-    return tags
+    """Deprecated tag extractor; returns empty list as app is category-based."""
+    return []
 
 
 def strip_markdown(text: str) -> str:
@@ -147,9 +138,6 @@ def markdown_to_html(md_text: str) -> str:
 
         # Links
         s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2" class="stilo-link" target="_blank">\1</a>', s)
-
-        # Tags
-        s = re.sub(r'(^|\s)#([a-zA-Z0-9_\-]+)', r'\1<span class="stilo-tag" data-tag="\2">#\2</span>', s)
 
         return s
 
@@ -408,12 +396,6 @@ def html_to_markdown(html_content: str) -> str:
     s = re.sub(r'<del[^>]*>(.*?)</del>', r'~~\1~~', s, flags=re.DOTALL)
     s = re.sub(r'<mark[^>]*>(.*?)</mark>', r'==\1==', s, flags=re.DOTALL)
     s = re.sub(r'<code[^>]*>(.*?)</code>', r'`\1`', s, flags=re.DOTALL)
-
-    # Convert Tags: <span class="stilo-tag">#tag</span> -> #tag
-    def clean_tag(m):
-        inner = re.sub(r'<[^>]+>', '', m.group(1)).strip()
-        return inner if inner.startswith('#') else f'#{inner}'
-    s = re.sub(r'<span class="stilo-tag"[^>]*>(.*?)</span>', clean_tag, s, flags=re.DOTALL)
 
     # Convert paragraphs and divs
     s = re.sub(r'<div[^>]*><br[^>]*></div>', '\n\n', s)

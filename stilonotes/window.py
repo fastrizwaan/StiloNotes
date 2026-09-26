@@ -49,7 +49,6 @@ class StiloWindow(Adw.ApplicationWindow):
         self.editor.connect("note-pin-toggled", self._on_editor_note_pin_toggled)
         self.editor.connect("note-duplicated", self._on_editor_note_duplicated)
         self.editor.connect("note-category-changed", self._on_editor_category_changed)
-        self.editor.connect("tag-clicked", self._on_editor_tag_clicked)
         self.editor.connect("back", self._on_editor_back)
 
         self.editor_page = Adw.NavigationPage.new(self.editor, "Editor")
@@ -198,9 +197,6 @@ class StiloWindow(Adw.ApplicationWindow):
     def _on_editor_category_changed(self, _ed, note_id: str, new_category: str):
         self.index_view.refresh(update_sidebar=True)
 
-    def _on_editor_tag_clicked(self, _ed, tag_name: str):
-        self._go_back()
-        self.index_view.filter_by_tag(tag_name)
 
     def _on_editor_back(self, _ed):
         self._go_back()

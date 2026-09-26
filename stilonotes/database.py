@@ -119,7 +119,7 @@ class NoteDatabase:
 ### ✨ Key Features
 - **Dynamic Markdown Parsing**: Type markdown on the fly and watch it format live!
 - **Interactive Checklists**: Click checkboxes directly in the editor to mark tasks complete.
-- **Fast Sidebar Organization**: Group notes by Categories, #tags, or Favorites.
+- **Fast Sidebar Organization**: Group notes by Categories or Favorites.
 - **Real-time Statistics**: View word count, characters, and reading time.
 - **Export Anywhere**: Export cleanly to Markdown, HTML, or Plain Text.
 
@@ -130,7 +130,6 @@ class NoteDatabase:
 - Type `> ` for blockquotes
 - Type `---` on an empty line for a divider
 - Type `**bold**`, `*italic*`, `==highlight==`, or `~~strikethrough~~`
-- Add `#stilo` or `#ideas` anywhere in your text to tag your notes!
 
 ### ☑️ Your First Checklist
 - [x] Launch Stilo Notes
@@ -138,7 +137,7 @@ class NoteDatabase:
 - [ ] Toggle dark and light mode
 - [ ] Create a custom category in the sidebar
 
-Enjoy writing with Stilo Notes! #welcome #notes
+Enjoy writing with Stilo Notes!
 """
         html_content = markdown_to_html(md_content)
         title, excerpt = extract_title_and_excerpt(md_content, html_content)
@@ -192,16 +191,11 @@ Enjoy writing with Stilo Notes! #welcome #notes
                 query += " AND category = ?"
                 params.append(category_name)
 
-            # Tag filter
-            if tag_name:
-                query += " AND tags LIKE ?"
-                params.append(f"%{tag_name}%")
-
             # Search query
             if search_query:
                 q = f"%{search_query.strip()}%"
-                query += " AND (title LIKE ? OR excerpt LIKE ? OR content_markdown LIKE ? OR tags LIKE ?)"
-                params.extend([q, q, q, q])
+                query += " AND (title LIKE ? OR excerpt LIKE ? OR content_markdown LIKE ?)"
+                params.extend([q, q, q])
 
             # Pinned notes appear first, then sorted by updated_at descending
             query += " ORDER BY is_pinned DESC, updated_at DESC"
@@ -349,6 +343,75 @@ Enjoy writing with Stilo Notes! #welcome #notes
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE notes SET is_trashed = 0, updated_at = ? WHERE id = ?", (time.time(), note_id))
+            conn.commit()
+
+    def set_note_pinned(self, note_id: str, is_pinned: bool):
+        """Set pinned status directly."""
+        val = 1 if is_pinned else 0
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE notes SET is_pinned = ?, updated_at = ? WHERE id = ?", (val, time.time(), note_id))
+            conn.commit()
+
+    def set_notes_pinned(self, note_ids: List[str], is_pinned: bool):
+        """Set pinned status for multiple notes."""
+        if not note_ids:
+            return
+        val = 1 if is_pinned else 0
+        now = time.time()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in note_ids)
+            cursor.execute(f"UPDATE notes SET is_pinned = ?, updated_at = ? WHERE id IN ({placeholders})", [val, now] + note_ids)
+            conn.commit()
+
+    def set_note_category(self, note_id: str, category: str):
+        """Set category for a single note."""
+        clean_cat = category.strip()
+        if clean_cat:
+            self.create_category(clean_cat)
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE notes SET category = ?, updated_at = ? WHERE id = ?", (clean_cat, time.time(), note_id))
+            conn.commit()
+
+    def set_notes_category(self, note_ids: List[str], category: str):
+        """Set category for multiple notes."""
+        if not note_ids:
+            return
+        clean_cat = category.strip()
+        if clean_cat:
+            self.create_category(clean_cat)
+        now = time.time()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in note_ids)
+            cursor.execute(f"UPDATE notes SET category = ?, updated_at = ? WHERE id IN ({placeholders})", [clean_cat, now] + note_ids)
+            conn.commit()
+
+    def delete_notes(self, note_ids: List[str], permanent: bool = False):
+        """Move multiple notes to trash, or delete permanently."""
+        if not note_ids:
+            return
+        now = time.time()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in note_ids)
+            if permanent:
+                cursor.execute(f"DELETE FROM notes WHERE id IN ({placeholders})", note_ids)
+            else:
+                cursor.execute(f"UPDATE notes SET is_trashed = 1, updated_at = ? WHERE id IN ({placeholders})", [now] + note_ids)
+            conn.commit()
+
+    def restore_notes(self, note_ids: List[str]):
+        """Restore multiple notes from trash."""
+        if not note_ids:
+            return
+        now = time.time()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in note_ids)
+            cursor.execute(f"UPDATE notes SET is_trashed = 0, updated_at = ? WHERE id IN ({placeholders})", [now] + note_ids)
             conn.commit()
 
     def toggle_pin_note(self, note_id: str) -> bool:
