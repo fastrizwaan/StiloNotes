@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+import gi
+gi.require_version('WebKit', '6.0')
 from gi.repository import Adw, Gtk, WebKit, Gio, GLib, GObject, Gdk
 
 from stilonotes.models import Note

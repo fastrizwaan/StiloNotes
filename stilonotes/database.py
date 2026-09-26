@@ -31,16 +31,25 @@ class NoteDatabase:
             data_dir.mkdir(parents=True, exist_ok=True)
             self.db_path = data_dir / "stilonotes.db"
 
+        if str(self.db_path) == ":memory:":
+            self._shared_mem_conn = sqlite3.connect(":memory:")
+            self._shared_mem_conn.row_factory = sqlite3.Row
+        else:
+            self._shared_mem_conn = None
+
         self._init_db()
 
     @contextmanager
     def get_connection(self):
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
+        if self._shared_mem_conn:
+            yield self._shared_mem_conn
+        else:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            try:
+                yield conn
+            finally:
+                conn.close()
 
     def _init_db(self):
         with self.get_connection() as conn:
@@ -177,6 +186,8 @@ Enjoy writing with Stilo Notes! #welcome #notes
                 query += " AND is_pinned = 1"
             elif filter_type == "todo":
                 query += " AND has_todo = 1"
+            elif filter_type == "uncategorized":
+                query += " AND (category = '' OR category IS NULL)"
             elif filter_type == "category" and category_name:
                 query += " AND category = ?"
                 params.append(category_name)
@@ -425,6 +436,9 @@ Enjoy writing with Stilo Notes! #welcome #notes
             cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0 AND has_todo = 1")
             todo_cnt = cursor.fetchone()["cnt"]
 
+            cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0 AND (category = '' OR category IS NULL)")
+            uncat_cnt = cursor.fetchone()["cnt"]
+
             cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 1")
             trash_cnt = cursor.fetchone()["cnt"]
 
@@ -432,6 +446,7 @@ Enjoy writing with Stilo Notes! #welcome #notes
                 "all": all_cnt,
                 "pinned": pinned_cnt,
                 "todo": todo_cnt,
+                "uncategorized": uncat_cnt,
                 "trash": trash_cnt
             }
 

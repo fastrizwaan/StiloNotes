@@ -1,99 +1,157 @@
 # SPDX-FileCopyrightText: 2026 Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from typing import List, Optional, Set
-from gi.repository import Adw, Gtk, GObject, Pango
+from datetime import datetime, timedelta
+from typing import List, Optional
+from gi.repository import Adw, Gtk, Gio, GLib, GObject, Pango
 
 from stilonotes.models import Note
-from stilonotes.markdown_utils import format_relative_date
+from stilonotes.markdown_utils import strip_markdown
 
-class NoteRow(Gtk.ListBoxRow):
-    __gtype_name__ = "NoteRow"
 
-    def __init__(self, note: Note, selection_mode: bool = False):
+class IndexRow(Gtk.ListBoxRow):
+    __gtype_name__ = "IndexRow"
+
+    __gsignals__ = {
+        "pin-toggled": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "duplicate": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "delete": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "restore": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "perm-delete": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+    }
+
+    def __init__(self, note: Note, selection_mode: bool = False, show_category_pill: bool = True):
         super().__init__()
         self.note = note
-        self.selection_mode = selection_mode
-        self.add_css_class("stilo-note-row")
+        self.show_category_pill = show_category_pill
 
-        self._build_ui()
+        self._build_ui(selection_mode)
+        self._setup_context_menu()
 
-    def _build_ui(self):
-        main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+    def _build_ui(self, selection_mode: bool):
+        # Outer box with Iotas-matched padding
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+        box.set_margin_top(14)
+        box.set_margin_bottom(14)
 
-        # Checkbox for selection mode
+        # Checkbox revealer for selection mode
+        self.revealer = Gtk.Revealer()
+        self.revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_RIGHT)
+        self.revealer.set_reveal_child(selection_mode)
+
         self.checkbox = Gtk.CheckButton()
-        self.checkbox.set_visible(self.selection_mode)
         self.checkbox.set_valign(Gtk.Align.CENTER)
-        main_box.append(self.checkbox)
+        self.checkbox.set_margin_end(12)
+        self.revealer.set_child(self.checkbox)
+        box.append(self.revealer)
 
-        # Text column
-        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        vbox.set_hexpand(True)
+        # Note text column
+        text_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        text_vbox.set_hexpand(True)
 
-        # Title Row
-        title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        # Title Label
+        raw_title = self.note.title or "Untitled Note"
+        clean_title = strip_markdown(raw_title) or "Untitled Note"
+        self.title_lbl = Gtk.Label(label=clean_title)
+        self.title_lbl.add_css_class("title")
+        self.title_lbl.set_halign(Gtk.Align.START)
+        self.title_lbl.set_xalign(0.0)
+        self.title_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        self.title_lbl.set_lines(1)
+        self.title_lbl.set_single_line_mode(True)
+        text_vbox.append(self.title_lbl)
 
-        if self.note.is_pinned:
-            pin_img = Gtk.Image.new_from_icon_name("starred-symbolic")
-            pin_img.add_css_class("stilo-pin-icon")
-            title_box.append(pin_img)
+        # Subtitle Row: Excerpt + Category pill
+        subtitle_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        subtitle_box.set_hexpand(True)
 
-        title_lbl = Gtk.Label(label=self.note.title or "Untitled Note")
-        title_lbl.add_css_class("stilo-note-title")
-        title_lbl.set_halign(Gtk.Align.START)
-        title_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-        title_lbl.set_max_width_chars(32)
-        title_box.append(title_lbl)
+        raw_excerpt = self.note.excerpt or "No additional text"
+        clean_excerpt = strip_markdown(raw_excerpt) or "No additional text"
+        self.excerpt_lbl = Gtk.Label(label=clean_excerpt)
+        self.excerpt_lbl.add_css_class("subtitle")
+        self.excerpt_lbl.set_halign(Gtk.Align.START)
+        self.excerpt_lbl.set_xalign(0.0)
+        self.excerpt_lbl.set_hexpand(True)
+        self.excerpt_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        self.excerpt_lbl.set_lines(1)
+        self.excerpt_lbl.set_single_line_mode(True)
+        subtitle_box.append(self.excerpt_lbl)
 
-        vbox.append(title_box)
+        if self.note.category and self.show_category_pill:
+            self.cat_pill = Gtk.Label(label=self.note.category)
+            self.cat_pill.add_css_class("index-category-pill")
+            self.cat_pill.set_halign(Gtk.Align.END)
+            self.cat_pill.set_ellipsize(Pango.EllipsizeMode.END)
+            self.cat_pill.set_lines(1)
+            subtitle_box.append(self.cat_pill)
 
-        # Excerpt
-        excerpt_text = self.note.excerpt or "No additional text"
-        excerpt_lbl = Gtk.Label(label=excerpt_text)
-        excerpt_lbl.add_css_class("stilo-note-excerpt")
-        excerpt_lbl.set_halign(Gtk.Align.START)
-        excerpt_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-        excerpt_lbl.set_lines(2)
-        excerpt_lbl.set_wrap(True)
-        vbox.append(excerpt_lbl)
+        text_vbox.append(subtitle_box)
+        box.append(text_vbox)
 
-        # Meta Row (Category / Tag pill + Date + Todo badge)
-        meta_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.set_child(box)
 
-        if self.note.category:
-            cat_pill = Gtk.Label(label=self.note.category)
-            cat_pill.add_css_class("stilo-tag-pill")
-            meta_box.append(cat_pill)
-        elif self.note.tags:
-            tag_pill = Gtk.Label(label=f"#{self.note.tags[0]}")
-            tag_pill.add_css_class("stilo-tag-pill")
-            meta_box.append(tag_pill)
+    def _setup_context_menu(self):
+        gesture = Gtk.GestureClick.new()
+        gesture.set_button(3)  # Secondary / Right click
 
-        if self.note.has_todo:
-            todo_badge = Gtk.Label(label="☑ Todo")
-            todo_badge.add_css_class("stilo-todo-badge")
-            meta_box.append(todo_badge)
+        def on_pressed(_g, _n, _x, _y):
+            menu = Gio.Menu()
+            pin_label = "Unpin Note" if self.note.is_pinned else "Pin to Top"
+            menu.append(pin_label, f"row.pin::{self.note.id}")
+            menu.append("Duplicate", f"row.duplicate::{self.note.id}")
 
-        date_lbl = Gtk.Label(label=format_relative_date(self.note.updated_at))
-        date_lbl.add_css_class("stilo-note-meta")
-        date_lbl.set_halign(Gtk.Align.START)
-        meta_box.append(date_lbl)
+            if self.note.is_trashed:
+                menu.append("Restore Note", f"row.restore::{self.note.id}")
+                menu.append("Delete Permanently", f"row.perm_delete::{self.note.id}")
+            else:
+                menu.append("Move to Trash", f"row.trash::{self.note.id}")
 
-        vbox.append(meta_box)
-        main_box.append(vbox)
+            popover = Gtk.PopoverMenu.new_from_model(menu)
+            popover.set_parent(self)
+            popover.set_has_arrow(False)
 
-        self.set_child(main_box)
+            action_group = Gio.SimpleActionGroup.new()
+
+            act_pin = Gio.SimpleAction.new("pin", GLib.VariantType.new("s"))
+            act_pin.connect("activate", lambda _a, p: self.emit("pin-toggled", p.get_string()))
+            action_group.add_action(act_pin)
+
+            act_dup = Gio.SimpleAction.new("duplicate", GLib.VariantType.new("s"))
+            act_dup.connect("activate", lambda _a, p: self.emit("duplicate", p.get_string()))
+            action_group.add_action(act_dup)
+
+            act_trash = Gio.SimpleAction.new("trash", GLib.VariantType.new("s"))
+            act_trash.connect("activate", lambda _a, p: self.emit("delete", p.get_string()))
+            action_group.add_action(act_trash)
+
+            act_res = Gio.SimpleAction.new("restore", GLib.VariantType.new("s"))
+            act_res.connect("activate", lambda _a, p: self.emit("restore", p.get_string()))
+            action_group.add_action(act_res)
+
+            act_perm = Gio.SimpleAction.new("perm_delete", GLib.VariantType.new("s"))
+            act_perm.connect("activate", lambda _a, p: self.emit("perm-delete", p.get_string()))
+            action_group.add_action(act_perm)
+
+            self.insert_action_group("row", action_group)
+            popover.popup()
+
+        gesture.connect("pressed", on_pressed)
+        self.add_controller(gesture)
 
     def set_selection_mode(self, enabled: bool):
-        self.selection_mode = enabled
-        self.checkbox.set_visible(enabled)
+        self.revealer.set_reveal_child(enabled)
 
     def is_checked(self) -> bool:
         return self.checkbox.get_active()
 
     def set_checked(self, checked: bool):
         self.checkbox.set_active(checked)
+
+
+# Alias for compatibility
+NoteRow = IndexRow
 
 
 class NotesList(Gtk.Box):
@@ -112,6 +170,7 @@ class NotesList(Gtk.Box):
         self.db = db
         self.selection_mode = False
         self.current_notes: List[Note] = []
+        self._all_rows: List[IndexRow] = []
 
         self._build_ui()
 
@@ -119,34 +178,67 @@ class NotesList(Gtk.Box):
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
 
-        # 1. Scrolled List
+        # 1. Scrolled Sectioned View
         self.scrolled = Gtk.ScrolledWindow()
         self.scrolled.set_vexpand(True)
         self.scrolled.set_hexpand(True)
 
         clamp = Adw.Clamp()
-        clamp.set_maximum_size(680)
+        clamp.set_maximum_size(540)
 
-        self.listbox = Gtk.ListBox()
-        self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
-        self.listbox.add_css_class("boxed-list")
-        self.listbox.set_margin_start(12)
-        self.listbox.set_margin_end(12)
-        self.listbox.set_margin_top(12)
-        self.listbox.set_margin_bottom(24)
-        self.listbox.connect("row-activated", self._on_row_activated)
+        # Sections Container
+        self.sections_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        self.sections_box.set_name("Sections")
+        self.sections_box.set_margin_top(16)
+        self.sections_box.set_margin_bottom(28)
+        self.sections_box.set_margin_start(12)
+        self.sections_box.set_margin_end(12)
 
-        clamp.set_child(self.listbox)
+        # 1. Favorites Section
+        self.fav_section, self.fav_listbox = self._create_section("Favorites", has_star=True)
+        self.sections_box.append(self.fav_section)
+
+        # 2. Today Section
+        self.today_section, self.today_listbox = self._create_section("Today")
+        self.sections_box.append(self.today_section)
+
+        # 3. Yesterday Section
+        self.yesterday_section, self.yesterday_listbox = self._create_section("Yesterday")
+        self.sections_box.append(self.yesterday_section)
+
+        # 4. This Week Section
+        self.week_section, self.week_listbox = self._create_section("This Week")
+        self.sections_box.append(self.week_section)
+
+        # 5. This Month Section
+        self.month_section, self.month_listbox = self._create_section("This Month")
+        self.sections_box.append(self.month_section)
+
+        # 6. Earlier Section
+        self.earlier_section, self.earlier_listbox = self._create_section("Earlier")
+        self.sections_box.append(self.earlier_section)
+
+        # 7. Search Results Section (no header)
+        self.search_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.search_listbox = Gtk.ListBox()
+        self.search_listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.search_listbox.set_activate_on_single_click(True)
+        self.search_listbox.add_css_class("boxed-list")
+        self.search_listbox.connect("row-activated", self._on_row_activated)
+        self.search_section.append(self.search_listbox)
+        self.sections_box.append(self.search_section)
+
+        clamp.set_child(self.sections_box)
         self.scrolled.set_child(clamp)
         self.stack.add_named(self.scrolled, "list")
 
         # 2. Empty Status Page
         self.empty_page = Adw.StatusPage()
-        self.empty_page.set_title("No Notes Found")
+        self.empty_page.set_title("Note List Empty")
         self.empty_page.set_description("Capture your ideas, checklists, and notes in markdown.")
-        self.empty_page.set_icon_name("document-edit-symbolic")
+        self.empty_page.set_icon_name("text-justify-fill-symbolic")
 
-        new_btn = Gtk.Button(label="Create First Note")
+        new_btn = Gtk.Button(label="New Note")
         new_btn.add_css_class("pill")
         new_btn.add_css_class("suggested-action")
         new_btn.set_halign(Gtk.Align.CENTER)
@@ -157,21 +249,73 @@ class NotesList(Gtk.Box):
         # 3. Search Empty Page
         self.search_empty_page = Adw.StatusPage()
         self.search_empty_page.set_title("No Results Found")
-        self.search_empty_page.set_description("Try searching with different keywords or tags.")
+        self.search_empty_page.set_description("Try searching with different keywords.")
         self.search_empty_page.set_icon_name("system-search-symbolic")
         self.stack.add_named(self.search_empty_page, "search_empty")
 
         self.append(self.stack)
 
-    def set_notes(self, notes: List[Note], is_search: bool = False):
-        self.current_notes = notes
+    def _create_section(self, title: str, has_star: bool = False):
+        sec_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
 
-        # Clear existing rows
+        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        lbl = Gtk.Label(label=title)
+        lbl.add_css_class("index-section-title")
+        lbl.add_css_class("heading")
+        lbl.add_css_class("h4")
+        lbl.set_halign(Gtk.Align.START)
+        lbl.set_xalign(0.0)
+        lbl.set_single_line_mode(True)
+        lbl.set_lines(1)
+        header_box.append(lbl)
+
+        if has_star:
+            star_img = Gtk.Image.new_from_icon_name("starred-symbolic")
+            star_img.add_css_class("index-section")
+            star_img.add_css_class("dimmed")
+            star_img.set_pixel_size(16)
+            star_img.set_valign(Gtk.Align.CENTER)
+            header_box.append(star_img)
+
+        sec_box.append(header_box)
+
+        listbox = Gtk.ListBox()
+        listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        listbox.set_activate_on_single_click(True)
+        listbox.add_css_class("boxed-list")
+        listbox.connect("row-activated", self._on_row_activated)
+        sec_box.append(listbox)
+
+        return sec_box, listbox
+
+    def _clear_listbox(self, listbox: Gtk.ListBox):
         while True:
-            row = self.listbox.get_row_at_index(0)
+            row = listbox.get_row_at_index(0)
             if not row:
                 break
-            self.listbox.remove(row)
+            listbox.remove(row)
+
+    def set_notes(
+        self,
+        notes: List[Note],
+        is_search: bool = False,
+        active_filter_type: str = "all",
+        active_category_name: str = ""
+    ):
+        self.current_notes = notes
+        self._all_rows.clear()
+
+        # Clear all section listboxes
+        for lb in [
+            self.fav_listbox,
+            self.today_listbox,
+            self.yesterday_listbox,
+            self.week_listbox,
+            self.month_listbox,
+            self.earlier_listbox,
+            self.search_listbox
+        ]:
+            self._clear_listbox(lb)
 
         if not notes:
             if is_search:
@@ -181,67 +325,92 @@ class NotesList(Gtk.Box):
             return
 
         self.stack.set_visible_child_name("list")
-        for note in notes:
-            row = NoteRow(note, self.selection_mode)
-            self._setup_row_context_menu(row, note)
-            self.listbox.append(row)
+        show_pill = (active_filter_type != "category")
 
-    def _setup_row_context_menu(self, row: NoteRow, note: Note):
-        gesture = Gtk.GestureClick()
-        gesture.set_button(3) # Right click
+        if is_search:
+            # Hide all date sections, populate search section
+            self.fav_section.set_visible(False)
+            self.today_section.set_visible(False)
+            self.yesterday_section.set_visible(False)
+            self.week_section.set_visible(False)
+            self.month_section.set_visible(False)
+            self.earlier_section.set_visible(False)
+            self.search_section.set_visible(True)
 
-        def on_right_click(_g, _n, x, y):
-            menu = Gio.Menu()
-            pin_title = "Unpin Note" if note.is_pinned else "Pin to Top"
-            menu.append(pin_title, f"row.pin::{note.id}")
-            menu.append("Duplicate", f"row.duplicate::{note.id}")
-            if note.is_trashed:
-                menu.append("Restore Note", f"row.restore::{note.id}")
-                menu.append("Delete Permanently", f"row.perm_delete::{note.id}")
+            for note in notes:
+                row = self._create_row(note, show_category_pill=show_pill)
+                self.search_listbox.append(row)
+            return
+
+        # Regular chronological section grouping
+        self.search_section.set_visible(False)
+
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        yesterday_start = today_start - 86400
+        week_start = (now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())).timestamp()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+        # Favorites bucket
+        fav_notes = [n for n in notes if n.is_pinned]
+        non_fav_notes = [n for n in notes if not n.is_pinned]
+
+        today_notes = []
+        yesterday_notes = []
+        week_notes = []
+        month_notes = []
+        earlier_notes = []
+
+        for n in non_fav_notes:
+            t = n.updated_at
+            if t >= today_start:
+                today_notes.append(n)
+            elif t >= yesterday_start:
+                yesterday_notes.append(n)
+            elif t >= week_start:
+                week_notes.append(n)
+            elif t >= month_start:
+                month_notes.append(n)
             else:
-                menu.append("Move to Trash", f"row.trash::{note.id}")
+                earlier_notes.append(n)
 
-            popover = Gtk.PopoverMenu.new_from_model(menu)
-            popover.set_parent(row)
-            popover.set_has_arrow(False)
+        sections_data = [
+            (self.fav_section, self.fav_listbox, fav_notes),
+            (self.today_section, self.today_listbox, today_notes),
+            (self.yesterday_section, self.yesterday_listbox, yesterday_notes),
+            (self.week_section, self.week_listbox, week_notes),
+            (self.month_section, self.month_listbox, month_notes),
+            (self.earlier_section, self.earlier_listbox, earlier_notes),
+        ]
 
-            action_group = Gio.SimpleActionGroup()
+        for sec_widget, listbox, n_list in sections_data:
+            if n_list:
+                sec_widget.set_visible(True)
+                for note in n_list:
+                    row = self._create_row(note, show_category_pill=show_pill)
+                    listbox.append(row)
+            else:
+                sec_widget.set_visible(False)
 
-            act_pin = Gio.SimpleAction.new("pin", GLib.VariantType("s"))
-            act_pin.connect("activate", lambda _a, p: self.emit("note-pin-toggled", p.get_string()))
-            action_group.add_action(act_pin)
-
-            act_dup = Gio.SimpleAction.new("duplicate", GLib.VariantType("s"))
-            act_dup.connect("activate", lambda _a, p: self.emit("note-duplicated", p.get_string()))
-            action_group.add_action(act_dup)
-
-            act_trash = Gio.SimpleAction.new("trash", GLib.VariantType("s"))
-            act_trash.connect("activate", lambda _a, p: self.emit("note-deleted", p.get_string()))
-            action_group.add_action(act_trash)
-
-            act_res = Gio.SimpleAction.new("restore", GLib.VariantType("s"))
-            act_res.connect("activate", lambda _a, p: self._on_restore(p.get_string()))
-            action_group.add_action(act_res)
-
-            act_perm = Gio.SimpleAction.new("perm_delete", GLib.VariantType("s"))
-            act_perm.connect("activate", lambda _a, p: self._on_perm_delete(p.get_string()))
-            action_group.add_action(act_perm)
-
-            row.insert_action_group("row", action_group)
-            popover.popup()
-
-        gesture.connect("pressed", on_right_click)
-        row.add_controller(gesture)
+    def _create_row(self, note: Note, show_category_pill: bool = True) -> IndexRow:
+        row = IndexRow(note, selection_mode=self.selection_mode, show_category_pill=show_category_pill)
+        row.connect("pin-toggled", lambda _r, nid: self.emit("note-pin-toggled", nid))
+        row.connect("duplicate", lambda _r, nid: self.emit("note-duplicated", nid))
+        row.connect("delete", lambda _r, nid: self.emit("note-deleted", nid))
+        row.connect("restore", lambda _r, nid: self._on_restore(nid))
+        row.connect("perm-delete", lambda _r, nid: self._on_perm_delete(nid))
+        self._all_rows.append(row)
+        return row
 
     def _on_restore(self, note_id: str):
         self.db.restore_note(note_id)
-        self.emit("note-pin-toggled", note_id) # triggers reload
+        self.emit("note-pin-toggled", note_id)
 
     def _on_perm_delete(self, note_id: str):
         self.db.delete_note(note_id, permanent=True)
-        self.emit("note-pin-toggled", note_id) # triggers reload
+        self.emit("note-pin-toggled", note_id)
 
-    def _on_row_activated(self, _lb, row: NoteRow):
+    def _on_row_activated(self, _lb, row: IndexRow):
         if not row:
             return
         if self.selection_mode:
@@ -251,21 +420,12 @@ class NotesList(Gtk.Box):
 
     def set_selection_mode(self, enabled: bool):
         self.selection_mode = enabled
-        for i in range(len(self.current_notes)):
-            row = self.listbox.get_row_at_index(i)
-            if row and isinstance(row, NoteRow):
-                row.set_selection_mode(enabled)
+        for row in self._all_rows:
+            row.set_selection_mode(enabled)
 
     def get_checked_notes(self) -> List[Note]:
-        checked = []
-        for i in range(len(self.current_notes)):
-            row = self.listbox.get_row_at_index(i)
-            if row and isinstance(row, NoteRow) and row.is_checked():
-                checked.append(row.note)
-        return checked
+        return [row.note for row in self._all_rows if row.is_checked()]
 
     def select_all(self, checked: bool = True):
-        for i in range(len(self.current_notes)):
-            row = self.listbox.get_row_at_index(i)
-            if row and isinstance(row, NoteRow):
-                row.set_checked(checked)
+        for row in self._all_rows:
+            row.set_checked(checked)

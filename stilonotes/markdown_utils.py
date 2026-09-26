@@ -62,12 +62,46 @@ def extract_tags(text: str) -> List[str]:
     return tags
 
 
+def strip_markdown(text: str) -> str:
+    """Clean plain text extraction from Markdown/HTML."""
+    if not text:
+        return ""
+    s = text
+    # Remove HTML tags
+    s = re.sub(r'<[^>]+>', ' ', s)
+    # Headings
+    s = re.sub(r'#+\s*', '', s)
+    # Tasks and lists
+    s = re.sub(r'[-*]\s+\[[ xX]\]\s*', '', s)
+    s = re.sub(r'^[-*+]\s+', '', s, flags=re.MULTILINE)
+    s = re.sub(r'^\d+\.\s+', '', s, flags=re.MULTILINE)
+    # Quotes and dividers
+    s = re.sub(r'>\s*', '', s)
+    s = re.sub(r'(?:---|\*\*\*|___)', '', s)
+    # Code fences and inline code
+    s = re.sub(r'```.*?```', '', s, flags=re.DOTALL)
+    s = re.sub(r'`([^`]+)`', r'\1', s)
+    # Links & Images
+    s = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', s)
+    s = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', s)
+    # Formatting asterisks / underscores / highlights / strikethroughs
+    s = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', s)
+    s = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', s)
+    s = re.sub(r'~~([^~]+)~~', r'\1', s)
+    s = re.sub(r'==([^=]+)==', r'\1', s)
+    # Strip any stray asterisks or markdown symbols
+    s = re.sub(r'[*_~`#]', '', s)
+    # Unescape HTML
+    s = html.unescape(s)
+    # Collapse whitespace
+    return re.sub(r'\s+', ' ', s).strip()
+
+
 def extract_title_and_excerpt(markdown_text: str = "", html_text: str = "") -> Tuple[str, str]:
     """Extract first non-empty line as title, and subsequent text as excerpt."""
     title = "Untitled Note"
     excerpt = ""
 
-    # Prefer markdown if available
     lines = []
     if markdown_text:
         lines = [line.strip() for line in markdown_text.splitlines() if line.strip()]
@@ -80,24 +114,10 @@ def extract_title_and_excerpt(markdown_text: str = "", html_text: str = "") -> T
         lines = [line.strip() for line in html.unescape(clean).splitlines() if line.strip()]
 
     if lines:
-        raw_title = lines[0]
-        # Strip markdown heading characters, tags, or checkboxes
-        raw_title = re.sub(r'^#+\s*', '', raw_title)
-        raw_title = re.sub(r'^[-*]\s+\[[ xX]\]\s*', '', raw_title)
-        raw_title = re.sub(r'^[-*]\s*', '', raw_title)
-        title = raw_title.strip() or "Untitled Note"
-
-        # Excerpt from subsequent lines
+        title = strip_markdown(lines[0]) or "Untitled Note"
         if len(lines) > 1:
-            excerpt_parts = []
-            for line in lines[1:4]:
-                part = re.sub(r'^#+\s*', '', line)
-                part = re.sub(r'^[-*]\s+\[[ xX]\]\s*', '', part)
-                part = re.sub(r'^[-*]\s*', '', part)
-                part = re.sub(r'#([a-zA-Z0-9_\-]+)', '', part)
-                if part.strip():
-                    excerpt_parts.append(part.strip())
-            excerpt = " ".join(excerpt_parts)[:180]
+            raw_excerpt = " ".join(lines[1:5])
+            excerpt = strip_markdown(raw_excerpt)[:160]
 
     return title, excerpt
 

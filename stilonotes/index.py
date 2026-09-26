@@ -1,86 +1,95 @@
 # SPDX-FileCopyrightText: 2026 Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from typing import Optional, List
-from gi.repository import Adw, Gtk, GObject, Gio
+from typing import Optional
+from gi.repository import Adw, Gtk, Gio, GLib, GObject
 
-from stilonotes.models import Note
-from stilonotes.sidebar import Sidebar
+from stilonotes.database import NoteDatabase
 from stilonotes.notes_list import NotesList
+from stilonotes.sidebar import Sidebar
 
-class IndexView(Gtk.Box):
+
+class IndexView(Adw.BreakpointBin):
     __gtype_name__ = "IndexView"
 
     __gsignals__ = {
         "note-opened": (GObject.SignalFlags.RUN_FIRST, None, (object, bool)),
         "create-note": (GObject.SignalFlags.RUN_FIRST, None, ()),
-        "about-dialog-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
-        "shortcuts-dialog-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
-        "preferences-dialog-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
-    def __init__(self, db):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+    def __init__(self, db: NoteDatabase):
+        super().__init__()
         self.db = db
+
         self.active_filter_type = "all"
         self.active_category_name = ""
         self.active_tag_name = ""
         self.search_query = ""
 
         self._build_ui()
+        self._setup_breakpoint()
         self.refresh()
 
     def _build_ui(self):
-        # OverlaySplitView
         self.split_view = Adw.OverlaySplitView()
-        self.split_view.set_collapsed(False)
-        self.split_view.set_min_sidebar_width(220)
-        self.split_view.set_max_sidebar_width(320)
         self.split_view.set_sidebar_width_fraction(0.3)
+        self.split_view.set_max_sidebar_width(320)
+        self.split_view.set_min_sidebar_width(240)
+        self.split_view.set_collapsed(False)
+        self.split_view.set_show_sidebar(True)
+        self.split_view.set_pin_sidebar(True)
 
         # 1. Sidebar
         self.sidebar = Sidebar(self.db)
         self.sidebar.connect("filter-changed", self._on_sidebar_filter_changed)
+        self.sidebar.connect("close-requested", lambda _sb: self.split_view.set_show_sidebar(False))
         self.split_view.set_sidebar(self.sidebar)
 
-        # 2. Content: ToolbarView
+        # 2. Content Area
         self.toolbar_view = Adw.ToolbarView()
+        self.toolbar_view.set_hexpand(True)
 
-        # Top Headerbars Stack
+        # Header Stack (Main, Search, Selection)
         self.header_stack = Gtk.Stack()
         self.header_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
 
         # Main Headerbar
         self.main_header = Adw.HeaderBar()
-        self.main_header.set_show_end_title_buttons(True)
-        self.main_header.set_show_start_title_buttons(False)
+        self.main_header.set_show_back_button(False)
 
-        # Sidebar toggle button
+        # Sidebar toggle button (visible on mobile / collapsed)
         self.sidebar_toggle_btn = Gtk.Button()
         self.sidebar_toggle_btn.set_icon_name("sidebar-show-symbolic")
-        self.sidebar_toggle_btn.set_tooltip_text("Toggle Folders (Ctrl+\\)")
+        self.sidebar_toggle_btn.set_tooltip_text("Open Categories (Ctrl+\\)")
         self.sidebar_toggle_btn.connect("clicked", lambda _b: self.toggle_sidebar())
+        self.sidebar_toggle_btn.set_visible(False)
         self.main_header.pack_start(self.sidebar_toggle_btn)
 
-        # New Note button
+        # New Note button (flat icon button, matching Iotas)
         self.new_note_btn = Gtk.Button()
         self.new_note_btn.set_icon_name("list-add-symbolic")
-        self.new_note_btn.add_css_class("suggested-action")
         self.new_note_btn.set_tooltip_text("New Note (Ctrl+N)")
         self.new_note_btn.connect("clicked", lambda _b: self.emit("create-note"))
         self.main_header.pack_start(self.new_note_btn)
 
-        # Title Label
-        self.title_label = Gtk.Label(label="All Notes")
-        self.title_label.add_css_class("heading")
-        self.main_header.set_title_widget(self.title_label)
+        # Window Title Widget
+        self.window_title = Adw.WindowTitle(title="All Notes")
+        self.main_header.set_title_widget(self.window_title)
+
+        # Menu button (visible on mobile / when sidebar menu is hidden)
+        self.main_menu_btn = Gtk.MenuButton()
+        self.main_menu_btn.set_icon_name("open-menu-symbolic")
+        self.main_menu_btn.set_tooltip_text("Main Menu")
+        self.main_menu_btn.set_menu_model(self._create_main_menu())
+        self.main_menu_btn.set_visible(False)
+        self.main_header.pack_end(self.main_menu_btn)
 
         # Search button
-        search_btn = Gtk.Button()
-        search_btn.set_icon_name("system-search-symbolic")
-        search_btn.set_tooltip_text("Search Notes (Ctrl+F)")
-        search_btn.connect("clicked", lambda _b: self.enter_search())
-        self.main_header.pack_end(search_btn)
+        self.search_btn = Gtk.Button()
+        self.search_btn.set_icon_name("system-search-symbolic")
+        self.search_btn.set_tooltip_text("Search Notes (Ctrl+F)")
+        self.search_btn.connect("clicked", lambda _b: self.enter_search())
+        self.main_header.pack_end(self.search_btn)
 
         # Selection mode button
         self.select_btn = Gtk.Button()
@@ -89,17 +98,11 @@ class IndexView(Gtk.Box):
         self.select_btn.connect("clicked", lambda _b: self.enter_selection_mode())
         self.main_header.pack_end(self.select_btn)
 
-        # Menu button
-        menu_btn = Gtk.MenuButton()
-        menu_btn.set_icon_name("open-menu-symbolic")
-        menu_btn.set_tooltip_text("Main Menu")
-        menu_btn.set_menu_model(self._create_main_menu())
-        self.main_header.pack_end(menu_btn)
-
         self.header_stack.add_named(self.main_header, "main")
 
         # Search Headerbar
         self.search_header = Adw.HeaderBar()
+        self.search_header.set_show_back_button(False)
         self.search_header.set_show_end_title_buttons(False)
         self.search_header.set_show_start_title_buttons(False)
 
@@ -121,6 +124,7 @@ class IndexView(Gtk.Box):
 
         # Selection Headerbar
         self.selection_header = Adw.HeaderBar()
+        self.selection_header.set_show_back_button(False)
         self.selection_header.set_show_end_title_buttons(False)
         self.selection_header.set_show_start_title_buttons(False)
 
@@ -134,7 +138,7 @@ class IndexView(Gtk.Box):
         select_all_btn.connect("clicked", lambda _b: self.notes_list.select_all(True))
         self.selection_header.pack_start(select_all_btn)
 
-        self.selection_title = Gtk.Label(label="Select Notes")
+        self.selection_title = Adw.WindowTitle(title="Select Notes")
         self.selection_header.set_title_widget(self.selection_title)
 
         delete_selected_btn = Gtk.Button()
@@ -148,7 +152,8 @@ class IndexView(Gtk.Box):
 
         self.toolbar_view.add_top_bar(self.header_stack)
 
-        # Notes List
+        # Notes List inside Toast Overlay
+        self.toast_overlay = Adw.ToastOverlay()
         self.notes_list = NotesList(self.db)
         self.notes_list.connect("note-selected", lambda _nl, note: self.emit("note-opened", note, False))
         self.notes_list.connect("new-note-requested", lambda _nl: self.emit("create-note"))
@@ -156,10 +161,43 @@ class IndexView(Gtk.Box):
         self.notes_list.connect("note-deleted", lambda _nl, nid: self._on_note_deleted(nid))
         self.notes_list.connect("note-duplicated", lambda _nl, nid: self._on_note_duplicated(nid))
 
-        self.toolbar_view.set_content(self.notes_list)
+        self.toast_overlay.set_child(self.notes_list)
+        self.toolbar_view.set_content(self.toast_overlay)
         self.split_view.set_content(self.toolbar_view)
 
-        self.append(self.split_view)
+        self.set_child(self.split_view)
+
+    def _setup_breakpoint(self):
+        cond = Adw.breakpoint_condition_parse("max-width: 700sp")
+        bp = Adw.Breakpoint.new(cond)
+        bp.connect("apply", self._on_breakpoint_apply)
+        bp.connect("unapply", self._on_breakpoint_unapply)
+        self.add_breakpoint(bp)
+
+        # Initial button configuration (desktop mode by default)
+        self._update_header_buttons(is_collapsed=False)
+
+    def _on_breakpoint_apply(self, _bp):
+        self.split_view.set_pin_sidebar(False)
+        self.split_view.set_collapsed(True)
+        self.split_view.set_show_sidebar(False)
+        self._update_header_buttons(is_collapsed=True)
+
+    def _on_breakpoint_unapply(self, _bp):
+        self.split_view.set_pin_sidebar(True)
+        self.split_view.set_collapsed(False)
+        self.split_view.set_show_sidebar(True)
+        self._update_header_buttons(is_collapsed=False)
+
+    def _update_header_buttons(self, is_collapsed: bool):
+        if is_collapsed:
+            self.sidebar_toggle_btn.set_visible(True)
+            self.sidebar.show_buttons(show_close=True, show_menu=False)
+            self.main_menu_btn.set_visible(True)
+        else:
+            self.sidebar_toggle_btn.set_visible(False)
+            self.sidebar.show_buttons(show_close=False, show_menu=True)
+            self.main_menu_btn.set_visible(False)
 
     def _create_main_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
@@ -175,17 +213,19 @@ class IndexView(Gtk.Box):
 
         # Update title
         if self.active_tag_name:
-            self.title_label.set_text(f"#{self.active_tag_name}")
+            self.window_title.set_title(f"#{self.active_tag_name}")
         elif self.active_filter_type == "all":
-            self.title_label.set_text("All Notes")
+            self.window_title.set_title("All Notes")
+        elif self.active_filter_type == "uncategorized":
+            self.window_title.set_title("Uncategorized")
         elif self.active_filter_type == "pinned":
-            self.title_label.set_text("Favorites")
+            self.window_title.set_title("Favorites")
         elif self.active_filter_type == "todo":
-            self.title_label.set_text("Tasks")
+            self.window_title.set_title("Tasks")
         elif self.active_filter_type == "trash":
-            self.title_label.set_text("Trash")
+            self.window_title.set_title("Trash")
         elif self.active_filter_type == "category":
-            self.title_label.set_text(self.active_category_name or "Category")
+            self.window_title.set_title(self.active_category_name or "Category")
 
         notes = self.db.get_notes(
             filter_type=self.active_filter_type,
@@ -193,12 +233,21 @@ class IndexView(Gtk.Box):
             tag_name=self.active_tag_name,
             search_query=self.search_query
         )
-        self.notes_list.set_notes(notes, is_search=bool(self.search_query))
+        self.notes_list.set_notes(
+            notes,
+            is_search=bool(self.search_query),
+            active_filter_type=self.active_filter_type,
+            active_category_name=self.active_category_name
+        )
 
     def _on_sidebar_filter_changed(self, _sb, filter_type: str, category_name: str):
         self.active_filter_type = filter_type
         self.active_category_name = category_name
         self.active_tag_name = ""
+
+        if self.split_view.get_collapsed():
+            self.split_view.set_show_sidebar(False)
+
         self.refresh(update_sidebar=False)
 
     def filter_by_tag(self, tag_name: str):
@@ -218,7 +267,7 @@ class IndexView(Gtk.Box):
 
     def _on_search_text_changed(self, entry):
         self.search_query = entry.get_text().strip()
-        self.refresh()
+        self.refresh(update_sidebar=False)
 
     def enter_selection_mode(self):
         self.notes_list.set_selection_mode(True)
