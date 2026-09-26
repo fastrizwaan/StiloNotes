@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Stilo Notes
+Comment=Take notes with dynamic WebKit Markdown live rendering
+Exec=stilonotes %U
+Icon=io.github.fastrizwaan.StiloNotes
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Utility;TextEditor;Office;
+MimeType=text/markdown;text/plain;
+Keywords=notes;markdown;editor;todo;tasks;stilo;iotas;
+StartupNotify=true

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.fastrizwaan.StiloNotes</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Stilo Notes</name>
+  <summary>Take notes with dynamic WebKit Markdown live rendering</summary>
+  <description>
+    <p>
+      Stilo Notes is a beautifully crafted note-taking application designed for GNOME and Libadwaita.
+      It combines the clean, distraction-free interface of Iotas with the dynamic WebKit live Markdown-to-HTML rendering engine of TeddyNotes.
+    </p>
+    <p>Key features include:</p>
+    <ul>
+      <li>Dynamic Markdown Parsing: format on the fly with live headings, lists, tables, and code blocks</li>
+      <li>Interactive Todo Checklists: toggle tasks directly in the editor</li>
+      <li>Distraction-free organization: folders, categories, and #tags</li>
+      <li>Fast search and multi-note management</li>
+      <li>Word and character count with reading time estimates</li>
+      <li>Export to Markdown, HTML, and Plain text</li>
+    </ul>
+  </description>
+  <developer_name>Asif Ali Rizvan</developer_name>
+  <url type="homepage">https://github.com/fastrizwaan/StiloNotes</url>
+  <url type="bugtracker">https://github.com/fastrizwaan/StiloNotes/issues</url>
+  <url type="vcs-browser">https://github.com/fastrizwaan/StiloNotes</url>
+  <launchable type="desktop-id">io.github.fastrizwaan.StiloNotes.desktop</launchable>
+  <provides>
+    <binary>stilonotes</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-09-27">
+      <description>
+        <p>Initial release of Stilo Notes featuring WebKit dynamic Markdown rendering and GNOME Libadwaita design.</p>
+      </description>
+    </release>
+  </releases>
+</component>

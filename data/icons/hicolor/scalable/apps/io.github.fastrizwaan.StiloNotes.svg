@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background Gradient: Vibrant Violet to Rose -->
+    <linearGradient id="bgGrad" x1="16" y1="12" x2="112" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7B2CBF"/>
+      <stop offset="50%" stop-color="#9D4EDD"/>
+      <stop offset="100%" stop-color="#FF5D8F"/>
+    </linearGradient>
+
+    <!-- Top Gloss Shine -->
+    <linearGradient id="topShine" x1="64" y1="12" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0"/>
+    </linearGradient>
+
+    <!-- Notebook Gradient -->
+    <linearGradient id="notebookGrad" x1="30" y1="36" x2="98" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F3F0FA"/>
+    </linearGradient>
+
+    <!-- Pen Body Gradient -->
+    <linearGradient id="penBodyGrad" x1="64" y1="44" x2="88" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFE5EC"/>
+      <stop offset="100%" stop-color="#FFB3C6"/>
+    </linearGradient>
+
+    <!-- Gold Accent Gradient -->
+    <linearGradient id="goldGrad" x1="56" y1="88" x2="72" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFD166"/>
+      <stop offset="100%" stop-color="#F4A261"/>
+    </linearGradient>
+
+    <!-- Soft Drop Shadow Filter -->
+    <filter id="softShadow" x="4" y="6" width="120" height="120" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#3C096C" flood-opacity="0.35"/>
+    </filter>
+    <filter id="elementShadow" x="16" y="20" width="96" height="96" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#240046" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Base Rounded Squircle with Shadow -->
+  <rect x="12" y="12" width="104" height="104" rx="26" fill="url(#bgGrad)" filter="url(#softShadow)"/>
+  <!-- Top Specular Highlight -->
+  <rect x="12" y="12" width="104" height="52" rx="26" fill="url(#topShine)"/>
+
+  <!-- Cute Open Notepad (Behind Pen) -->
+  <g filter="url(#elementShadow)">
+    <!-- Notepad Base -->
+    <rect x="25" y="28" width="62" height="74" rx="8" fill="url(#notebookGrad)"/>
+    <!-- Notebook Spiral / Binding spine -->
+    <path d="M 25 34 C 28 34, 28 38, 25 38" stroke="#D0C4E8" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 25 46 C 28 46, 28 50, 25 50" stroke="#D0C4E8" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 25 58 C 28 58, 28 62, 25 62" stroke="#D0C4E8" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 25 70 C 28 70, 28 74, 25 74" stroke="#D0C4E8" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 25 82 C 28 82, 28 86, 25 86" stroke="#D0C4E8" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Note lines -->
+    <line x1="36" y1="42" x2="68" y2="42" stroke="#E2D9F3" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="36" y1="52" x2="74" y2="52" stroke="#E2D9F3" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="36" y1="62" x2="62" y2="62" stroke="#E2D9F3" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="36" y1="72" x2="70" y2="72" stroke="#E2D9F3" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="36" y1="82" x2="56" y2="82" stroke="#E2D9F3" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Cute Checkbox on Note -->
+    <rect x="35" y="49" width="6" height="6" rx="1.5" fill="#A370F7"/>
+    <path d="M 36.5 52 L 38 53.5 L 42 49.5" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Cute Stilo Stylus Character (Foreground) -->
+  <g transform="rotate(18, 76, 68)" filter="url(#elementShadow)">
+    <!-- Pen Barrel -->
+    <rect x="68" y="24" width="22" height="56" rx="11" fill="url(#penBodyGrad)"/>
+
+    <!-- Gold Pen Collar -->
+    <rect x="70" y="74" width="18" height="6" rx="2" fill="url(#goldGrad)"/>
+
+    <!-- Gold Nib -->
+    <path d="M 70 80 L 79 100 L 88 80 Z" fill="url(#goldGrad)"/>
+    <!-- Nib slit -->
+    <line x1="79" y1="83" x2="79" y2="94" stroke="#D48B38" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- Heart breather hole on nib -->
+    <path d="M 77.5 87 C 77.5 85.8 79 85.5 79 87 C 79 85.5 80.5 85.8 80.5 87 C 80.5 88.2 79 89.2 79 89.2 C 79 89.2 77.5 88.2 77.5 87 Z" fill="#D48B38"/>
+
+    <!-- Pen Cap / Top Clip -->
+    <path d="M 68 28 C 68 22 90 22 90 28" fill="#FF758F"/>
+    <rect x="77" y="20" width="4" height="6" rx="2" fill="url(#goldGrad)"/>
+    <rect x="71" y="26" width="3" height="18" rx="1.5" fill="url(#goldGrad)"/>
+
+    <!-- Cute Chibi Eyes -->
+    <circle cx="74" cy="46" r="2.8" fill="#2E2048"/>
+    <circle cx="84" cy="46" r="2.8" fill="#2E2048"/>
+    <!-- Eye Sparkles (Highlights) -->
+    <circle cx="75" cy="45" r="1.1" fill="#FFFFFF"/>
+    <circle cx="73.2" cy="47" r="0.6" fill="#FFFFFF"/>
+    <circle cx="85" cy="45" r="1.1" fill="#FFFFFF"/>
+    <circle cx="83.2" cy="47" r="0.6" fill="#FFFFFF"/>
+
+    <!-- Blushing Rosy Cheeks -->
+    <ellipse cx="71.5" cy="51" rx="2.5" ry="1.4" fill="#FF4D6D" opacity="0.65"/>
+    <ellipse cx="86.5" cy="51" rx="2.5" ry="1.4" fill="#FF4D6D" opacity="0.65"/>
+
+    <!-- Sweet Happy Smile -->
+    <path d="M 77 50 Q 79 53 81 50" stroke="#2E2048" stroke-width="1.3" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- Cute Sparkles / Stars -->
+  <path d="M 98 24 L 99.5 28.5 L 104 30 L 99.5 31.5 L 98 36 L 96.5 31.5 L 92 30 L 96.5 28.5 Z" fill="#FFE5EC" opacity="0.9"/>
+  <circle cx="106" cy="44" r="1.5" fill="#FFE5EC" opacity="0.8"/>
+  <circle cx="22" cy="80" r="1.8" fill="#FFE5EC" opacity="0.7"/>
+</svg>

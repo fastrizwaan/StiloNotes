@@ -1,0 +1,116 @@
+/* Stilo Notes - GTK4 / Libadwaita Styling */
+
+.stilo-window {
+  background-color: @window_bg_color;
+  color: @window_fg_color;
+}
+
+/* Sidebar Styling */
+.stilo-sidebar {
+  background-color: @view_bg_color;
+}
+
+.stilo-sidebar-row {
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 2px 6px;
+  transition: background-color 0.15s ease;
+}
+
+.stilo-sidebar-badge {
+  background-color: alpha(@accent_color, 0.15);
+  color: @accent_color;
+  font-weight: 700;
+  font-size: 11px;
+  border-radius: 10px;
+  padding: 2px 7px;
+}
+
+/* Note List Row Styling */
+.stilo-note-row {
+  padding: 10px 14px;
+  margin: 4px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: all 0.12s ease;
+}
+
+.stilo-note-row:hover {
+  background-color: alpha(@headerbar_fg_color, 0.04);
+}
+
+.stilo-note-row:selected {
+  background-color: alpha(@accent_color, 0.12);
+  border-color: alpha(@accent_color, 0.3);
+}
+
+.stilo-note-title {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: @window_fg_color;
+}
+
+.stilo-note-excerpt {
+  color: @secondary_color;
+  font-size: 12.5px;
+  line-height: 1.35;
+  margin-top: 3px;
+  margin-bottom: 5px;
+}
+
+.stilo-note-meta {
+  font-size: 11.5px;
+  color: alpha(@window_fg_color, 0.55);
+}
+
+.stilo-tag-pill {
+  background-color: alpha(@accent_color, 0.12);
+  color: @accent_color;
+  font-weight: 600;
+  font-size: 10.5px;
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin-right: 6px;
+}
+
+.stilo-pin-icon {
+  color: @accent_color;
+  margin-right: 4px;
+}
+
+.stilo-todo-badge {
+  color: #2ec27e;
+  font-size: 11px;
+  margin-right: 6px;
+}
+
+/* Editor Header Bar */
+.stilo-editor-title-btn {
+  font-weight: 700;
+  font-size: 14.5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.stilo-status-label {
+  font-size: 11px;
+  color: alpha(@window_fg_color, 0.5);
+  margin-left: 8px;
+}
+
+/* Stats Popover */
+.stilo-stats-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.stilo-stats-label {
+  font-size: 13px;
+  color: @secondary_color;
+}
+
+.stilo-stats-value {
+  font-size: 13px;
+  font-weight: 600;
+}

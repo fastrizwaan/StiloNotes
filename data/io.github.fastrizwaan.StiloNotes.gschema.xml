@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="stilonotes">
+  <schema id="io.github.fastrizwaan.StiloNotes" path="/io/github/fastrizwaan/StiloNotes/">
+    <key name="window-size" type="(ii)">
+      <default>(920, 680)</default>
+      <summary>Default window size</summary>
+      <description>Width and height of the window.</description>
+    </key>
+    <key name="window-maximized" type="b">
+      <default>false</default>
+      <summary>Window maximized</summary>
+      <description>Whether the window is maximized.</description>
+    </key>
+    <key name="theme-mode" type="s">
+      <default>'system'</default>
+      <summary>Color scheme</summary>
+      <description>Light, Dark, or System.</description>
+    </key>
+  </schema>
+</schemalist>

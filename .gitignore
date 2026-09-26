@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+_build/
+build/
+.flatpak-builder/
+flatpak/build-dir/
+*.flatpak
+*.db
+.cache/
+.vscode/
+.idea/

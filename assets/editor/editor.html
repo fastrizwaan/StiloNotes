@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en" class="light-theme">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stilo Notes Editor</title>
+  <style>
+    :root {
+      --font-stack: -apple-system, BlinkMacSystemFont, "Cantarell", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: "JetBrains Mono", "Fira Code", "Source Code Pro", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --transition-speed: 0.2s;
+    }
+
+    /* Light Theme (Adwaita Light) */
+    html.light-theme {
+      --bg-color: #FAFAFB;
+      --editor-bg: #FFFFFF;
+      --text-color: #1E1F24;
+      --text-secondary: #646875;
+      --heading-color: #121316;
+      --border-color: #E2E4E9;
+      --accent-color: #7B2CBF;
+      --accent-hover: #651E9F;
+      --accent-soft: rgba(123, 44, 191, 0.10);
+      --code-bg: #F0F2F6;
+      --code-border: #E0E2EA;
+      --code-text: #B5179E;
+      --quote-border: #7B2CBF;
+      --quote-bg: #F7F5FC;
+      --table-border: #E0E2E8;
+      --table-header-bg: #F4F5F8;
+      --task-completed: #8E929E;
+      --tag-bg: #EDE7F6;
+      --tag-text: #6A1B9A;
+      --tag-hover: #D1C4E9;
+      --highlight-bg: #FFF3C4;
+      --hr-color: #E4E6EB;
+      --toolbar-bg: rgba(255, 255, 255, 0.94);
+      --toolbar-border: #DCDCDE;
+      --toolbar-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+      --toolbar-btn-hover: #ECEEF2;
+      --toolbar-btn-active: #E0E3E8;
+    }
+
+    /* Dark Theme (Adwaita Dark) */
+    html.dark-theme {
+      --bg-color: #1E1E22;
+      --editor-bg: #24252A;
+      --text-color: #E8E9EC;
+      --text-secondary: #9DA0A8;
+      --heading-color: #FFFFFF;
+      --border-color: #35363D;
+      --accent-color: #C77DFF;
+      --accent-hover: #DA9EFE;
+      --accent-soft: rgba(199, 125, 255, 0.15);
+      --code-bg: #1A1A1E;
+      --code-border: #2F3038;
+      --code-text: #FF758F;
+      --quote-border: #C77DFF;
+      --quote-bg: #2B2636;
+      --table-border: #35373F;
+      --table-header-bg: #2B2C33;
+      --task-completed: #6E717B;
+      --tag-bg: #3B2A54;
+      --tag-text: #E0AAFF;
+      --tag-hover: #4E3770;
+      --highlight-bg: #594A1C;
+      --hr-color: #35363D;
+      --toolbar-bg: rgba(36, 37, 42, 0.94);
+      --toolbar-border: #44464F;
+      --toolbar-shadow: 0 4px 22px rgba(0, 0, 0, 0.35);
+      --toolbar-btn-hover: #32333A;
+      --toolbar-btn-active: #3C3E47;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--editor-bg);
+      color: var(--text-color);
+      font-family: var(--font-stack);
+      font-size: 16px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color var(--transition-speed), color var(--transition-speed);
+      overflow-x: hidden;
+    }
+
+    #editor-container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 36px 32px 140px 32px;
+      min-height: 100vh;
+    }
+
+    #editor {
+      outline: none;
+      min-height: 70vh;
+      word-break: break-word;
+    }
+
+    /* Headings */
+    h1, h2, h3, h4 {
+      color: var(--heading-color);
+      font-weight: 700;
+      line-height: 1.3;
+      margin-top: 1.3em;
+      margin-bottom: 0.45em;
+    }
+
+    h1 {
+      font-size: 2.15rem;
+      letter-spacing: -0.02em;
+      margin-top: 0.4em;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.35em;
+    }
+
+    h2 {
+      font-size: 1.65rem;
+      letter-spacing: -0.015em;
+    }
+
+    h3 {
+      font-size: 1.32rem;
+    }
+
+    h4 {
+      font-size: 1.12rem;
+    }
+
+    p, div {
+      margin-top: 0.25em;
+      margin-bottom: 0.25em;
+    }
+
+    /* Checklists (Interactive Tasks) */
+    .stilo-task {
+      display: flex;
+      align-items: flex-start;
+      margin: 5px 0;
+      line-height: 1.5;
+    }
+
+    .stilo-checkbox {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 19px;
+      height: 19px;
+      margin: 3px 10px 0 0;
+      border: 2px solid var(--border-color);
+      border-radius: 5px;
+      outline: none;
+      cursor: pointer;
+      flex-shrink: 0;
+      background-color: var(--editor-bg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .stilo-checkbox:hover {
+      border-color: var(--accent-color);
+      background-color: var(--accent-soft);
+    }
+
+    .stilo-checkbox:checked {
+      background-color: var(--accent-color);
+      border-color: var(--accent-color);
+    }
+
+    .stilo-checkbox:checked::after {
+      content: "";
+      width: 5px;
+      height: 9px;
+      border: solid #FFFFFF;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg) translate(-0.5px, -0.5px);
+      display: block;
+    }
+
+    .stilo-task.completed .task-text {
+      text-decoration: line-through;
+      color: var(--task-completed);
+      transition: color 0.15s ease;
+    }
+
+    .task-text {
+      flex: 1;
+      outline: none;
+    }
+
+    /* Lists */
+    ul.stilo-list, ol.stilo-numbered-list {
+      padding-left: 26px;
+      margin: 6px 0;
+    }
+
+    ul.stilo-list li, ol.stilo-numbered-list li {
+      margin-bottom: 4px;
+    }
+
+    /* Blockquotes */
+    blockquote.stilo-quote {
+      margin: 14px 0;
+      padding: 10px 18px;
+      border-left: 4px solid var(--quote-border);
+      background: var(--quote-bg);
+      border-radius: 0 8px 8px 0;
+      color: var(--text-color);
+      font-style: italic;
+    }
+
+    /* Code Blocks */
+    pre.stilo-code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.5;
+      overflow-x: auto;
+      margin: 14px 0;
+      position: relative;
+    }
+
+    code.stilo-inline-code {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      color: var(--code-text);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+    }
+
+    /* Tables */
+    table.stilo-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      border: 1px solid var(--table-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    table.stilo-table th, table.stilo-table td {
+      border: 1px solid var(--table-border);
+      padding: 8px 14px;
+      text-align: left;
+    }
+
+    table.stilo-table th {
+      background-color: var(--table-header-bg);
+      font-weight: 600;
+    }
+
+    /* Horizontal Rules */
+    hr.stilo-hr {
+      border: none;
+      height: 2px;
+      background-color: var(--hr-color);
+      margin: 22px 0;
+      border-radius: 1px;
+    }
+
+    /* Tag Pills */
+    .stilo-tag {
+      display: inline-block;
+      background-color: var(--tag-bg);
+      color: var(--tag-text);
+      font-weight: 500;
+      font-size: 13.5px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin: 0 3px;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.15s ease;
+    }
+
+    .stilo-tag:hover {
+      background-color: var(--tag-hover);
+    }
+
+    /* Highlight */
+    mark.stilo-highlight {
+      background-color: var(--highlight-bg);
+      color: inherit;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    /* Links */
+    a.stilo-link {
+      color: var(--accent-color);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+
+    /* Images */
+    .stilo-img-wrapper {
+      margin: 16px 0;
+      text-align: center;
+    }
+
+    .stilo-img {
+      max-width: 100%;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Floating Toolbar */
+    #floating-toolbar {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--toolbar-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--toolbar-border);
+      border-radius: 28px;
+      padding: 5px 10px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      box-shadow: var(--toolbar-shadow);
+      z-index: 1000;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .tb-btn {
+      background: transparent;
+      border: none;
+      border-radius: 18px;
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-color);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .tb-btn:hover {
+      background-color: var(--toolbar-btn-hover);
+    }
+
+    .tb-btn.active {
+      background-color: var(--toolbar-btn-active);
+      color: var(--accent-color);
+    }
+
+    .tb-separator {
+      width: 1px;
+      height: 18px;
+      background-color: var(--toolbar-border);
+      margin: 0 3px;
+    }
+
+    .tb-popup {
+      position: absolute;
+      bottom: 46px;
+      left: 0;
+      background: var(--toolbar-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--toolbar-border);
+      border-radius: 12px;
+      box-shadow: var(--toolbar-shadow);
+      padding: 5px;
+      display: none;
+      flex-direction: column;
+      min-width: 150px;
+      z-index: 1100;
+    }
+
+    .tb-popup.show {
+      display: flex;
+    }
+
+    .tb-popup-item {
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 12px;
+      text-align: left;
+      font-size: 13.5px;
+      color: var(--text-color);
+      cursor: pointer;
+      transition: background-color 0.12s ease;
+    }
+
+    .tb-popup-item:hover {
+      background-color: var(--toolbar-btn-hover);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="editor-container">
+    <div id="editor" contenteditable="true" spellcheck="true"></div>
+  </div>
+
+  <!-- Floating Formatting Toolbar -->
+  <div id="floating-toolbar">
+    <div style="position: relative;">
+      <button class="tb-btn" id="btn-heading" title="Heading" onclick="toggleHeadingMenu(event)">H <span style="font-size: 9px; margin-left: 1px;">▾</span></button>
+      <div class="tb-popup" id="menu-heading">
+        <button class="tb-popup-item" onclick="applyHeading('h1')"><b>Heading 1</b></button>
+        <button class="tb-popup-item" onclick="applyHeading('h2')">Heading 2</button>
+        <button class="tb-popup-item" onclick="applyHeading('h3')">Heading 3</button>
+        <button class="tb-popup-item" onclick="applyHeading('p')">Paragraph</button>
+      </div>
+    </div>
+
+    <button class="tb-btn" id="btn-todo" title="Todo Checklist (- [ ])" onclick="insertTodoItem()">☑</button>
+
+    <div style="position: relative;">
+      <button class="tb-btn" id="btn-list" title="Lists" onclick="toggleListMenu(event)">≔ <span style="font-size: 9px; margin-left: 1px;">▾</span></button>
+      <div class="tb-popup" id="menu-list">
+        <button class="tb-popup-item" onclick="applyList('insertUnorderedList')">• Bullet List</button>
+        <button class="tb-popup-item" onclick="applyList('insertOrderedList')">1. Numbered List</button>
+      </div>
+    </div>
+
+    <div class="tb-separator"></div>
+
+    <button class="tb-btn" id="btn-bold" title="Bold (Ctrl+B)" onclick="applyFormat('bold')"><b>B</b></button>
+    <button class="tb-btn" id="btn-italic" title="Italic (Ctrl+I)" onclick="applyFormat('italic')"><i>I</i></button>
+    <button class="tb-btn" id="btn-highlight" title="Highlight" onclick="applyHighlight()">🖍️</button>
+    <button class="tb-btn" id="btn-link" title="Link" onclick="promptLink()">🔗</button>
+    <button class="tb-btn" id="btn-table" title="Table" onclick="insertTable()">▦</button>
+    <button class="tb-btn" id="btn-image" title="Image" onclick="triggerImagePicker()">🖼️</button>
+
+    <div class="tb-separator"></div>
+
+    <div style="position: relative;">
+      <button class="tb-btn" id="btn-more" title="More Tools" onclick="toggleMoreMenu(event)">⋮</button>
+      <div class="tb-popup" id="menu-more">
+        <button class="tb-popup-item" onclick="applyFormat('strikeThrough')">Strikethrough (~~)</button>
+        <button class="tb-popup-item" onclick="insertCodeBlock()">Code Block (```)</button>
+        <button class="tb-popup-item" onclick="insertQuote()">Blockquote (&gt;)</button>
+        <button class="tb-popup-item" onclick="insertDivider()">Divider (---)</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const editor = document.getElementById('editor');
+    let saveTimeout = null;
+    let isUpdatingFromPython = false;
+
+    window.addEventListener('load', () => {
+      setupEventHandlers();
+    });
+
+    function setupEventHandlers() {
+      editor.addEventListener('input', onEditorInput);
+      editor.addEventListener('keydown', onKeyDown);
+      editor.addEventListener('click', onEditorClick);
+      editor.addEventListener('paste', onPaste);
+      editor.addEventListener('drop', onDrop);
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#floating-toolbar')) {
+          closeAllPopups();
+        }
+      });
+    }
+
+    // ==========================================
+    // Dynamic Markdown Parsing on Typing
+    // ==========================================
+
+    function hasMarkdownSyntax(str) {
+      if (!str) return false;
+      return /\*\*|~~|==|`|(?<!\*)\*(?!\*)|(?<!_)_(?!_)|(?:^|\s)#[a-zA-Z0-9_\-]+|\[.+\]\(.+\)/.test(str);
+    }
+
+    function formatMarkdownInText(str) {
+      let s = str;
+      s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      // 1. Triple asterisks: ***bold italic***
+      s = s.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+
+      // 2. Double asterisks: **bold**
+      s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+      // 3. Single asterisks or underscores: *italic* or _italic_
+      s = s.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+      s = s.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
+
+      // 4. Strikethrough: ~~strike~~
+      s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+      // 5. Highlight: ==highlight==
+      s = s.replace(/==([^=]+)==/g, '<mark class="stilo-highlight">$1</mark>');
+
+      // 6. Inline code: `code`
+      s = s.replace(/`([^`]+)`/g, '<code class="stilo-inline-code">$1</code>');
+
+      // 7. Markdown Link: [text](url)
+      s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="stilo-link" target="_blank">$1</a>');
+
+      // 8. Tags: #tag (word characters and hyphens)
+      s = s.replace(/(^|\s)#([a-zA-Z0-9_\-]+)/g, '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
+
+      return s;
+    }
+
+    function convertMarkdownInBlock(block) {
+      if (!block) return;
+      if (block.tagName === 'PRE' || block.classList.contains('stilo-code-block')) return;
+
+      const rawText = block.textContent;
+      if (!hasMarkdownSyntax(rawText)) return;
+
+      const sel = window.getSelection();
+      let marker = null;
+      if (sel.rangeCount && block.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+        const range = sel.getRangeAt(0);
+        marker = document.createElement('span');
+        marker.id = '__stilo_cursor_marker__';
+        marker.style.display = 'none';
+        range.insertNode(marker);
+      }
+
+      // Process only text nodes
+      const textNodes = [];
+      const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
+      let n;
+      while (n = walk.nextNode()) {
+        if (n.parentNode && (n.parentNode.tagName === 'CODE' || n.parentNode.tagName === 'A' || n.parentNode.classList.contains('stilo-tag'))) {
+          continue;
+        }
+        textNodes.push(n);
+      }
+
+      let anyChanged = false;
+      for (const tn of textNodes) {
+        if (!tn.parentNode || !tn.textContent) continue;
+        if (!hasMarkdownSyntax(tn.textContent)) continue;
+
+        const formatted = formatMarkdownInText(tn.textContent);
+        if (formatted !== tn.textContent) {
+          try {
+            const frag = document.createRange().createContextualFragment(formatted);
+            tn.parentNode.replaceChild(frag, tn);
+            anyChanged = true;
+          } catch (e) {
+            console.error('Fragment replace error:', e);
+          }
+        }
+      }
+
+      // Restore cursor position
+      if (marker && marker.parentNode) {
+        const newRange = document.createRange();
+        const parent = marker.parentNode;
+        const next = marker.nextSibling;
+        parent.removeChild(marker);
+        if (next) {
+          newRange.setStart(next, 0);
+        } else {
+          newRange.setStart(parent, parent.childNodes.length);
+        }
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+
+      if (anyChanged) {
+        notifyChange();
+      }
+    }
+
+    function onKeyDown(e) {
+      // 1. Tab key
+      if (e.key === 'Tab') {
+        const cell = getClosestElement('td, th');
+        if (cell) {
+          e.preventDefault();
+          navigateTableCell(cell, e.shiftKey);
+          return;
+        }
+        const task = getClosestElement('.stilo-task');
+        if (task) {
+          e.preventDefault();
+          const margin = parseInt(task.style.marginLeft || '0', 10);
+          task.style.marginLeft = e.shiftKey ? Math.max(0, margin - 20) + 'px' : (margin + 20) + 'px';
+          notifyChange();
+          return;
+        }
+        e.preventDefault();
+        convertMarkdownInBlock(getClosestBlockElement());
+        document.execCommand('insertText', false, '    ');
+        notifyChange();
+        return;
+      }
+
+      // 2. Enter key
+      if (e.key === 'Enter') {
+        const block = getClosestBlockElement();
+        if (block) {
+          const txt = block.textContent.trim();
+          // Divider trigger: "---" or "***"
+          if (txt === '---' || txt === '***') {
+            e.preventDefault();
+            const hr = document.createElement('hr');
+            hr.className = 'stilo-hr';
+            const nextDiv = document.createElement('div');
+            nextDiv.innerHTML = '<br>';
+            block.parentNode.replaceChild(hr, block);
+            hr.parentNode.insertBefore(nextDiv, hr.nextSibling);
+            setCursorAtStart(nextDiv);
+            notifyChange();
+            return;
+          }
+
+          // Todo Task item
+          const task = getClosestElement('.stilo-task');
+          if (task) {
+            const textSpan = task.querySelector('.task-text');
+            if (textSpan && textSpan.innerText.trim() === '') {
+              e.preventDefault();
+              const p = document.createElement('div');
+              p.innerHTML = '<br>';
+              task.parentNode.insertBefore(p, task);
+              task.remove();
+              setCursorAtStart(p);
+              notifyChange();
+              return;
+            } else {
+              convertMarkdownInBlock(task);
+              e.preventDefault();
+              const newTask = document.createElement('div');
+              newTask.className = 'stilo-task';
+              newTask.innerHTML = '<input type="checkbox" class="stilo-checkbox"><span class="task-text" contenteditable="true"><br></span>';
+              if (task.style.marginLeft) newTask.style.marginLeft = task.style.marginLeft;
+              task.parentNode.insertBefore(newTask, task.nextSibling);
+              const newSpan = newTask.querySelector('.task-text');
+              setCursorAtStart(newSpan);
+              notifyChange();
+              return;
+            }
+          }
+
+          convertMarkdownInBlock(block);
+        }
+      }
+
+      // 3. Space key (line-start block triggers: #, ##, ###, - [ ], -, *, 1., >)
+      if (e.key === ' ') {
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          const node = range.startContainer;
+          if (node.nodeType === 3) {
+            const textBefore = node.textContent.slice(0, range.startOffset).trim();
+            const textAfter = node.textContent.slice(range.startOffset);
+
+            // Headings
+            if (textBefore === '#') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockTo('h1', textAfter);
+              return;
+            }
+            if (textBefore === '##') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockTo('h2', textAfter);
+              return;
+            }
+            if (textBefore === '###') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockTo('h3', textAfter);
+              return;
+            }
+
+            // Checklist
+            if (textBefore === '- [ ]' || textBefore === '[]' || textBefore === '-[]') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockToTask(textAfter, false);
+              return;
+            }
+            if (textBefore === '- [x]' || textBefore === '[x]' || textBefore === '-[x]') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockToTask(textAfter, true);
+              return;
+            }
+
+            // Bullet List
+            if (textBefore === '-' || textBefore === '*') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockToList('ul', textAfter);
+              return;
+            }
+
+            // Numbered List
+            if (textBefore === '1.') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockToList('ol', textAfter);
+              return;
+            }
+
+            // Blockquote
+            if (textBefore === '>') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockToQuote(textAfter);
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    function onEditorInput(e) {
+      if (isUpdatingFromPython) return;
+
+      const block = getClosestBlockElement();
+      if (block && (e.data === ' ' || e.data === '`' || e.data === '*' || e.data === '_' || e.data === '~' || e.data === '=')) {
+        convertMarkdownInBlock(block);
+      }
+
+      notifyChangeDebounced();
+    }
+
+    function onEditorClick(e) {
+      // Checkbox click
+      if (e.target.classList.contains('stilo-checkbox')) {
+        const task = e.target.closest('.stilo-task');
+        if (task) {
+          if (e.target.checked) {
+            task.classList.add('completed');
+          } else {
+            task.classList.remove('completed');
+          }
+          notifyChange();
+        }
+        return;
+      }
+
+      // Tag pill click
+      if (e.target.classList.contains('stilo-tag')) {
+        const tagName = e.target.getAttribute('data-tag');
+        if (tagName && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tagClicked) {
+          window.webkit.messageHandlers.tagClicked.postMessage(tagName);
+        }
+      }
+    }
+
+    // ==========================================
+    // Transformation Helpers
+    // ==========================================
+
+    function transformCurrentBlockTo(tagName, content) {
+      const block = getClosestBlockElement();
+      if (!block) return;
+      const el = document.createElement(tagName);
+      el.innerHTML = content || '<br>';
+      block.parentNode.replaceChild(el, block);
+      setCursorAtStart(el);
+      notifyChange();
+    }
+
+    function transformCurrentBlockToTask(content, isChecked) {
+      const block = getClosestBlockElement();
+      if (!block) return;
+      const task = document.createElement('div');
+      task.className = 'stilo-task' + (isChecked ? ' completed' : '');
+      const checkedAttr = isChecked ? 'checked="checked"' : '';
+      task.innerHTML = `<input type="checkbox" class="stilo-checkbox" ${checkedAttr}><span class="task-text" contenteditable="true">${content || '<br>'}</span>`;
+      block.parentNode.replaceChild(task, block);
+      const span = task.querySelector('.task-text');
+      setCursorAtStart(span);
+      notifyChange();
+    }
+
+    function transformCurrentBlockToList(listTag, content) {
+      const block = getClosestBlockElement();
+      if (!block) return;
+      const list = document.createElement(listTag);
+      list.className = listTag === 'ul' ? 'stilo-list' : 'stilo-numbered-list';
+      const li = document.createElement('li');
+      li.innerHTML = content || '<br>';
+      list.appendChild(li);
+      block.parentNode.replaceChild(list, block);
+      setCursorAtStart(li);
+      notifyChange();
+    }
+
+    function transformCurrentBlockToQuote(content) {
+      const block = getClosestBlockElement();
+      if (!block) return;
+      const quote = document.createElement('blockquote');
+      quote.className = 'stilo-quote';
+      quote.innerHTML = content || '<br>';
+      block.parentNode.replaceChild(quote, block);
+      setCursorAtStart(quote);
+      notifyChange();
+    }
+
+    // ==========================================
+    // Toolbar Actions
+    // ==========================================
+
+    function applyFormat(cmd, val = null) {
+      closeAllPopups();
+      document.execCommand(cmd, false, val);
+      notifyChange();
+    }
+
+    function applyHeading(tag) {
+      closeAllPopups();
+      if (tag === 'p') {
+        document.execCommand('formatBlock', false, 'div');
+      } else {
+        document.execCommand('formatBlock', false, tag);
+      }
+      notifyChange();
+    }
+
+    function applyList(cmd) {
+      closeAllPopups();
+      document.execCommand(cmd, false, null);
+      notifyChange();
+    }
+
+    function applyHighlight() {
+      closeAllPopups();
+      const sel = window.getSelection();
+      if (sel.rangeCount && !sel.isCollapsed) {
+        const text = sel.toString();
+        const html = `<mark class="stilo-highlight">${text}</mark>`;
+        document.execCommand('insertHTML', false, html);
+        notifyChange();
+      }
+    }
+
+    function insertTodoItem() {
+      closeAllPopups();
+      const sel = window.getSelection();
+      const text = sel.isCollapsed ? '' : sel.toString();
+      const taskHtml = `<div class="stilo-task"><input type="checkbox" class="stilo-checkbox"><span class="task-text">${text || '<br>'}</span></div><div><br></div>`;
+      document.execCommand('insertHTML', false, taskHtml);
+      notifyChange();
+    }
+
+    function insertTable(rows = 3, cols = 3) {
+      closeAllPopups();
+      let tableHtml = '<table class="stilo-table"><thead><tr>';
+      for (let c = 0; c < cols; c++) {
+        tableHtml += `<th>Header ${c + 1}</th>`;
+      }
+      tableHtml += '</tr></thead><tbody>';
+      for (let r = 0; r < rows - 1; r++) {
+        tableHtml += '<tr>';
+        for (let c = 0; c < cols; c++) {
+          tableHtml += '<td>Cell</td>';
+        }
+        tableHtml += '</tr>';
+      }
+      tableHtml += '</tbody></table><div><br></div>';
+      document.execCommand('insertHTML', false, tableHtml);
+      notifyChange();
+    }
+
+    function insertCodeBlock() {
+      closeAllPopups();
+      const codeHtml = `<pre class="stilo-code-block"><code>// Code here...\n</code></pre><div><br></div>`;
+      document.execCommand('insertHTML', false, codeHtml);
+      notifyChange();
+    }
+
+    function insertQuote() {
+      closeAllPopups();
+      const quoteHtml = `<blockquote class="stilo-quote">Quote text...</blockquote><div><br></div>`;
+      document.execCommand('insertHTML', false, quoteHtml);
+      notifyChange();
+    }
+
+    function insertDivider() {
+      closeAllPopups();
+      const hrHtml = `<hr class="stilo-hr"><div><br></div>`;
+      document.execCommand('insertHTML', false, hrHtml);
+      notifyChange();
+    }
+
+    function promptLink() {
+      closeAllPopups();
+      const sel = window.getSelection();
+      const selectedText = sel.toString() || 'Link';
+      const url = prompt('Enter URL:', 'https://');
+      if (url) {
+        const linkHtml = `<a href="${url}" class="stilo-link" target="_blank">${selectedText}</a>`;
+        document.execCommand('insertHTML', false, linkHtml);
+        notifyChange();
+      }
+    }
+
+    function triggerImagePicker() {
+      closeAllPopups();
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
+        window.webkit.messageHandlers.pickImage.postMessage('open');
+      } else {
+        const url = prompt('Enter Image URL:', '');
+        if (url) insertImageAtCursor(url);
+      }
+    }
+
+    function insertImageAtCursor(src, alt = 'Note image') {
+      const imgHtml = `<div class="stilo-img-wrapper"><img src="${src}" alt="${alt}" class="stilo-img"></div><div><br></div>`;
+      document.execCommand('insertHTML', false, imgHtml);
+      notifyChange();
+    }
+
+    function navigateTableCell(cell, reverse) {
+      const row = cell.parentElement;
+      const table = row.closest('table');
+      const allCells = Array.from(table.querySelectorAll('th, td'));
+      const idx = allCells.indexOf(cell);
+
+      if (reverse && idx > 0) {
+        setCursorAtEnd(allCells[idx - 1]);
+      } else if (!reverse && idx < allCells.length - 1) {
+        setCursorAtEnd(allCells[idx + 1]);
+      } else if (!reverse && idx === allCells.length - 1) {
+        const colCount = row.children.length;
+        const newRow = document.createElement('tr');
+        for (let i = 0; i < colCount; i++) {
+          const td = document.createElement('td');
+          td.innerHTML = '<br>';
+          newRow.appendChild(td);
+        }
+        table.querySelector('tbody').appendChild(newRow);
+        setCursorAtStart(newRow.firstElementChild);
+        notifyChange();
+      }
+    }
+
+    function onPaste(e) {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (let item of items) {
+        if (item.type.indexOf('image') === 0) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          const reader = new FileReader();
+          reader.onload = function(event) {
+            insertImageAtCursor(event.target.result);
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+      }
+
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      if (text && hasMarkdownSyntax(text)) {
+        e.preventDefault();
+        const formatted = formatMarkdownInText(text).replace(/\n/g, '<br>');
+        document.execCommand('insertHTML', false, formatted);
+        notifyChange();
+      }
+    }
+
+    function onDrop(e) {
+      const files = e.dataTransfer.files;
+      if (files.length > 0 && files[0].type.startsWith('image/')) {
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          insertImageAtCursor(event.target.result);
+        };
+        reader.readAsDataURL(files[0]);
+      }
+    }
+
+    function toggleHeadingMenu(e) {
+      e.stopPropagation();
+      const menu = document.getElementById('menu-heading');
+      const isShown = menu.classList.contains('show');
+      closeAllPopups();
+      if (!isShown) menu.classList.add('show');
+    }
+
+    function toggleListMenu(e) {
+      e.stopPropagation();
+      const menu = document.getElementById('menu-list');
+      const isShown = menu.classList.contains('show');
+      closeAllPopups();
+      if (!isShown) menu.classList.add('show');
+    }
+
+    function toggleMoreMenu(e) {
+      e.stopPropagation();
+      const menu = document.getElementById('menu-more');
+      const isShown = menu.classList.contains('show');
+      closeAllPopups();
+      if (!isShown) menu.classList.add('show');
+    }
+
+    function closeAllPopups() {
+      document.querySelectorAll('.tb-popup').forEach(p => p.classList.remove('show'));
+    }
+
+    function getClosestElement(selector) {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return null;
+      let node = sel.getRangeAt(0).commonAncestorContainer;
+      if (node.nodeType === 3) node = node.parentNode;
+      return node.closest(selector);
+    }
+
+    function getClosestBlockElement() {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return null;
+      let node = sel.getRangeAt(0).commonAncestorContainer;
+      if (node === editor) return editor.firstElementChild || null;
+      while (node && node !== editor) {
+        if (node.nodeType === 1) {
+          const tag = node.tagName.toLowerCase();
+          if (['div', 'p', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'li', 'td', 'th'].includes(tag)) {
+            return node;
+          }
+        }
+        if (node.parentNode === editor) {
+          if (node.nodeType === 3) {
+            const div = document.createElement('div');
+            node.parentNode.insertBefore(div, node);
+            div.appendChild(node);
+            return div;
+          }
+          return node;
+        }
+        node = node.parentNode;
+      }
+      return null;
+    }
+
+    function setCursorAtStart(el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      el.focus();
+    }
+
+    function setCursorAtEnd(el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      el.focus();
+    }
+
+    // ==========================================
+    // Python WebKit Bridge & Data Extraction
+    // ==========================================
+
+    function getTitle() {
+      const h1 = editor.querySelector('h1');
+      if (h1 && h1.innerText.trim()) return h1.innerText.trim();
+      const firstLine = editor.innerText.split('\n').map(l => l.trim()).find(l => l.length > 0);
+      return firstLine || 'Untitled Note';
+    }
+
+    function getExcerpt() {
+      const lines = editor.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length > 1) {
+        return lines.slice(1, 3).join(' ');
+      } else if (lines.length === 1) {
+        return lines[0];
+      }
+      return '';
+    }
+
+    function getTags() {
+      const tagEls = editor.querySelectorAll('.stilo-tag');
+      const tags = new Set();
+      tagEls.forEach(el => {
+        const t = el.getAttribute('data-tag');
+        if (t) tags.add(t);
+      });
+      return Array.from(tags);
+    }
+
+    function getStats() {
+      const text = editor.innerText || '';
+      const words = (text.match(/\S+/g) || []).length;
+      const chars = text.length;
+      const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0).length;
+      const readMinutes = Math.max(1, Math.ceil(words / 200));
+      return {
+        words: words,
+        chars: chars,
+        paragraphs: paragraphs,
+        readTime: readMinutes + ' min'
+      };
+    }
+
+    function hasTodo() {
+      return editor.querySelector('.stilo-task') !== null;
+    }
+
+    function notifyChangeDebounced() {
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(notifyChange, 350);
+    }
+
+    function notifyChange() {
+      if (isUpdatingFromPython) return;
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.contentChanged) {
+        const payload = {
+          title: getTitle(),
+          excerpt: getExcerpt(),
+          html: editor.innerHTML,
+          tags: getTags(),
+          stats: getStats(),
+          has_todo: hasTodo()
+        };
+        window.webkit.messageHandlers.contentChanged.postMessage(JSON.stringify(payload));
+      }
+    }
+
+    // Window methods called from Python
+    window.setEditorContent = function(html) {
+      isUpdatingFromPython = true;
+      editor.innerHTML = html || '<h1>Untitled Note</h1><div><br></div>';
+      isUpdatingFromPython = false;
+    };
+
+    window.getEditorContent = function() {
+      return editor.innerHTML;
+    };
+
+    window.setEditorTheme = function(isDark) {
+      document.documentElement.className = isDark ? 'dark-theme' : 'light-theme';
+    };
+
+    window.execFormatting = function(command, value = null) {
+      if (command === 'heading1') applyHeading('h1');
+      else if (command === 'heading2') applyHeading('h2');
+      else if (command === 'heading3') applyHeading('h3');
+      else if (command === 'paragraph') applyHeading('p');
+      else if (command === 'todo') insertTodoItem();
+      else if (command === 'bullet') applyList('insertUnorderedList');
+      else if (command === 'number') applyList('insertOrderedList');
+      else if (command === 'bold') applyFormat('bold');
+      else if (command === 'italic') applyFormat('italic');
+      else if (command === 'strike') applyFormat('strikeThrough');
+      else if (command === 'highlight') applyHighlight();
+      else if (command === 'quote') insertQuote();
+      else if (command === 'code') insertCodeBlock();
+      else if (command === 'table') insertTable();
+      else if (command === 'divider') insertDivider();
+      else if (command === 'link') promptLink();
+      else if (command === 'image') triggerImagePicker();
+    };
+  </script>
+</body>
+</html>
