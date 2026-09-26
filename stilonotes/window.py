@@ -38,7 +38,7 @@ class StiloWindow(Adw.ApplicationWindow):
         self.index_view.connect("note-opened", self._on_note_opened)
         self.index_view.connect("create-note", self._on_create_note)
 
-        self.index_page = Adw.NavigationPage.new(self.index_view, "Index")
+        self.index_page = Adw.NavigationPage.new(self.index_view, "Notes")
         self.navigation.add(self.index_page)
 
         # 2. Editor Page

@@ -44,6 +44,7 @@ class NoteEditor(Gtk.Box):
     def _build_ui(self):
         # 1. HeaderBar
         self.header_bar = Adw.HeaderBar()
+        self.header_bar.set_show_back_button(False)
         self.header_bar.set_show_end_title_buttons(True)
         self.header_bar.set_show_start_title_buttons(False)
 

@@ -19,6 +19,7 @@ class IndexView(Adw.BreakpointBin):
 
     def __init__(self, db: NoteDatabase):
         super().__init__()
+        self.set_size_request(360, 100)
         self.db = db
 
         self.active_filter_type = "all"
