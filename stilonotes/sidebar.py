@@ -207,13 +207,15 @@ class Sidebar(Adw.Bin):
         self.emit("filter-changed", self.active_filter_type, self.active_category_name)
 
     def _on_add_category_clicked(self, _btn):
-        dialog = Adw.MessageDialog(
-            heading="New Category",
-            body="Enter a name for the new category:"
+        dialog = Adw.AlertDialog.new(
+            "New Category",
+            "Enter a name for the new category:"
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("create", "Create")
         dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("create")
+        dialog.set_close_response("cancel")
 
         entry = Gtk.Entry()
         entry.set_placeholder_text("e.g. Ideas, Journal, Work")
@@ -226,21 +228,21 @@ class Sidebar(Adw.Bin):
                 if name:
                     self.db.create_category(name)
                     self.refresh()
-            dialog.destroy()
 
         dialog.connect("response", on_response)
-        dialog.set_default_response("create")
-        root_win = self.get_root()
-        dialog.present(root_win)
+        parent = self.get_root() or self
+        dialog.present(parent)
 
     def _on_rename_category(self, old_name: str):
-        dialog = Adw.MessageDialog(
-            heading=f"Rename Category '{old_name}'",
-            body="Enter a new name for this category:"
+        dialog = Adw.AlertDialog.new(
+            f"Rename Category '{old_name}'",
+            "Enter a new name for this category:"
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("rename", "Rename")
         dialog.set_response_appearance("rename", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("rename")
+        dialog.set_close_response("cancel")
 
         entry = Gtk.Entry()
         entry.set_text(old_name)
@@ -257,21 +259,21 @@ class Sidebar(Adw.Bin):
                     if self.active_category_name == old_name:
                         self.active_category_name = new_name
                     self.refresh()
-            dialog.destroy()
 
         dialog.connect("response", on_response)
-        dialog.set_default_response("rename")
-        root_win = self.get_root()
-        dialog.present(root_win)
+        parent = self.get_root() or self
+        dialog.present(parent)
 
     def _on_delete_category(self, name: str):
-        dialog = Adw.MessageDialog(
-            heading=f"Delete Category '{name}'?",
-            body="Notes inside this category will remain, but their category will be cleared."
+        dialog = Adw.AlertDialog.new(
+            f"Delete Category '{name}'?",
+            "Notes inside this category will remain, but their category will be cleared."
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("delete", "Delete")
         dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
 
         def on_response(_d, response):
             if response == "delete":
@@ -280,8 +282,7 @@ class Sidebar(Adw.Bin):
                     self.active_filter_type = "all"
                     self.active_category_name = ""
                 self.refresh()
-            dialog.destroy()
 
         dialog.connect("response", on_response)
-        root_win = self.get_root()
-        dialog.present(root_win)
+        parent = self.get_root() or self
+        dialog.present(parent)

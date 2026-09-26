@@ -428,13 +428,15 @@ class NoteEditor(Gtk.Box):
         if not self.current_note:
             return
 
-        dialog = Adw.MessageDialog(
-            heading="Rename Note",
-            body="Enter a new title for this note:"
+        dialog = Adw.AlertDialog.new(
+            "Rename Note",
+            "Enter a new title for this note:"
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("rename", "Rename")
         dialog.set_response_appearance("rename", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("rename")
+        dialog.set_close_response("cancel")
 
         entry = Gtk.Entry()
         entry.set_text(self.current_note.title)
@@ -453,12 +455,10 @@ class NoteEditor(Gtk.Box):
                     notifyChange();
                     """
                     self.webview.evaluate_javascript(script, -1, None, None, None, None)
-            dialog.destroy()
 
         dialog.connect("response", on_response)
-        dialog.set_default_response("rename")
-        root_win = self.get_root()
-        dialog.present(root_win)
+        parent = self.get_root() or self
+        dialog.present(parent)
 
     def _on_toggle_pin(self):
         if self.current_note:
