@@ -34,6 +34,7 @@ install_data(
 
 install_data(
   'icons/hicolor/symbolic/apps/io.github.fastrizwaan.StiloNotes-symbolic.svg',
+  'icons/hicolor/symbolic/apps/eraser3-symbolic.svg',
   install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', 'symbolic', 'apps')
 )
 

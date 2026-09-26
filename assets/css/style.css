@@ -79,3 +79,10 @@ label.index-category-pill {
   font-size: 13px;
   font-weight: 600;
 }
+
+/* Category Selector Completion Popover */
+entry.category-selector popover contents {
+  background-color: var(--view-bg-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

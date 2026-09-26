@@ -7,8 +7,9 @@ from typing import Optional, Dict, Any
 
 import gi
 gi.require_version('WebKit', '6.0')
-from gi.repository import Adw, Gtk, WebKit, Gio, GLib, GObject, Gdk
+from gi.repository import Adw, Gtk, WebKit, Gio, GLib, GObject, Gdk, Pango
 
+from stilonotes.category_header_bar import CategoryHeaderBar
 from stilonotes.models import Note
 from stilonotes.editor_html import get_editor_html_page
 from stilonotes.markdown_utils import format_relative_date, html_to_markdown
@@ -23,6 +24,7 @@ class NoteEditor(Gtk.Box):
         "note-deleted": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-pin-toggled": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-duplicated": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "note-category-changed": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
         "tag-clicked": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "back": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
@@ -42,18 +44,22 @@ class NoteEditor(Gtk.Box):
         self._build_ui()
 
     def _build_ui(self):
-        # 1. HeaderBar
-        self.header_bar = Adw.HeaderBar()
-        self.header_bar.set_show_back_button(False)
-        self.header_bar.set_show_end_title_buttons(True)
-        self.header_bar.set_show_start_title_buttons(False)
+        # 1. Header Stack: Main HeaderBar and Category HeaderBar
+        self.header_stack = Gtk.Stack()
+        self.header_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+
+        # Main HeaderBar
+        self.main_header_bar = Adw.HeaderBar()
+        self.main_header_bar.set_show_back_button(False)
+        self.main_header_bar.set_show_end_title_buttons(True)
+        self.main_header_bar.set_show_start_title_buttons(False)
 
         # Back button
         self.back_btn = Gtk.Button()
         self.back_btn.set_icon_name("go-previous-symbolic")
         self.back_btn.set_tooltip_text("Back to Notes (Esc / Alt+Left)")
         self.back_btn.connect("clicked", lambda _b: self.emit("back"))
-        self.header_bar.pack_start(self.back_btn)
+        self.main_header_bar.pack_start(self.back_btn)
 
         # Title Box
         title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -63,7 +69,7 @@ class NoteEditor(Gtk.Box):
         self.title_button.add_css_class("flat")
         self.title_button.add_css_class("stilo-editor-title-btn")
         self.title_label = Gtk.Label(label="Untitled Note")
-        self.title_label.set_ellipsize(3) # PANGO_ELLIPSIZE_END
+        self.title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.title_label.set_max_width_chars(32)
         self.title_button.set_child(self.title_label)
         self.title_button.connect("clicked", self._on_title_clicked)
@@ -73,14 +79,14 @@ class NoteEditor(Gtk.Box):
         self.status_label.add_css_class("stilo-status-label")
         title_box.append(self.status_label)
 
-        self.header_bar.set_title_widget(title_box)
+        self.main_header_bar.set_title_widget(title_box)
 
         # Format button with popover
         self.format_btn = Gtk.MenuButton()
         self.format_btn.set_icon_name("format-text-bold-symbolic")
         self.format_btn.set_tooltip_text("Text Formatting")
         self.format_btn.set_popover(self._create_format_popover())
-        self.header_bar.pack_end(self.format_btn)
+        self.main_header_bar.pack_end(self.format_btn)
 
         # Info / Stats button
         self.stats_popover = self._create_stats_popover()
@@ -88,23 +94,31 @@ class NoteEditor(Gtk.Box):
         self.info_btn.set_icon_name("dialog-information-symbolic")
         self.info_btn.set_tooltip_text("Note Information & Statistics")
         self.info_btn.set_popover(self.stats_popover)
-        self.header_bar.pack_end(self.info_btn)
+        self.main_header_bar.pack_end(self.info_btn)
 
         # Theme toggle button
         self.theme_btn = Gtk.Button()
         self.theme_btn.set_icon_name("weather-clear-night-symbolic")
         self.theme_btn.set_tooltip_text("Toggle Theme (Dark / Light)")
         self.theme_btn.connect("clicked", self._on_toggle_theme)
-        self.header_bar.pack_end(self.theme_btn)
+        self.main_header_bar.pack_end(self.theme_btn)
 
         # More menu button
         self.more_btn = Gtk.MenuButton()
         self.more_btn.set_icon_name("view-more-symbolic")
         self.more_btn.set_tooltip_text("More Options")
         self.more_btn.set_menu_model(self._create_more_menu())
-        self.header_bar.pack_end(self.more_btn)
+        self.main_header_bar.pack_end(self.more_btn)
 
-        self.append(self.header_bar)
+        self.header_stack.add_named(self.main_header_bar, "main")
+
+        # Category HeaderBar (for changing / selecting / removing category)
+        self.category_header_bar = CategoryHeaderBar()
+        self.category_header_bar.connect("category-changed", self._on_category_changed)
+        self.category_header_bar.connect("abort", self._on_abort_category_change)
+        self.header_stack.add_named(self.category_header_bar, "category")
+
+        self.append(self.header_stack)
 
         # 2. WebKit WebView
         self.webview = WebKit.WebView()
@@ -276,6 +290,7 @@ class NoteEditor(Gtk.Box):
 
         section1 = Gio.Menu()
         section1.append("Edit Title…", "editor.rename-title")
+        section1.append("Change Category…", "editor.edit-category")
         section1.append("Toggle Pin", "editor.toggle-pin")
         section1.append("Duplicate Note", "editor.duplicate")
         menu.append_section(None, section1)
@@ -299,6 +314,10 @@ class NoteEditor(Gtk.Box):
         rename_action = Gio.SimpleAction.new("rename-title", None)
         rename_action.connect("activate", lambda _a, _p: self._on_title_clicked(None))
         action_group.add_action(rename_action)
+
+        edit_cat_action = Gio.SimpleAction.new("edit-category", None)
+        edit_cat_action.connect("activate", lambda _a, _p: self.enter_edit_category())
+        action_group.add_action(edit_cat_action)
 
         pin_action = Gio.SimpleAction.new("toggle-pin", None)
         pin_action.connect("activate", lambda _a, _p: self._on_toggle_pin())
@@ -326,9 +345,35 @@ class NoteEditor(Gtk.Box):
 
         self.insert_action_group("editor", action_group)
 
+    def enter_edit_category(self):
+        """Show category headerbar for selecting or editing categories."""
+        if not self.current_note:
+            return
+        categories = [c.name for c in self.db.get_categories()]
+        self.category_header_bar.set_categories(categories)
+        self.header_stack.set_visible_child_name("category")
+        self.category_header_bar.activate(self.current_note.category or "")
+
+    def _on_category_changed(self, _bar, new_category: str):
+        """Handle category applied or cleared."""
+        if not self.current_note:
+            return
+        clean_cat = new_category.strip()
+        self.current_note.category = clean_cat
+        if clean_cat:
+            self.db.create_category(clean_cat)
+        self.db.save_note(note_id=self.current_note.id, category=clean_cat)
+        self.header_stack.set_visible_child_name("main")
+        self.emit("note-category-changed", self.current_note.id, clean_cat)
+
+    def _on_abort_category_change(self, _bar):
+        """Revert / abort category editing."""
+        self.header_stack.set_visible_child_name("main")
+
     def load_note(self, note: Note):
         """Load note into WebKit view."""
         self.current_note = note
+        self.header_stack.set_visible_child_name("main")
         self.title_label.set_text(note.title)
         self.status_label.set_text("Saved")
 
