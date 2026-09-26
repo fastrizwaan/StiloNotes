@@ -68,14 +68,14 @@ class Sidebar(Adw.Bin):
         self.close_btn.set_visible(False)
         self.header_bar.pack_start(self.close_btn)
 
-        self.window_title = Adw.WindowTitle(title="Categories")
-        self.header_bar.set_title_widget(self.window_title)
-
         self.add_cat_btn = Gtk.Button()
         self.add_cat_btn.set_icon_name("folder-new-symbolic")
         self.add_cat_btn.set_tooltip_text("New Category (use / for nested, e.g. Work/Projects)")
         self.add_cat_btn.connect("clicked", self._on_add_category_clicked)
-        self.header_bar.pack_end(self.add_cat_btn)
+        self.header_bar.pack_start(self.add_cat_btn)
+
+        self.window_title = Adw.WindowTitle(title="Categories")
+        self.header_bar.set_title_widget(self.window_title)
 
         self.menu_btn = Gtk.MenuButton()
         self.menu_btn.set_icon_name("open-menu-symbolic")
