@@ -174,22 +174,23 @@ class StiloWindow(Adw.ApplicationWindow):
             content_markdown=md,
             tags=tags
         )
-        self.index_view.refresh()
+        if self.navigation.get_visible_page() != self.editor_page:
+            self.index_view.refresh(update_sidebar=False)
 
     def _on_editor_note_deleted(self, _ed, note_id: str):
         self.db.delete_note(note_id)
         self._go_back()
-        self.index_view.refresh()
+        self.index_view.refresh(update_sidebar=True)
 
     def _on_editor_note_pin_toggled(self, _ed, note_id: str):
         self.db.toggle_pin_note(note_id)
         if self.editor.current_note and self.editor.current_note.id == note_id:
             self.editor.current_note.is_pinned = not self.editor.current_note.is_pinned
-        self.index_view.refresh()
+        self.index_view.refresh(update_sidebar=True)
 
     def _on_editor_note_duplicated(self, _ed, note_id: str):
         dup = self.db.duplicate_note(note_id)
-        self.index_view.refresh()
+        self.index_view.refresh(update_sidebar=True)
         if dup:
             self.open_note(dup, immediate=False)
 
@@ -203,5 +204,5 @@ class StiloWindow(Adw.ApplicationWindow):
     def _go_back(self):
         if self.navigation.get_visible_page() == self.editor_page:
             self.navigation.pop()
-            self.index_view.refresh()
+            self.index_view.refresh(update_sidebar=True)
             self.config_manager.set_last_opened_note_id("")

@@ -168,9 +168,10 @@ class IndexView(Gtk.Box):
         menu.append("About Stilo Notes", "app.about")
         return menu
 
-    def refresh(self):
+    def refresh(self, update_sidebar: bool = True):
         """Fetch filtered notes and reload list."""
-        self.sidebar.refresh()
+        if update_sidebar:
+            self.sidebar.refresh()
 
         # Update title
         if self.active_tag_name:
@@ -198,7 +199,7 @@ class IndexView(Gtk.Box):
         self.active_filter_type = filter_type
         self.active_category_name = category_name
         self.active_tag_name = ""
-        self.refresh()
+        self.refresh(update_sidebar=False)
 
     def filter_by_tag(self, tag_name: str):
         self.active_tag_name = tag_name

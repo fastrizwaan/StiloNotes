@@ -16,6 +16,7 @@ class Sidebar(Gtk.Box):
         self.db = db
         self.active_filter_type = "all"
         self.active_category_name = ""
+        self._updating = False
 
         self.add_css_class("stilo-sidebar")
         self.set_size_request(240, -1)
@@ -58,54 +59,58 @@ class Sidebar(Gtk.Box):
 
     def refresh(self):
         """Reload categories and counts."""
-        # Clear existing rows
-        while True:
-            row = self.listbox.get_row_at_index(0)
-            if not row:
-                break
-            self.listbox.remove(row)
+        self._updating = True
+        try:
+            # Clear existing rows
+            while True:
+                row = self.listbox.get_row_at_index(0)
+                if not row:
+                    break
+                self.listbox.remove(row)
 
-        counts = self.db.get_counts()
+            counts = self.db.get_counts()
 
-        # 1. Standard Filters
-        self._add_row("all", "", "All Notes", "document-edit-symbolic", counts.get("all", 0))
-        self._add_row("pinned", "", "Favorites", "starred-symbolic", counts.get("pinned", 0))
-        self._add_row("todo", "", "Tasks", "view-list-bullet-symbolic", counts.get("todo", 0))
+            # 1. Standard Filters
+            self._add_row("all", "", "All Notes", "document-edit-symbolic", counts.get("all", 0))
+            self._add_row("pinned", "", "Favorites", "starred-symbolic", counts.get("pinned", 0))
+            self._add_row("todo", "", "Tasks", "view-list-bullet-symbolic", counts.get("todo", 0))
 
-        # 2. Categories
-        categories = self.db.get_categories()
-        if categories:
-            # Separator / Header
-            sep_row = Gtk.ListBoxRow()
-            sep_row.set_selectable(False)
-            sep_row.set_activatable(False)
-            sep_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            sep_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-            cat_label = Gtk.Label(label="CATEGORIES")
-            cat_label.set_halign(Gtk.Align.START)
-            cat_label.add_css_class("dim-label")
-            cat_label.add_css_class("caption")
-            cat_label.set_margin_start(12)
-            cat_label.set_margin_top(8)
-            cat_label.set_margin_bottom(4)
-            sep_box.append(cat_label)
-            sep_row.set_child(sep_box)
-            self.listbox.append(sep_row)
+            # 2. Categories
+            categories = self.db.get_categories()
+            if categories:
+                # Separator / Header
+                sep_row = Gtk.ListBoxRow()
+                sep_row.set_selectable(False)
+                sep_row.set_activatable(False)
+                sep_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                sep_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+                cat_label = Gtk.Label(label="CATEGORIES")
+                cat_label.set_halign(Gtk.Align.START)
+                cat_label.add_css_class("dim-label")
+                cat_label.add_css_class("caption")
+                cat_label.set_margin_start(12)
+                cat_label.set_margin_top(8)
+                cat_label.set_margin_bottom(4)
+                sep_box.append(cat_label)
+                sep_row.set_child(sep_box)
+                self.listbox.append(sep_row)
 
-            for cat in categories:
-                self._add_row("category", cat.name, cat.name, cat.icon or "folder-symbolic", cat.count, can_delete=True)
+                for cat in categories:
+                    self._add_row("category", cat.name, cat.name, cat.icon or "folder-symbolic", cat.count, can_delete=True)
 
-        # 3. Trash Section
-        trash_sep = Gtk.ListBoxRow()
-        trash_sep.set_selectable(False)
-        trash_sep.set_activatable(False)
-        trash_sep.set_child(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        self.listbox.append(trash_sep)
+            # 3. Trash Section
+            trash_sep = Gtk.ListBoxRow()
+            trash_sep.set_selectable(False)
+            trash_sep.set_activatable(False)
+            trash_sep.set_child(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+            self.listbox.append(trash_sep)
 
-        self._add_row("trash", "", "Trash", "user-trash-symbolic", counts.get("trash", 0))
+            self._add_row("trash", "", "Trash", "user-trash-symbolic", counts.get("trash", 0))
 
-        # Re-select active filter
-        self._restore_active_selection()
+            # Re-select active filter
+            self._restore_active_selection()
+        finally:
+            self._updating = False
 
     def _add_row(self, filter_type: str, category_name: str, title: str, icon_name: str, count: int, can_delete: bool = False):
         row = Gtk.ListBoxRow()
@@ -154,7 +159,11 @@ class Sidebar(Gtk.Box):
                 break
 
     def _on_row_selected(self, _lb, row):
+        if self._updating:
+            return
         if not row or not hasattr(row, "_filter_type"):
+            return
+        if self.active_filter_type == row._filter_type and self.active_category_name == row._category_name:
             return
         self.active_filter_type = row._filter_type
         self.active_category_name = row._category_name

@@ -354,8 +354,10 @@ class NoteEditor(Gtk.Box):
     def _on_js_content_changed(self, _ucm, js_result):
         """Handle contentChanged message from WebKit."""
         try:
-            val = js_result.get_js_value()
-            json_str = val.to_string()
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            json_str = val.to_string() if hasattr(val, "to_string") else str(val)
+            if not json_str:
+                return
             data = json.loads(json_str)
 
             if not self.current_note:
@@ -390,8 +392,8 @@ class NoteEditor(Gtk.Box):
 
     def _on_js_tag_clicked(self, _ucm, js_result):
         try:
-            val = js_result.get_js_value()
-            tag_name = val.to_string()
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            tag_name = val.to_string() if hasattr(val, "to_string") else str(val)
             self.emit("tag-clicked", tag_name)
         except Exception as e:
             print("Error parsing tag click:", e)
