@@ -1,179 +1,154 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   width="128"
    height="128"
    viewBox="0 0 128 128"
+   width="128"
    version="1.1"
-   id="svgStilo"
+   id="svg101"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:xlink="http://www.w3.org/1999/xlink">
-  <defs>
-    <!-- Soft GNOME HIG Shadows -->
-    <filter id="bookShadow" x="12" y="16" width="104" height="106" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#140727" flood-opacity="0.38"/>
-      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#140727" flood-opacity="0.22"/>
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs73">
+    <linearGradient
+       id="a"
+       gradientUnits="userSpaceOnUse"
+       x1="92.999458"
+       x2="100.99946"
+       y1="71.000198"
+       y2="71.000198">
+      <stop
+         offset="0"
+         stop-color="#deddda"
+         id="stop2" />
+      <stop
+         offset="0.52"
+         stop-color="#ffffff"
+         id="stop4" />
+      <stop
+         offset="1"
+         stop-color="#bdbdbd"
+         id="stop6" />
+    </linearGradient>
+    <filter
+       id="b"
+       height="1"
+       width="1"
+       x="0"
+       y="0">
+      <feColorMatrix
+         in="SourceGraphic"
+         type="matrix"
+         values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"
+         id="feColorMatrix9" />
     </filter>
-
-    <filter id="penShadow" x="30" y="18" width="80" height="80" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="-2" dy="5" stdDeviation="3" flood-color="#1a0b36" flood-opacity="0.32"/>
-    </filter>
-
-    <!-- Back Cover Gradient -->
-    <linearGradient id="backCoverGrad" x1="24" y1="32" x2="104" y2="110" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#311B92"/>
-      <stop offset="100%" stop-color="#24116A"/>
-    </linearGradient>
-
-    <!-- Bottom Paper Edge Stack Gradient -->
-    <linearGradient id="paperEdgeGrad" x1="26" y1="95" x2="102" y2="95" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#E8E4D9"/>
-      <stop offset="18%" stop-color="#FCFAF2"/>
-      <stop offset="70%" stop-color="#FFFFFF"/>
-      <stop offset="95%" stop-color="#DBD5C5"/>
-      <stop offset="100%" stop-color="#C5BEAC"/>
-    </linearGradient>
-
-    <!-- Front Cover Gradient: Luxurious Violet to Royal Indigo -->
-    <linearGradient id="frontCoverGrad" x1="24" y1="8" x2="104" y2="98" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#7C4DFF"/>
-      <stop offset="35%" stop-color="#651FFF"/>
-      <stop offset="75%" stop-color="#512DA8"/>
-      <stop offset="100%" stop-color="#391980"/>
-    </linearGradient>
-
-    <!-- Cover Top Specular Sheen -->
-    <linearGradient id="coverSheen" x1="24" y1="8" x2="24" y2="98" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28"/>
-      <stop offset="12%" stop-color="#FFFFFF" stop-opacity="0.08"/>
-      <stop offset="85%" stop-color="#000000" stop-opacity="0.0"/>
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.25"/>
-    </linearGradient>
-
-    <!-- Elastic Strap Gradient -->
-    <linearGradient id="strapGrad" x1="80" y1="8" x2="88" y2="8" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#2A085C"/>
-      <stop offset="30%" stop-color="#4A148C"/>
-      <stop offset="70%" stop-color="#5E1D9E"/>
-      <stop offset="100%" stop-color="#2A085C"/>
-    </linearGradient>
-
-    <!-- Bookmark Ribbon Gradient: Warm Amber Gold -->
-    <linearGradient id="ribbonGrad" x1="36" y1="102" x2="52" y2="124" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFB300"/>
-      <stop offset="60%" stop-color="#FF8F00"/>
-      <stop offset="100%" stop-color="#E65100"/>
-    </linearGradient>
-
-    <!-- Stylus Pen Body Gradient -->
-    <linearGradient id="penBody" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#FFF0F5"/>
-      <stop offset="40%" stop-color="#FFB3C6"/>
-      <stop offset="80%" stop-color="#FF8FA3"/>
-      <stop offset="100%" stop-color="#C9184A"/>
-    </linearGradient>
-
-    <!-- Gold Trim Gradient -->
-    <linearGradient id="goldTrim" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#FFE082"/>
-      <stop offset="45%" stop-color="#FFCA28"/>
-      <stop offset="100%" stop-color="#FF8F00"/>
-    </linearGradient>
+    <mask
+       id="c">
+      <g
+         filter="url(#b)"
+         id="g14">
+        <rect
+           fill-opacity="0.1"
+           height="128"
+           width="128"
+           id="rect12"
+           x="0"
+           y="0" />
+      </g>
+    </mask>
+    <mask
+       id="d">
+      <g
+         filter="url(#b)"
+         id="g19">
+        <rect
+           fill-opacity="0.1"
+           height="128"
+           width="128"
+           id="rect17"
+           x="0"
+           y="0" />
+      </g>
+    </mask>
+    <clipPath
+       id="e">
+      <rect
+         height="152"
+         width="192"
+         id="rect22"
+         x="0"
+         y="0" />
+    </clipPath>
+    <g
+       id="f"
+       clip-path="url(#e)">
+      <path
+         d="m 34,50 v 68 h 70 c 4.43359,0 8,-3.56641 8,-8 V 58 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
+         id="path25" />
+    </g>
+    <clipPath
+       id="g">
+      <rect
+         height="128"
+         width="128"
+         id="rect28"
+         x="0"
+         y="0" />
+    </clipPath>
+    <clipPath
+       id="h">
+      <rect
+         height="128"
+         width="128"
+         id="rect31"
+         x="0"
+         y="0" />
+    </clipPath>
+    <linearGradient
+       xlink:href="#a"
+       id="linearGradient331"
+       gradientUnits="userSpaceOnUse"
+       x1="92.999458"
+       y1="71.000198"
+       x2="100.99946"
+       y2="71.000198" />
   </defs>
-
-  <!-- 1. Notebook Component with Drop Shadow -->
-  <g filter="url(#bookShadow)">
-    <!-- Back Cover (Base) -->
-    <path
-       d="M 24,32 L 24,106 C 24,110.4 27.6,114 32,114 L 96,114 C 100.4,114 104,110.4 104,106 L 104,40 C 104,35.6 100.4,32 96,32 Z"
-       fill="url(#backCoverGrad)" />
-
-    <!-- Exposed Paper Sheets Stack (Bottom edge, matching Iotas anatomy) -->
-    <path
-       d="M 26,82 L 102,82 L 102,102 C 102,106.5 98,108.5 94,108.5 L 26,108.5 Z"
-       fill="url(#paperEdgeGrad)" />
-
-    <!-- Paper sheet line details for tactile realism -->
-    <line x1="28" y1="88" x2="98" y2="88" stroke="#D1CAB8" stroke-width="0.75" opacity="0.6"/>
-    <line x1="28" y1="94" x2="99" y2="94" stroke="#D1CAB8" stroke-width="0.75" opacity="0.6"/>
-    <line x1="28" y1="100" x2="97" y2="100" stroke="#D1CAB8" stroke-width="0.75" opacity="0.6"/>
-
-    <!-- Bookmark Ribbon (Emerging from bottom pages with swallowtail notch) -->
-    <path
-       d="M 37,100 L 51,100 L 51,123 L 44,117 L 37,123 Z"
-       fill="url(#ribbonGrad)" />
-    <!-- Ribbon top shadow crease -->
-    <path
-       d="M 37,100 L 51,100 L 51,103 L 37,103 Z"
-       fill="#BF360C"
-       opacity="0.45" />
-
-    <!-- Elastic Strap Bottom Loop (Behind front cover, over pages) -->
-    <rect x="80" y="98" width="8" height="14" rx="1" fill="#1F0745" />
-
-    <!-- Front Cover (The main notebook face) -->
-    <path
-       d="M 24,8 L 96,8 C 100.4,8 104,11.6 104,16 L 104,90 C 104,94.4 100.4,98 96,98 L 24,98 Z"
-       fill="url(#frontCoverGrad)" />
-    <!-- Front Cover Sheen & Bevel Highlight -->
-    <path
-       d="M 24,8 L 96,8 C 100.4,8 104,11.6 104,16 L 104,90 C 104,94.4 100.4,98 96,98 L 24,98 Z"
-       fill="url(#coverSheen)" />
-
-    <!-- Spine Highlight (Left edge) -->
-    <line x1="25" y1="9" x2="25" y2="97" stroke="#FFFFFF" stroke-width="1.2" opacity="0.3" stroke-linecap="round"/>
-    <line x1="27" y1="9" x2="27" y2="97" stroke="#1F0745" stroke-width="1.2" opacity="0.25"/>
-
-    <!-- Subtle Stitched / Embossed Margin Line -->
-    <line x1="33" y1="12" x2="33" y2="94" stroke="#8E65FF" stroke-width="0.8" stroke-dasharray="2 2" opacity="0.5"/>
-
-    <!-- Subtle Gold Foil Stilo Monogram Stamp on cover -->
-    <circle cx="56" cy="50" r="14" fill="#5E35B1" opacity="0.3" />
-    <circle cx="56" cy="50" r="13" stroke="#FFD54F" stroke-width="0.75" opacity="0.4" fill="none"/>
-    <path d="M 52,46 C 52,43 60,43 60,47 C 60,51 52,50 52,54 C 52,57 60,57 60,54" stroke="#FFD54F" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.6"/>
-
-    <!-- Elastic Strap on Front Cover -->
-    <rect x="80" y="8" width="8" height="90" fill="url(#strapGrad)" />
-    <!-- Strap subtle edge sheen -->
-    <line x1="81" y1="8" x2="81" y2="98" stroke="#FFFFFF" stroke-width="0.6" opacity="0.3"/>
-    <line x1="87" y1="8" x2="87" y2="98" stroke="#000000" stroke-width="0.6" opacity="0.35"/>
-    <!-- Strap gold buckle / clip -->
-    <rect x="79" y="47" width="10" height="6" rx="1.5" fill="url(#goldTrim)" />
-    <rect x="81" y="48.5" width="6" height="3" rx="0.5" fill="#5D4037" />
-  </g>
-
-  <!-- 2. Stylish Stilo Stylus Character resting on notebook -->
-  <g transform="rotate(-28, 72, 54)" filter="url(#penShadow)">
-    <!-- Stylus Barrel -->
-    <rect x="65" y="16" width="14" height="48" rx="7" fill="url(#penBody)"/>
-    <rect x="66" y="17" width="2.5" height="46" rx="1" fill="#FFFFFF" opacity="0.45"/>
-
-    <!-- Cute Stylus Face (Mascot charm) -->
-    <circle cx="69" cy="30" r="1.4" fill="#2E114D"/>
-    <circle cx="75" cy="30" r="1.4" fill="#2E114D"/>
-    <circle cx="69.4" cy="29.6" r="0.5" fill="#FFFFFF"/>
-    <circle cx="75.4" cy="29.6" r="0.5" fill="#FFFFFF"/>
-    <!-- Rosy cheeks -->
-    <circle cx="67.5" cy="32.5" r="1.1" fill="#FF4081" opacity="0.6"/>
-    <circle cx="76.5" cy="32.5" r="1.1" fill="#FF4081" opacity="0.6"/>
-    <!-- Cute smile -->
-    <path d="M 71,32 Q 72,33.5 73,32" stroke="#2E114D" stroke-width="0.8" stroke-linecap="round" fill="none"/>
-
-    <!-- Gold Accent Ring -->
-    <rect x="65" y="60" width="14" height="4" rx="1" fill="url(#goldTrim)"/>
-
-    <!-- Fountain Nib Section -->
-    <path d="M 66,64 L 72,82 L 78,64 Z" fill="url(#goldTrim)"/>
-    <!-- Nib Slit -->
-    <line x1="72" y1="67" x2="72" y2="77" stroke="#BF360C" stroke-width="0.8" stroke-linecap="round"/>
-    <!-- Heart Breather Hole -->
-    <circle cx="72" cy="70" r="1" fill="#BF360C"/>
-
-    <!-- Pen Clip (Gold) -->
-    <rect x="70.5" y="12" width="3" height="4" rx="1" fill="url(#goldTrim)"/>
-    <rect x="66" y="16" width="2" height="15" rx="1" fill="url(#goldTrim)"/>
-    <circle cx="67" cy="31" r="1.2" fill="url(#goldTrim)"/>
-  </g>
-
-  <!-- Specular Sparkle on Nib -->
-  <path d="M 96,44 L 97,46.5 L 99.5,47.5 L 97,48.5 L 96,51 L 95,48.5 L 92.5,47.5 L 95,46.5 Z" fill="#FFF9C4" opacity="0.85"/>
+  <path
+     d="m 24,32 v 78 h 72 c 4.43359,0 8,-3.56641 8,-8 V 40 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
+     fill="#532499"
+     id="path75" />
+  <path
+     d="m 26,108 h 70 c 6,0 6,-6 6,-6 V 82.050781 L 26,82 Z m 0,0"
+     fill="url(#a)"
+     id="path77"
+     style="fill:url(#linearGradient331)" />
+  <use
+     mask="url(#c)"
+     transform="translate(-8,-16)"
+     xlink:href="#f"
+     id="use79" />
+  <path
+     d="m 24,32 v 68 h 72 c 4.43359,0 8,-3.566406 8,-8 V 40 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
+     fill="#532499"
+     id="path81" />
+  <path
+     d="m 24,8 v 90 h 72 c 4.43359,0 8,-3.566406 8,-8 V 16 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
+     fill="#7852ff"
+     id="path83" />
+  <path
+     d="m 80,8 h 8 v 90 h -8 z m 0,0"
+     fill="#3a1670"
+     id="path85" />
+  <path
+     d="m 80,98 h 8 v 12 h -8 z m 0,0"
+     fill="#260e4a"
+     id="path87" />
+  <path
+     d="m 36,104 h 16 v 20 l -8,-8 -8,8 z m 0,0"
+     fill="#1c71d8"
+     id="path89" />
+  <path
+     d="m 36,102 h 16 v 6 H 36 Z m 0,0"
+     fill="#3584e4"
+     id="path91" />
 </svg>

@@ -123,13 +123,8 @@ class StiloWindow(Adw.ApplicationWindow):
         self.set_default_size(w, h)
         if self.config_manager.get_window_maximized():
             self.maximize()
-
-        # Session memory: load last note if present
-        last_note_id = self.config_manager.get_last_opened_note_id()
-        if last_note_id:
-            note = self.db.get_note(last_note_id)
-            if note and not note.is_trashed:
-                self.open_note(note, immediate=True)
+        # Always start on All Notes view (do not auto-open or create notes on launch)
+        self.config_manager.set_last_opened_note_id("")
 
     def _on_close_request(self, _win):
         # Save window geometry
@@ -137,11 +132,6 @@ class StiloWindow(Adw.ApplicationWindow):
         h = self.get_height()
         self.config_manager.set_window_size(w, h)
         self.config_manager.set_window_maximized(self.is_maximized())
-
-        # Save last open note
-        if self.editor.current_note:
-            self.config_manager.set_last_opened_note_id(self.editor.current_note.id)
-
         return False
 
     def open_note(self, note: Note, immediate: bool = False):
