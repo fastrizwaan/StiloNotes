@@ -9,6 +9,12 @@
   Combines the clean, thoughtful architecture and UI of <a href="https://gitlab.gnome.org/World/iotas">Iotas</a> with the dynamic WebKit live Markdown-to-HTML rendering engine of <a href="https://github.com/fastrizwaan/TeddyNotes">TeddyNotes</a>.
 </p>
 
+<p align="center">
+  <img src="https://github.com/fastrizwaan/StiloNotes/releases/download/1.0.0/stilonotes.png" alt="Stilo Notes Main Window" width="48%">
+  <img src="https://github.com/fastrizwaan/StiloNotes/releases/download/1.0.0/Welcome.png" alt="Stilo Notes Welcome View" width="48%">
+</p>
+
+
 ---
 
 ## ✨ Features
@@ -83,7 +89,7 @@ Run the installed Flatpak:
 flatpak run io.github.fastrizwaan.StiloNotes
 ```
 
-### Flatapk bundle
+### Flatpak bundle
 ```bash
 flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNotes.flatpak io.github.fastrizwaan.StiloNotes
 
