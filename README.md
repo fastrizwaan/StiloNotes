@@ -75,12 +75,18 @@ Stilo Notes is built with Flatpak support using the `org.gnome.Platform` and `or
 
 Or using `flatpak-builder` directly:
 ```bash
-flatpak-builder --user --install --force-clean flatpak/build-dir flatpak/io.github.fastrizwaan.StiloNotes.yaml
+flatpak-builder --user --install --disable-rofiles-fuse --force-clean flatpak/build-dir flatpak/io.github.fastrizwaan.StiloNotes.yaml
 ```
 
 Run the installed Flatpak:
 ```bash
 flatpak run io.github.fastrizwaan.StiloNotes
+```
+
+### Flatapk bundle
+```bash
+flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNotes.flatpak io.github.fastrizwaan.StiloNotes
+
 ```
 
 ---
