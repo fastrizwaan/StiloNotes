@@ -94,11 +94,30 @@ class ConfigManager:
             self.db.set_setting("last_category", cat)
 
     def get_theme_mode(self) -> str:
-        """Return 'system', 'light', or 'dark'."""
+        """Return 'follow', 'light', or 'dark'."""
         if self.db:
-            return self.db.get_setting("theme_mode", "system")
-        return "system"
+            mode = self.db.get_setting("theme_mode", "follow")
+            if mode == "system":
+                return "follow"
+            return mode
+        return "follow"
 
     def set_theme_mode(self, mode: str):
+        if mode == "system":
+            mode = "follow"
         if self.db:
             self.db.set_setting("theme_mode", mode)
+
+    def get_font_size(self) -> int:
+        """Return font size in pt (default 16)."""
+        if self.db:
+            try:
+                return int(self.db.get_setting("font_size", "16"))
+            except Exception:
+                pass
+        return 16
+
+    def set_font_size(self, size: int):
+        if self.db:
+            self.db.set_setting("font_size", str(size))
+

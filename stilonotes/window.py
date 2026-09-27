@@ -104,7 +104,7 @@ class StiloWindow(Adw.ApplicationWindow):
         elif mode == "light":
             style_manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
         else:
-            style_manager.set_color_scheme(Adw.ColorScheme.PREFER_LIGHT)
+            style_manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
 
         is_dark = style_manager.get_dark()
         self.editor.update_theme(is_dark)
@@ -118,6 +118,8 @@ class StiloWindow(Adw.ApplicationWindow):
         style_manager.set_color_scheme(scheme)
         self.config_manager.set_theme_mode("dark" if is_dark else "light")
         self.editor.update_theme(is_dark)
+        if hasattr(self.editor, "theme_selector"):
+            self.editor.theme_selector.populate()
 
     def _restore_session(self):
         w, h = self.config_manager.get_window_size()

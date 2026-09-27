@@ -5,6 +5,8 @@ from typing import Optional
 from gi.repository import Adw, Gtk, Gio, GLib, GObject
 
 from stilonotes.database import NoteDatabase
+from stilonotes.config_manager import ConfigManager
+from stilonotes.theme_selector import ThemeSelector
 from stilonotes.notes_list import NotesList
 from stilonotes.sidebar import Sidebar
 from stilonotes.selection_header_bar import SelectionHeaderBar
@@ -23,6 +25,7 @@ class IndexView(Adw.BreakpointBin):
         super().__init__()
         self.set_size_request(360, 100)
         self.db = db
+        self.config_manager = ConfigManager.get_default(self.db)
 
         self.active_filter_type = "all"
         self.active_category_name = ""
@@ -84,6 +87,8 @@ class IndexView(Adw.BreakpointBin):
         self.main_menu_btn.set_icon_name("open-menu-symbolic")
         self.main_menu_btn.set_tooltip_text("Main Menu")
         self.main_menu_btn.set_menu_model(self._create_main_menu())
+        self.theme_selector = ThemeSelector(self.config_manager)
+        self.main_menu_btn.get_popover().add_child(self.theme_selector, "theme")
         self.main_menu_btn.set_visible(False)
         self.main_header.pack_end(self.main_menu_btn)
 
@@ -188,9 +193,17 @@ class IndexView(Adw.BreakpointBin):
 
     def _create_main_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
-        menu.append("Preferences", "app.preferences")
-        menu.append("Keyboard Shortcuts", "app.shortcuts")
-        menu.append("About Stilo Notes", "app.about")
+        s_theme = Gio.Menu()
+        item_theme = Gio.MenuItem.new(None, None)
+        item_theme.set_attribute_value("custom", GLib.Variant.new_string("theme"))
+        s_theme.append_item(item_theme)
+        menu.append_section(None, s_theme)
+
+        s_app = Gio.Menu()
+        s_app.append("Preferences", "app.preferences")
+        s_app.append("Keyboard Shortcuts", "app.shortcuts")
+        s_app.append("About Stilo Notes", "app.about")
+        menu.append_section(None, s_app)
         return menu
 
     def refresh(self, update_sidebar: bool = True):

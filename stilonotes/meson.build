@@ -33,6 +33,7 @@ sources = [
   'editor.py',
   'editor_html.py',
   'exporter.py',
+  'font_size_selector.py',
   'index.py',
   'main.py',
   'markdown_utils.py',
@@ -40,6 +41,7 @@ sources = [
   'notes_list.py',
   'selection_header_bar.py',
   'sidebar.py',
+  'theme_selector.py',
   'window.py',
 ]
 

@@ -7,6 +7,7 @@ from gi.repository import Adw, Gtk, Gio, Gdk, GLib
 
 from stilonotes.const import APP_ID, APP_NAME, VERSION, get_assets_path
 from stilonotes.database import NoteDatabase
+from stilonotes.config_manager import ConfigManager
 from stilonotes.window import StiloWindow
 
 class StiloApplication(Adw.Application):
@@ -28,6 +29,7 @@ class StiloApplication(Adw.Application):
     def do_activate(self):
         if not self.db:
             self.db = NoteDatabase()
+        self.config_manager = ConfigManager.get_default(self.db)
 
         if not self.window:
             self.window = StiloWindow(self, self.db)
@@ -107,10 +109,16 @@ class StiloApplication(Adw.Application):
             idx = row.get_selected()
             if idx == 1:
                 style_manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+                if hasattr(self, "config_manager"):
+                    self.config_manager.set_theme_mode("light")
             elif idx == 2:
                 style_manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+                if hasattr(self, "config_manager"):
+                    self.config_manager.set_theme_mode("dark")
             else:
-                style_manager.set_color_scheme(Adw.ColorScheme.PREFER_LIGHT)
+                style_manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
+                if hasattr(self, "config_manager"):
+                    self.config_manager.set_theme_mode("follow")
 
         theme_row.connect("notify::selected", on_theme_changed)
         group.add(theme_row)
@@ -205,6 +213,41 @@ class StiloApplication(Adw.Application):
                 <property name="visible">True</property>
                 <property name="accelerator">&lt;Primary&gt;i</property>
                 <property name="title">Italic text</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;z</property>
+                <property name="title">Undo</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;y</property>
+                <property name="title">Redo</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;plus</property>
+                <property name="title">Zoom in / Increase font</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;minus</property>
+                <property name="title">Zoom out / Decrease font</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;0</property>
+                <property name="title">Reset font size</property>
               </object>
             </child>
             <child>

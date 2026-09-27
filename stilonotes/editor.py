@@ -13,6 +13,9 @@ gi.require_version('WebKit', '6.0')
 from gi.repository import Adw, Gtk, WebKit, Gio, GLib, GObject, Gdk, Pango
 
 from stilonotes.category_header_bar import CategoryHeaderBar
+from stilonotes.config_manager import ConfigManager
+from stilonotes.theme_selector import ThemeSelector
+from stilonotes.font_size_selector import FontSizeSelector
 from stilonotes.models import Note
 from stilonotes.editor_html import get_editor_html_page
 from stilonotes.markdown_utils import format_relative_date, html_to_markdown
@@ -100,6 +103,11 @@ class FormattingBar(Gtk.Box):
         parent_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         parent_box.set_halign(Gtk.Align.CENTER)
         hbar.set_title_widget(parent_box)
+
+        # 0. Undo & Redo
+        self._add_btn(parent_box, "edit-undo-symbolic", "Undo (Ctrl+Z)", "undo")
+        self._add_btn(parent_box, "edit-redo-symbolic", "Redo (Ctrl+Y)", "redo")
+        self._add_sep(parent_box)
 
         # 1. Heading menu button
         heading_menu = Gtk.MenuButton()
@@ -331,8 +339,11 @@ class NoteEditor(Gtk.Box):
     def __init__(self, db):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.db = db
+        self.config_manager = ConfigManager.get_default(self.db)
         self.current_note: Optional[Note] = None
-        self.is_dark_mode = False
+        style_manager = Adw.StyleManager.get_default()
+        self.is_dark_mode = style_manager.get_dark()
+        style_manager.connect("notify::dark", lambda sm, _p: self.update_theme(sm.get_dark()))
         self.latest_stats = {"words": 0, "chars": 0, "paragraphs": 0, "readTime": "1 min"}
         self._toolbar_reveal_timeout = None
         self._pending_save_data = None
@@ -395,6 +406,13 @@ class NoteEditor(Gtk.Box):
         self.more_btn.set_icon_name("view-more-symbolic")
         self.more_btn.set_tooltip_text("Editor Menu")
         self.more_btn.set_menu_model(self._create_more_menu())
+
+        more_popover = self.more_btn.get_popover()
+        self.theme_selector = ThemeSelector(self.config_manager, on_theme_changed=self.update_theme)
+        more_popover.add_child(self.theme_selector, "theme")
+        self.font_size_selector = FontSizeSelector(self.config_manager, on_font_size_changed=self.update_font_size)
+        more_popover.add_child(self.font_size_selector, "fontsize")
+
         self.main_header_bar.pack_end(self.more_btn)
 
         # Star / Favorites toggle button
@@ -437,7 +455,8 @@ class NoteEditor(Gtk.Box):
 
         self.webview.connect("load-changed", self._on_webview_load_changed)
 
-        initial_html = get_editor_html_page("", self.is_dark_mode)
+        font_size = self.config_manager.get_font_size()
+        initial_html = get_editor_html_page("", self.is_dark_mode, font_size)
         assets_uri = f"file://{get_assets_path()}/"
         self.webview.load_html(initial_html, assets_uri)
 
@@ -563,10 +582,14 @@ class NoteEditor(Gtk.Box):
     def _on_webview_load_changed(self, _wv, event):
         if event == WebKit.LoadEvent.FINISHED:
             self._page_loaded = True
+            font_size = self.config_manager.get_font_size()
+            self.update_font_size(font_size)
             if self._pending_load_note:
                 note = self._pending_load_note
                 self._pending_load_note = None
                 self.load_note(note)
+            else:
+                self.webview.evaluate_javascript("if (window.selectUntitledTitle) { window.selectUntitledTitle(); }", -1, None, None, None, None)
 
     # ── WebKit message handlers ───────────────────────────────────────────
 
@@ -637,8 +660,19 @@ class NoteEditor(Gtk.Box):
     def _create_more_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
 
+        s_theme = Gio.Menu()
+        item_theme = Gio.MenuItem.new(None, None)
+        item_theme.set_attribute_value("custom", GLib.Variant.new_string("theme"))
+        s_theme.append_item(item_theme)
+        menu.append_section(None, s_theme)
+
+        s_font = Gio.Menu()
+        item_font = Gio.MenuItem.new(None, None)
+        item_font.set_attribute_value("custom", GLib.Variant.new_string("fontsize"))
+        s_font.append_item(item_font)
+        menu.append_section(None, s_font)
+
         s1 = Gio.Menu()
-        s1.append("Toggle Dark Theme",  "editor.toggle-theme")
         s1.append("Note Statistics",    "editor.show-stats")
         menu.append_section(None, s1)
 
@@ -671,6 +705,11 @@ class NoteEditor(Gtk.Box):
             a.connect("activate", lambda _a, _p: cb())
             ag.add_action(a)
 
+        act("undo", lambda: self._exec_js_format("undo"))
+        act("redo", lambda: self._exec_js_format("redo"))
+        act("increase-font-size", lambda: self.font_size_selector.increase())
+        act("decrease-font-size", lambda: self.font_size_selector.decrease())
+        act("reset-font-size",    lambda: self.font_size_selector.reset())
         act("rename-title",  lambda: self._on_title_clicked(None))
         act("edit-category", self.enter_edit_category)
         act("toggle-pin",    self._on_toggle_pin)
@@ -683,6 +722,14 @@ class NoteEditor(Gtk.Box):
         act("delete",        self._on_delete)
 
         self.insert_action_group("editor", ag)
+
+        app = window.get_application()
+        if app:
+            app.set_accels_for_action("editor.undo", ["<Control>z"])
+            app.set_accels_for_action("editor.redo", ["<Control>y", "<Control><Shift>z"])
+            app.set_accels_for_action("editor.increase-font-size", ["<Control>plus", "<Control>equal"])
+            app.set_accels_for_action("editor.decrease-font-size", ["<Control>minus", "<Control>underscore"])
+            app.set_accels_for_action("editor.reset-font-size", ["<Control>0"])
 
     # ── Category editing ──────────────────────────────────────────────────
 
@@ -734,7 +781,8 @@ class NoteEditor(Gtk.Box):
             html_content = f"<h1>{note.title}</h1><div><br></div>"
 
         escaped_html = json.dumps(html_content)
-        script = f"if (window.setEditorContent) {{ window.setEditorContent({escaped_html}); }}"
+        is_untitled = bool(note.title == "Untitled Note" or not note.title.strip())
+        script = f"if (window.setEditorContent) {{ window.setEditorContent({escaped_html}, {'true' if is_untitled else 'false'}); }}"
         self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
         self._show_toolbar()
@@ -746,6 +794,12 @@ class NoteEditor(Gtk.Box):
         bg_rgba.parse("#24252A" if is_dark else "#FFFFFF")
         self.webview.set_background_color(bg_rgba)
         script = f"if (window.setEditorTheme) {{ window.setEditorTheme({'true' if is_dark else 'false'}); }}"
+        self.webview.evaluate_javascript(script, -1, None, None, None, None)
+        if hasattr(self, "theme_selector"):
+            self.theme_selector.populate()
+
+    def update_font_size(self, size: int):
+        script = f"if (window.setFontSize) {{ window.setFontSize({size}); }}"
         self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
     def _on_toggle_theme(self, _btn):

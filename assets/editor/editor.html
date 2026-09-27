@@ -6,6 +6,7 @@
   <title>Stilo Notes Editor</title>
   <style>
     :root {
+      --base-font-size: 16pt;
       --font-stack: -apple-system, BlinkMacSystemFont, "Cantarell", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --font-mono: "JetBrains Mono", "Fira Code", "Source Code Pro", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       --transition-speed: 0.2s;
@@ -73,6 +74,39 @@
       --toolbar-btn-active: #3C3E47;
     }
 
+    /* Auto dark theme when system prefers dark and light-theme not forced */
+    @media (prefers-color-scheme: dark) {
+      html:not(.light-theme) {
+        --bg-color: #1E1E22;
+        --editor-bg: #24252A;
+        --text-color: #E8E9EC;
+        --text-secondary: #9DA0A8;
+        --heading-color: #FFFFFF;
+        --border-color: #35363D;
+        --accent-color: #C77DFF;
+        --accent-hover: #DA9EFE;
+        --accent-soft: rgba(199, 125, 255, 0.15);
+        --code-bg: #1A1A1E;
+        --code-border: #2F3038;
+        --code-text: #FF758F;
+        --quote-border: #C77DFF;
+        --quote-bg: #2B2636;
+        --table-border: #35373F;
+        --table-header-bg: #2B2C33;
+        --task-completed: #6E717B;
+        --tag-bg: #3B2A54;
+        --tag-text: #E0AAFF;
+        --tag-hover: #4E3770;
+        --highlight-bg: #594A1C;
+        --hr-color: #35363D;
+        --toolbar-bg: rgba(36, 37, 42, 0.94);
+        --toolbar-border: #44464F;
+        --toolbar-shadow: 0 4px 22px rgba(0, 0, 0, 0.35);
+        --toolbar-btn-hover: #32333A;
+        --toolbar-btn-active: #3C3E47;
+      }
+    }
+
     * {
       box-sizing: border-box;
     }
@@ -83,7 +117,7 @@
       background-color: var(--editor-bg);
       color: var(--text-color);
       font-family: var(--font-stack);
-      font-size: 16px;
+      font-size: var(--base-font-size, 16pt);
       line-height: 1.65;
       -webkit-font-smoothing: antialiased;
       transition: background-color var(--transition-speed), color var(--transition-speed);
@@ -383,9 +417,131 @@
     let imgStartX = 0;
     let imgStartWidth = 0;
 
+    // ==========================================
+    // Undo / Redo Stack Management
+    // ==========================================
+    let undoStack = [];
+    let redoStack = [];
+    let isUndoRedoAction = false;
+    let typingDebounceTimer = null;
+    let lastPushedHtml = '';
+
+    function initUndoStack() {
+      const current = editor.innerHTML;
+      undoStack = [current];
+      redoStack = [];
+      lastPushedHtml = current;
+    }
+
+    function saveUndoState() {
+      if (isUndoRedoAction || isUpdatingFromPython) return;
+      const current = editor.innerHTML;
+      if (current === lastPushedHtml) return;
+
+      undoStack.push(current);
+      lastPushedHtml = current;
+      if (undoStack.length > 100) {
+        undoStack.shift();
+      }
+      redoStack = [];
+    }
+
+    function restoreCursorAtEnd() {
+      try {
+        const sel = window.getSelection();
+        if (sel) {
+          const range = document.createRange();
+          range.selectNodeContents(editor);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      } catch (e) {
+        console.error("Cursor restore error:", e);
+      }
+    }
+
+    function performUndo() {
+      const current = editor.innerHTML;
+      // If there are uncommitted typing changes not yet pushed to undoStack
+      if (undoStack.length > 0 && current !== undoStack[undoStack.length - 1]) {
+        redoStack.push(current);
+        const stateToRestore = undoStack[undoStack.length - 1];
+        isUndoRedoAction = true;
+        editor.innerHTML = stateToRestore;
+        lastPushedHtml = stateToRestore;
+        initAllHandles();
+        notifyChange();
+        isUndoRedoAction = false;
+        editor.focus();
+        restoreCursorAtEnd();
+        return true;
+      }
+
+      if (undoStack.length > 1) {
+        isUndoRedoAction = true;
+        const currentState = undoStack.pop();
+        redoStack.push(currentState);
+
+        const prevState = undoStack[undoStack.length - 1];
+        editor.innerHTML = prevState;
+        lastPushedHtml = prevState;
+        initAllHandles();
+        notifyChange();
+        isUndoRedoAction = false;
+        editor.focus();
+        restoreCursorAtEnd();
+        return true;
+      }
+      return false;
+    }
+
+    function performRedo() {
+      if (redoStack.length > 0) {
+        isUndoRedoAction = true;
+        const nextState = redoStack.pop();
+        undoStack.push(nextState);
+        lastPushedHtml = nextState;
+
+        editor.innerHTML = nextState;
+        initAllHandles();
+        notifyChange();
+        isUndoRedoAction = false;
+        editor.focus();
+        restoreCursorAtEnd();
+        return true;
+      }
+      return false;
+    }
+
+    // ==========================================
+    // Title Selection for New / Untitled Note
+    // ==========================================
+    function selectUntitledTitle() {
+      requestAnimationFrame(() => {
+        const h1 = editor.querySelector('h1');
+        if (h1) {
+          const text = h1.textContent.trim();
+          if (text === 'Untitled Note' || text === 'Untitled' || text === '') {
+            editor.focus();
+            const range = document.createRange();
+            range.selectNodeContents(h1);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
+      });
+    }
+
     window.addEventListener('load', () => {
       setupEventHandlers();
       initAllHandles();
+      initUndoStack();
+      const h1 = editor.querySelector('h1');
+      if (h1 && (h1.textContent.trim() === 'Untitled Note' || h1.textContent.trim() === 'Untitled')) {
+        selectUntitledTitle();
+      }
     });
 
     function setupEventHandlers() {
@@ -727,6 +883,21 @@
     }
 
     function onKeyDown(e) {
+      // Undo & Redo shortcuts
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        if (!e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+          e.preventDefault();
+          e.stopPropagation();
+          performUndo();
+          return;
+        } else if ((e.key === 'y' || e.key === 'Y') || (e.shiftKey && (e.key === 'z' || e.key === 'Z'))) {
+          e.preventDefault();
+          e.stopPropagation();
+          performRedo();
+          return;
+        }
+      }
+
       // 1. Tab key
       if (e.key === 'Tab') {
         const cell = getClosestElement('td, th');
@@ -874,11 +1045,21 @@
     }
 
     function onEditorInput(e) {
-      if (isUpdatingFromPython) return;
+      if (isUpdatingFromPython || isUndoRedoAction) return;
 
       const block = getClosestBlockElement();
       if (block && (e.data === ' ' || e.data === '`' || e.data === '*' || e.data === '_' || e.data === '~' || e.data === '=')) {
         convertMarkdownInBlock(block);
+      }
+
+      // Record undo state for typing bursts
+      if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak' || e.data === ' ' || e.data === '\n') {
+        saveUndoState();
+      } else {
+        clearTimeout(typingDebounceTimer);
+        typingDebounceTimer = setTimeout(() => {
+          saveUndoState();
+        }, 400);
       }
 
       notifyChangeDebounced();
@@ -887,6 +1068,7 @@
     function onEditorClick(e) {
       // Checkbox click
       if (e.target.classList.contains('stilo-checkbox')) {
+        saveUndoState();
         const task = e.target.closest('.stilo-task');
         if (task) {
           if (e.target.checked) {
@@ -1560,13 +1742,21 @@
     }
 
     // Window methods called from Python
-    window.setEditorContent = function(html) {
+    window.setEditorContent = function(html, selectUntitled = false) {
       isUpdatingFromPython = true;
       editor.innerHTML = html || '<h1>Untitled Note</h1><div><br></div>';
       initAllHandles();
       lastSavedHtml = getCleanHtml();
       lastSavedTitle = getTitle();
       isUpdatingFromPython = false;
+
+      initUndoStack();
+
+      const h1 = editor.querySelector('h1');
+      const isUntitledText = h1 && (h1.textContent.trim() === 'Untitled Note' || h1.textContent.trim() === 'Untitled');
+      if (selectUntitled || isUntitledText) {
+        selectUntitledTitle();
+      }
     };
 
     window.flushEditor = function() {
@@ -1582,14 +1772,49 @@
       document.documentElement.className = isDark ? 'dark-theme' : 'light-theme';
     };
 
-    window.insertCustomTable = insertCustomTable;
-    window.addTableRow = addTableRow;
-    window.addTableColumn = addTableColumn;
-    window.deleteTableRow = deleteTableRow;
-    window.deleteTableColumn = deleteTableColumn;
-    window.deleteActiveTable = deleteActiveTable;
+    window.setFontSize = function(sizePt) {
+      document.documentElement.style.setProperty('--base-font-size', sizePt + 'pt');
+    };
+
+    window.performUndo = performUndo;
+    window.performRedo = performRedo;
+    window.selectUntitledTitle = selectUntitledTitle;
+
+    window.insertCustomTable = function(rows = 3, cols = 3, hasHeader = true) {
+      saveUndoState();
+      insertCustomTable(rows, cols, hasHeader);
+    };
+    window.addTableRow = function() {
+      saveUndoState();
+      addTableRow();
+    };
+    window.addTableColumn = function() {
+      saveUndoState();
+      addTableColumn();
+    };
+    window.deleteTableRow = function() {
+      saveUndoState();
+      deleteTableRow();
+    };
+    window.deleteTableColumn = function() {
+      saveUndoState();
+      deleteTableColumn();
+    };
+    window.deleteActiveTable = function() {
+      saveUndoState();
+      deleteActiveTable();
+    };
 
     window.execFormatting = function(command, value = null) {
+      if (command === 'undo') {
+        performUndo();
+        return;
+      }
+      if (command === 'redo') {
+        performRedo();
+        return;
+      }
+      saveUndoState();
       if (command === 'heading1') applyHeading('h1');
       else if (command === 'heading2') applyHeading('h2');
       else if (command === 'heading3') applyHeading('h3');

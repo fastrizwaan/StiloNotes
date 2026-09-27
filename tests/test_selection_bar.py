@@ -8,6 +8,9 @@ from stilonotes.selection_header_bar import SelectionHeaderBar
 
 class TestSelectionHeaderBar(unittest.TestCase):
     def setUp(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
         self.bar = SelectionHeaderBar()
         self.note1 = Note(id="1", title="First Note", content_html="", content_markdown="", category="Personal")
         self.note2 = Note(id="2", title="Second Note", content_html="", content_markdown="", category="Work")

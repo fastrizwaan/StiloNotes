@@ -5,6 +5,8 @@ from typing import Optional
 from gi.repository import Adw, Gtk, Gio, GLib, GObject, Pango
 
 from stilonotes.database import NoteDatabase
+from stilonotes.config_manager import ConfigManager
+from stilonotes.theme_selector import ThemeSelector
 
 
 def _build_category_tree(categories):
@@ -46,6 +48,7 @@ class Sidebar(Adw.Bin):
     def __init__(self, db: NoteDatabase):
         super().__init__()
         self.db = db
+        self.config_manager = ConfigManager.get_default(self.db)
         self.active_filter_type = "all"
         self.active_category_name = ""
         self._updating = False
@@ -81,6 +84,8 @@ class Sidebar(Adw.Bin):
         self.menu_btn.set_icon_name("open-menu-symbolic")
         self.menu_btn.set_tooltip_text("Main Menu")
         self.menu_btn.set_menu_model(self._create_main_menu())
+        self.theme_selector = ThemeSelector(self.config_manager)
+        self.menu_btn.get_popover().add_child(self.theme_selector, "theme")
         self.header_bar.pack_end(self.menu_btn)
 
         self.toolbar_view.add_top_bar(self.header_bar)
@@ -103,9 +108,17 @@ class Sidebar(Adw.Bin):
 
     def _create_main_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
-        menu.append("Preferences",       "app.preferences")
-        menu.append("Keyboard Shortcuts","app.shortcuts")
-        menu.append("About Stilo Notes", "app.about")
+        s_theme = Gio.Menu()
+        item_theme = Gio.MenuItem.new(None, None)
+        item_theme.set_attribute_value("custom", GLib.Variant.new_string("theme"))
+        s_theme.append_item(item_theme)
+        menu.append_section(None, s_theme)
+
+        s_app = Gio.Menu()
+        s_app.append("Preferences",       "app.preferences")
+        s_app.append("Keyboard Shortcuts","app.shortcuts")
+        s_app.append("About Stilo Notes", "app.about")
+        menu.append_section(None, s_app)
         return menu
 
     def show_buttons(self, show_close: bool, show_menu: bool):

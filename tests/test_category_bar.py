@@ -8,6 +8,9 @@ from stilonotes.category_header_bar import CategoryHeaderBar
 
 class TestCategoryHeaderBar(unittest.TestCase):
     def setUp(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
         self.db = NoteDatabase(":memory:")
         self.bar = CategoryHeaderBar()
 
