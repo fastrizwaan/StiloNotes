@@ -43,6 +43,8 @@ RE_MD_BOLD_ITALIC = re.compile(r'\*\*\*([^*]+)\*\*\*')
 RE_MD_BOLD = re.compile(r'\*\*([^*]+)\*\*')
 RE_MD_ITALIC_STAR = re.compile(r'(?<!\*)\*([^*]+)\*(?!\*)')
 RE_MD_ITALIC_UNDER = re.compile(r'(?<!_)_([^_]+)_(?!_)')
+RE_MD_UNDERLINE = re.compile(r'&lt;u&gt;(.*?)&lt;/u&gt;', re.IGNORECASE)
+RE_MD_INS = re.compile(r'&lt;ins&gt;(.*?)&lt;/ins&gt;', re.IGNORECASE)
 RE_MD_HIGHLIGHT = re.compile(r'==([^=]+)==')
 RE_MD_STRIKE = re.compile(r'~~([^~]+)~~')
 RE_MD_CODE = re.compile(r'`([^`]+)`')
@@ -104,6 +106,7 @@ RE_HTM_B = re.compile(r'<b[^>]*>(.*?)</b>', re.DOTALL)
 RE_HTM_EM = re.compile(r'<em[^>]*>(.*?)</em>', re.DOTALL)
 RE_HTM_I = re.compile(r'<i[^>]*>(.*?)</i>', re.DOTALL)
 RE_HTM_U = re.compile(r'<u[^>]*>(.*?)</u>', re.DOTALL)
+RE_HTM_INS = re.compile(r'<ins[^>]*>(.*?)</ins>', re.DOTALL)
 RE_HTM_DEL = re.compile(r'<del[^>]*>(.*?)</del>', re.DOTALL)
 RE_HTM_MARK = re.compile(r'<mark[^>]*>(.*?)</mark>', re.DOTALL)
 RE_HTM_CODE = re.compile(r'<code[^>]*>(.*?)</code>', re.DOTALL)
@@ -171,7 +174,7 @@ def strip_markdown(text: str) -> str:
     if not any(c in MD_SPECIAL_CHARS for c in text):
         return text.strip()
 
-    s = text
+    s = text.replace('\u200b', '')
     s = RE_HTML_TAGS.sub(' ', s)
     s = RE_HEADINGS.sub('', s)
     s = RE_TASK_BOXES.sub('', s)
@@ -245,6 +248,8 @@ def markdown_to_html(md_text: str) -> str:
         s = RE_MD_BOLD.sub(r'<strong>\1</strong>', s)
         s = RE_MD_ITALIC_STAR.sub(r'<em>\1</em>', s)
         s = RE_MD_ITALIC_UNDER.sub(r'<em>\1</em>', s)
+        s = RE_MD_UNDERLINE.sub(r'<u>\1</u>', s)
+        s = RE_MD_INS.sub(r'<u>\1</u>', s)
         s = RE_MD_HIGHLIGHT.sub(r'<mark class="stilo-highlight">\1</mark>', s)
         s = RE_MD_STRIKE.sub(r'<del>\1</del>', s)
         s = RE_MD_CODE.sub(r'<code class="stilo-inline-code">\1</code>', s)
@@ -507,7 +512,8 @@ def html_to_markdown(html_content: str) -> str:
     s = RE_HTM_B.sub(r'**\1**', s)
     s = RE_HTM_EM.sub(r'*\1*', s)
     s = RE_HTM_I.sub(r'*\1*', s)
-    s = RE_HTM_U.sub(r'_\1_', s)
+    s = RE_HTM_U.sub(r'@@STILO_U_START@@\1@@STILO_U_END@@', s)
+    s = RE_HTM_INS.sub(r'@@STILO_U_START@@\1@@STILO_U_END@@', s)
     s = RE_HTM_DEL.sub(r'~~\1~~', s)
     s = RE_HTM_MARK.sub(r'==\1==', s)
     s = RE_HTM_CODE.sub(r'`\1`', s)
@@ -521,6 +527,8 @@ def html_to_markdown(html_content: str) -> str:
     # Strip remaining tags and unescape
     s = RE_HTML_TAGS.sub('', s)
     s = html.unescape(s)
+    s = s.replace('@@STILO_U_START@@', '<u>').replace('@@STILO_U_END@@', '</u>')
+    s = s.replace('\u200b', '')
 
     # Collapse blank lines
     s = RE_HTM_MULTI_NEWLINES.sub('\n\n', s)

@@ -448,6 +448,8 @@ class NoteEditor(Gtk.Box):
         try:
             settings.set_enable_javascript(True)
             settings.set_enable_developer_extras(True)
+            if hasattr(settings, "set_enable_write_console_messages_to_stdout"):
+                settings.set_enable_write_console_messages_to_stdout(True)
         except Exception:
             pass
 

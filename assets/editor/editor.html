@@ -392,6 +392,7 @@
 
 
   <script>
+    window.addEventListener('error', (e) => console.error('StiloNotes JS Error:', e.message, e.filename, e.lineno, e.error));
     const editor = document.getElementById('editor');
     let saveTimeout = null;
     let isUpdatingFromPython = false;
@@ -777,108 +778,140 @@
 
     // ==========================================
     // Dynamic Markdown Parsing on Typing
-    // ==========================================
+    let isConvertingMarkdown = false;
 
     function hasMarkdownSyntax(str) {
       if (!str) return false;
-      return /\*\*|~~|==|`|(?<!\*)\*(?!\*)|(?<!_)_(?!_)|(?:^|\s)#[a-zA-Z0-9_\-]+|\[.+\]\(.+\)/.test(str);
+      return /\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\[.+\]\(.+\)/i.test(str);
     }
 
     function formatMarkdownInText(str) {
       let s = str;
       s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-      // 1. Triple asterisks: ***bold italic***
-      s = s.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+      // 1. Triple asterisks or underscores: ***bold italic*** or ___bold italic___
+      s = s.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+      s = s.replace(/___([^_\n]+?)___/g, '<strong><em>$1</em></strong>');
 
-      // 2. Double asterisks: **bold**
-      s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      // 2. Double asterisks or underscores: **bold** or __bold__ (allows spaces: ** bold **)
+      s = s.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/__(?!_)([^_\n]+?)__(?!_)/g, '<strong>$1</strong>');
 
       // 3. Single asterisks or underscores: *italic* or _italic_
-      s = s.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
-      s = s.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
+      s = s.replace(/(?<!\*)\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)/g, '<em>$1</em>');
+      s = s.replace(/(?<!_)_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)/g, '<em>$1</em>');
 
-      // 4. Strikethrough: ~~strike~~
-      s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+      // 4. Underline: <u>underline</u> or <ins>underline</ins>
+      s = s.replace(/&lt;u&gt;([\s\S]+?)&lt;\/u&gt;/gi, '<u>$1</u>');
+      s = s.replace(/&lt;ins&gt;([\s\S]+?)&lt;\/ins&gt;/gi, '<u>$1</u>');
 
-      // 5. Highlight: ==highlight==
-      s = s.replace(/==([^=]+)==/g, '<mark class="stilo-highlight">$1</mark>');
+      // 5. Strikethrough: ~~strike~~
+      s = s.replace(/~~([^~\n]+?)~~/g, '<del>$1</del>');
 
-      // 6. Inline code: `code`
-      s = s.replace(/`([^`]+)`/g, '<code class="stilo-inline-code">$1</code>');
+      // 6. Highlight: ==highlight==
+      s = s.replace(/==([^=\n]+?)==/g, '<mark class="stilo-highlight">$1</mark>');
 
-      // 7. Markdown Link: [text](url)
+      // 7. Inline code: `code`
+      s = s.replace(/`([^`\n]+)`/g, '<code class="stilo-inline-code">$1</code>');
+
+      // 8. Markdown Link: [text](url)
       s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="stilo-link" target="_blank">$1</a>');
 
-      // 8. Tags: #tag (word characters and hyphens)
+      // 9. Tags: #tag (word characters and hyphens)
       s = s.replace(/(^|\s)#([a-zA-Z0-9_\-]+)/g, '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
 
       return s;
     }
 
     function convertMarkdownInBlock(block) {
-      if (!block) return;
+      if (!block || isConvertingMarkdown) return;
       if (block.tagName === 'PRE' || block.classList.contains('stilo-code-block')) return;
 
       const rawText = block.textContent;
       if (!hasMarkdownSyntax(rawText)) return;
 
-      const sel = window.getSelection();
-      let marker = null;
-      if (sel.rangeCount && block.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-        const range = sel.getRangeAt(0);
-        marker = document.createElement('span');
-        marker.id = '__stilo_cursor_marker__';
-        marker.style.display = 'none';
-        range.insertNode(marker);
-      }
-
-      // Process only text nodes
-      const textNodes = [];
-      const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
-      let n;
-      while (n = walk.nextNode()) {
-        if (n.parentNode && (n.parentNode.tagName === 'CODE' || n.parentNode.tagName === 'A' || n.parentNode.classList.contains('stilo-tag'))) {
-          continue;
+      isConvertingMarkdown = true;
+      try {
+        const sel = window.getSelection();
+        let marker = null;
+        if (sel.rangeCount && block.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+          const range = sel.getRangeAt(0);
+          marker = document.createElement('span');
+          marker.id = '__stilo_cursor_marker__';
+          marker.style.display = 'none';
+          range.insertNode(marker);
         }
-        textNodes.push(n);
-      }
 
-      let anyChanged = false;
-      for (const tn of textNodes) {
-        if (!tn.parentNode || !tn.textContent) continue;
-        if (!hasMarkdownSyntax(tn.textContent)) continue;
+        // Process only text nodes
+        const textNodes = [];
+        const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
+        let n;
+        while (n = walk.nextNode()) {
+          if (n.parentNode && (n.parentNode.tagName === 'CODE' || n.parentNode.tagName === 'A' || n.parentNode.classList.contains('stilo-tag'))) {
+            continue;
+          }
+          textNodes.push(n);
+        }
 
-        const formatted = formatMarkdownInText(tn.textContent);
-        if (formatted !== tn.textContent) {
-          try {
-            const frag = document.createRange().createContextualFragment(formatted);
-            tn.parentNode.replaceChild(frag, tn);
-            anyChanged = true;
-          } catch (e) {
-            console.error('Fragment replace error:', e);
+        let anyChanged = false;
+        for (const tn of textNodes) {
+          if (!tn.parentNode || !tn.textContent) continue;
+          if (!hasMarkdownSyntax(tn.textContent)) continue;
+
+          const formatted = formatMarkdownInText(tn.textContent);
+          if (formatted !== tn.textContent) {
+            try {
+              const frag = document.createRange().createContextualFragment(formatted);
+              tn.parentNode.replaceChild(frag, tn);
+              anyChanged = true;
+            } catch (e) {
+              console.error('Fragment replace error:', e);
+            }
           }
         }
-      }
 
-      // Restore cursor position
-      if (marker && marker.parentNode) {
-        const newRange = document.createRange();
-        const parent = marker.parentNode;
-        const next = marker.nextSibling;
-        parent.removeChild(marker);
-        if (next) {
-          newRange.setStart(next, 0);
-        } else {
-          newRange.setStart(parent, parent.childNodes.length);
+        // Restore cursor position
+        if (marker && marker.parentNode) {
+          const newRange = document.createRange();
+          const parent = marker.parentNode;
+          const next = marker.nextSibling;
+
+          if (anyChanged) {
+            // Place cursor in an unstyled trailing text node outside the formatted element
+            let targetTextNode;
+            if (next && next.nodeType === Node.TEXT_NODE && next.textContent.length > 0) {
+              targetTextNode = next;
+              parent.removeChild(marker);
+              newRange.setStart(targetTextNode, 0);
+            } else {
+              targetTextNode = document.createTextNode('\u200B');
+              parent.insertBefore(targetTextNode, marker);
+              parent.removeChild(marker);
+              newRange.setStart(targetTextNode, 1);
+            }
+            newRange.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          } else {
+            parent.removeChild(marker);
+            if (next) {
+              newRange.setStart(next, 0);
+            } else {
+              newRange.setStart(parent, parent.childNodes.length);
+            }
+            newRange.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
         }
-        newRange.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-      }
 
-      if (anyChanged) {
-        notifyChange();
+        if (anyChanged) {
+          notifyChange();
+        }
+      } catch (err) {
+        console.error('convertMarkdownInBlock error:', err);
+      } finally {
+        isConvertingMarkdown = false;
       }
     }
 
@@ -1045,10 +1078,10 @@
     }
 
     function onEditorInput(e) {
-      if (isUpdatingFromPython || isUndoRedoAction) return;
+      if (isUpdatingFromPython || isUndoRedoAction || isConvertingMarkdown) return;
 
       const block = getClosestBlockElement();
-      if (block && (e.data === ' ' || e.data === '`' || e.data === '*' || e.data === '_' || e.data === '~' || e.data === '=')) {
+      if (block && hasMarkdownSyntax(block.textContent)) {
         convertMarkdownInBlock(block);
       }
 
@@ -1649,13 +1682,13 @@
 
     function getTitle() {
       const h1 = editor.querySelector('h1');
-      if (h1 && h1.innerText.trim()) return h1.innerText.trim();
-      const firstLine = editor.innerText.split('\n').map(l => l.trim()).find(l => l.length > 0);
+      if (h1 && h1.innerText.replace(/\u200B/g, '').trim()) return h1.innerText.replace(/\u200B/g, '').trim();
+      const firstLine = editor.innerText.replace(/\u200B/g, '').split('\n').map(l => l.trim()).find(l => l.length > 0);
       return firstLine || 'Untitled Note';
     }
 
     function getExcerpt() {
-      const lines = editor.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const lines = editor.innerText.replace(/\u200B/g, '').split('\n').map(l => l.trim()).filter(l => l.length > 0);
       if (lines.length > 1) {
         return lines.slice(1, 3).join(' ');
       } else if (lines.length === 1) {
@@ -1675,7 +1708,7 @@
     }
 
     function getStats() {
-      const text = editor.innerText || '';
+      const text = (editor.innerText || '').replace(/\u200B/g, '');
       const words = (text.match(/\S+/g) || []).length;
       const chars = text.length;
       const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0).length;
@@ -1710,7 +1743,7 @@
           wrapper.remove();
         }
       });
-      return clone.innerHTML;
+      return clone.innerHTML.replace(/\u200B/g, '');
     }
 
     function notifyChangeDebounced() {
