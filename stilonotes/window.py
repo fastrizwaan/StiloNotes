@@ -54,6 +54,7 @@ class StiloWindow(Adw.ApplicationWindow):
 
         self.editor_page = Adw.NavigationPage.new(self.editor, "Editor")
         self.editor_page.set_can_pop(True)
+        self.editor_page.connect("shown", lambda _p: self.editor.focus_editor())
 
         self.set_content(self.navigation)
 
@@ -152,6 +153,9 @@ class StiloWindow(Adw.ApplicationWindow):
                 self.navigation.push_by_tag("editor") if False else self.navigation.push(self.editor_page)
             else:
                 self.navigation.push(self.editor_page)
+        GLib.idle_add(self.editor.focus_editor)
+        GLib.timeout_add(100, self.editor.focus_editor)
+        GLib.timeout_add(250, self.editor.focus_editor)
 
     def _on_note_opened(self, _iv, note: Note, immediate: bool):
         self.open_note(note, immediate)

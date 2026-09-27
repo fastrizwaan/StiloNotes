@@ -516,38 +516,69 @@
     }
 
     // ==========================================
-    // Title Selection for New / Untitled Note
+    // Title Selection & Focus for Note
     // ==========================================
+    let userInteractedWithCurrentNote = false;
+
     function selectUntitledTitle() {
-      requestAnimationFrame(() => {
+      const doSelect = () => {
+        if (userInteractedWithCurrentNote) return;
+        try {
+          window.focus();
+          editor.focus();
+          const h1 = editor.querySelector('h1');
+          if (h1) {
+            const text = h1.textContent.trim();
+            if (text === 'Untitled Note' || text === 'Untitled' || text === '') {
+              const sel = window.getSelection();
+              if (!sel.rangeCount || sel.isCollapsed || (sel.anchorNode && h1.contains(sel.anchorNode))) {
+                const range = document.createRange();
+                range.selectNodeContents(h1);
+                sel.removeAllRanges();
+                sel.addRange(range);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("selectUntitledTitle error:", e);
+        }
+      };
+
+      doSelect();
+      requestAnimationFrame(doSelect);
+      setTimeout(doSelect, 60);
+      setTimeout(doSelect, 180);
+    }
+
+    function focusEditor() {
+      try {
+        window.focus();
+        editor.focus();
+        if (userInteractedWithCurrentNote) return;
         const h1 = editor.querySelector('h1');
         if (h1) {
           const text = h1.textContent.trim();
           if (text === 'Untitled Note' || text === 'Untitled' || text === '') {
-            editor.focus();
-            const range = document.createRange();
-            range.selectNodeContents(h1);
-            const sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(range);
+            selectUntitledTitle();
+            return;
           }
         }
-      });
+      } catch (e) {
+        console.error("focusEditor error:", e);
+      }
     }
 
     window.addEventListener('load', () => {
       setupEventHandlers();
       initAllHandles();
       initUndoStack();
-      const h1 = editor.querySelector('h1');
-      if (h1 && (h1.textContent.trim() === 'Untitled Note' || h1.textContent.trim() === 'Untitled')) {
-        selectUntitledTitle();
-      }
+      focusEditor();
     });
 
     function setupEventHandlers() {
-      editor.addEventListener('input', onEditorInput);
-      editor.addEventListener('keydown', onKeyDown);
+      editor.addEventListener('pointerdown', () => { userInteractedWithCurrentNote = true; });
+      editor.addEventListener('input', (e) => { userInteractedWithCurrentNote = true; onEditorInput(e); });
+      editor.addEventListener('keydown', (e) => { userInteractedWithCurrentNote = true; onKeyDown(e); });
       editor.addEventListener('click', onEditorClick);
       editor.addEventListener('paste', onPaste);
       editor.addEventListener('drop', onDrop);
@@ -1776,6 +1807,7 @@
 
     // Window methods called from Python
     window.setEditorContent = function(html, selectUntitled = false) {
+      userInteractedWithCurrentNote = false;
       isUpdatingFromPython = true;
       editor.innerHTML = html || '<h1>Untitled Note</h1><div><br></div>';
       initAllHandles();
@@ -1812,6 +1844,7 @@
     window.performUndo = performUndo;
     window.performRedo = performRedo;
     window.selectUntitledTitle = selectUntitledTitle;
+    window.focusEditor = focusEditor;
 
     window.insertCustomTable = function(rows = 3, cols = 3, hasHeader = true) {
       saveUndoState();

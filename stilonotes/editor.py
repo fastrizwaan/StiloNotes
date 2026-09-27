@@ -439,6 +439,7 @@ class NoteEditor(Gtk.Box):
         self.webview = WebKit.WebView()
         self.webview.set_hexpand(True)
         self.webview.set_vexpand(True)
+        self.webview.set_focusable(True)
 
         bg_rgba = Gdk.RGBA()
         bg_rgba.parse("#24252A" if self.is_dark_mode else "#FFFFFF")
@@ -592,6 +593,7 @@ class NoteEditor(Gtk.Box):
                 self.load_note(note)
             else:
                 self.webview.evaluate_javascript("if (window.selectUntitledTitle) { window.selectUntitledTitle(); }", -1, None, None, None, None)
+            GLib.idle_add(self.focus_editor)
 
     # ── WebKit message handlers ───────────────────────────────────────────
 
@@ -789,6 +791,7 @@ class NoteEditor(Gtk.Box):
 
         self._show_toolbar()
         self.update_stats_popover()
+        GLib.idle_add(self.focus_editor)
 
     def update_theme(self, is_dark: bool):
         self.is_dark_mode = is_dark
@@ -1046,3 +1049,15 @@ class NoteEditor(Gtk.Box):
     def _export_note(self, fmt: str, window: Gtk.Window):
         if self.current_note:
             export_note_dialog(window, self.current_note, fmt)
+
+    def grab_focus(self) -> bool:
+        if hasattr(self, "webview") and self.webview:
+            return self.webview.grab_focus()
+        return super().grab_focus()
+
+    def focus_editor(self):
+        if hasattr(self, "webview") and self.webview:
+            self.webview.grab_focus()
+            script = "if (window.focusEditor) { window.focusEditor(); }"
+            self.webview.evaluate_javascript(script, -1, None, None, None, None)
+        return False
