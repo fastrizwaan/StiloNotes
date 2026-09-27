@@ -331,6 +331,7 @@
 
     .stilo-img {
       max-width: 100%;
+      width: 100%;
       height: auto;
       border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -338,6 +339,7 @@
       user-select: none;
       -webkit-user-select: none;
       -webkit-user-drag: none;
+      pointer-events: auto;
     }
 
     /* Interactive Resize Handles */
@@ -356,6 +358,7 @@
       user-select: none;
       -webkit-user-select: none;
       display: none;
+      pointer-events: auto;
     }
 
     .stilo-table-wrapper:hover .table-handle,
@@ -625,12 +628,74 @@
         notifyChange();
       });
 
-      document.addEventListener('mousemove', (e) => {
+      // Resize handle start, move, and end listeners supporting mouse and pointer events
+      const handleResizeStart = (e) => {
+        const imgH = e.target.closest('.image-handle');
+        if (imgH) {
+          e.preventDefault();
+          e.stopPropagation();
+          const wrap = imgH.closest('.stilo-img-wrapper');
+          if (!wrap) return;
+          isResizingImg = true;
+          resizingImgEl = wrap;
+          imgStartX = e.clientX;
+          const rect = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : null;
+          imgStartWidth = (rect && rect.width) || wrap.offsetWidth || parseInt(wrap.style.width) || 300;
+          document.body.style.cursor = 'nwse-resize';
+          document.body.style.userSelect = 'none';
+          if (e.pointerId && imgH.setPointerCapture) {
+            try { imgH.setPointerCapture(e.pointerId); } catch (_) {}
+          }
+          return;
+        }
+
+        const tblH = e.target.closest('.table-handle');
+        if (tblH) {
+          e.preventDefault();
+          e.stopPropagation();
+          const wrap = tblH.closest('.stilo-table-wrapper');
+          if (!wrap) return;
+          isResizingTable = true;
+          resizingTableEl = wrap;
+          tableStartX = e.clientX;
+          const rect = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : null;
+          tableStartWidth = (rect && rect.width) || wrap.offsetWidth || parseInt(wrap.style.width) || 400;
+          document.body.style.cursor = 'nwse-resize';
+          document.body.style.userSelect = 'none';
+          if (e.pointerId && tblH.setPointerCapture) {
+            try { tblH.setPointerCapture(e.pointerId); } catch (_) {}
+          }
+          return;
+        }
+
+        const colH = e.target.closest('.col-resize-handle');
+        if (colH) {
+          e.preventDefault();
+          e.stopPropagation();
+          const cell = colH.closest('th, td');
+          if (!cell) return;
+          isResizingCol = true;
+          resizingColEl = cell;
+          colStartX = e.clientX;
+          colStartWidth = cell.offsetWidth;
+          document.body.style.cursor = 'col-resize';
+          document.body.style.userSelect = 'none';
+          if (e.pointerId && colH.setPointerCapture) {
+            try { colH.setPointerCapture(e.pointerId); } catch (_) {}
+          }
+          return;
+        }
+      };
+
+      document.addEventListener('mousedown', handleResizeStart, true);
+      document.addEventListener('pointerdown', handleResizeStart, true);
+
+      const handleResizeMove = (e) => {
         if (isResizingTable && resizingTableEl) {
           e.preventDefault();
           const deltaX = e.clientX - tableStartX;
-          const maxW = editor.clientWidth || 720;
-          const newWidth = Math.max(120, Math.min(maxW, tableStartWidth + deltaX));
+          const maxW = editor.clientWidth ? (editor.clientWidth - 20) : 720;
+          const newWidth = Math.max(120, Math.min(maxW, Math.round(tableStartWidth + deltaX)));
           resizingTableEl.style.width = newWidth + 'px';
           const tbl = resizingTableEl.querySelector('table');
           if (tbl) tbl.style.width = '100%';
@@ -638,7 +703,7 @@
         if (isResizingCol && resizingColEl) {
           e.preventDefault();
           const deltaX = e.clientX - colStartX;
-          const newWidth = Math.max(30, colStartWidth + deltaX);
+          const newWidth = Math.max(30, Math.round(colStartWidth + deltaX));
           resizingColEl.style.width = newWidth + 'px';
           resizingColEl.style.minWidth = newWidth + 'px';
           const tbl = resizingColEl.closest('table');
@@ -647,15 +712,21 @@
         if (isResizingImg && resizingImgEl) {
           e.preventDefault();
           const deltaX = e.clientX - imgStartX;
-          const maxW = editor.clientWidth || 720;
-          const newWidth = Math.max(60, Math.min(maxW, imgStartWidth + deltaX));
+          const maxW = editor.clientWidth ? (editor.clientWidth - 20) : 720;
+          const newWidth = Math.max(60, Math.min(maxW, Math.round(imgStartWidth + deltaX)));
           resizingImgEl.style.width = newWidth + 'px';
           const img = resizingImgEl.querySelector('img');
-          if (img) img.style.width = '100%';
+          if (img) {
+            img.style.width = '100%';
+            img.style.height = 'auto';
+          }
         }
-      });
+      };
 
-      document.addEventListener('mouseup', () => {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('pointermove', handleResizeMove);
+
+      const handleResizeEnd = () => {
         if (isResizingTable || isResizingCol || isResizingImg) {
           isResizingTable = false;
           resizingTableEl = null;
@@ -667,7 +738,12 @@
           document.body.style.userSelect = '';
           notifyChange();
         }
-      });
+      };
+
+      window.addEventListener('mouseup', handleResizeEnd);
+      window.addEventListener('pointerup', handleResizeEnd);
+      document.addEventListener('mouseup', handleResizeEnd);
+      document.addEventListener('pointerup', handleResizeEnd);
 
       document.addEventListener('click', (e) => {
         if (!e.target.closest('#floating-toolbar') && !e.target.closest('.stilo-table-wrapper') && !e.target.closest('.stilo-img-wrapper')) {
@@ -703,17 +779,6 @@
         handle.setAttribute('contenteditable', 'false');
         handle.setAttribute('draggable', 'false');
         handle.title = 'Drag to resize table width';
-
-        handle.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          isResizingTable = true;
-          resizingTableEl = wrapper;
-          tableStartX = e.clientX;
-          tableStartWidth = wrapper.offsetWidth;
-          document.body.style.cursor = 'nwse-resize';
-          document.body.style.userSelect = 'none';
-        });
         wrapper.appendChild(handle);
       }
 
@@ -726,17 +791,6 @@
           colHandle.setAttribute('contenteditable', 'false');
           colHandle.setAttribute('draggable', 'false');
           colHandle.title = 'Drag to resize column';
-
-          colHandle.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            isResizingCol = true;
-            resizingColEl = cell;
-            colStartX = e.clientX;
-            colStartWidth = cell.offsetWidth;
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-          });
           cell.appendChild(colHandle);
         }
       });
@@ -758,22 +812,26 @@
         handle.setAttribute('contenteditable', 'false');
         handle.setAttribute('draggable', 'false');
         handle.title = 'Drag to resize image';
-
-        handle.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          isResizingImg = true;
-          resizingImgEl = wrapper;
-          imgStartX = e.clientX;
-          imgStartWidth = wrapper.offsetWidth;
-          document.body.style.cursor = 'nwse-resize';
-          document.body.style.userSelect = 'none';
-        });
         wrapper.appendChild(handle);
       }
     }
 
     function initAllHandles() {
+      // Auto-wrap any standalone <img> into .stilo-img-wrapper
+      editor.querySelectorAll('img').forEach(img => {
+        if (!img.closest('.stilo-img-wrapper')) {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'stilo-img-wrapper';
+          wrapper.setAttribute('contenteditable', 'false');
+          if (img.style.width) {
+            wrapper.style.width = img.style.width;
+            img.style.width = '100%';
+          }
+          img.parentNode.insertBefore(wrapper, img);
+          wrapper.appendChild(img);
+        }
+      });
+
       editor.querySelectorAll('table.stilo-table').forEach(initTableHandles);
       editor.querySelectorAll('.stilo-img-wrapper').forEach(initImageHandles);
     }
@@ -1254,11 +1312,71 @@
       notifyChange();
     }
 
-    function insertTable(rows = 3, cols = 3) {
-      insertCustomTable(rows, cols, true);
+    let lastEditorRange = null;
+
+    function saveCurrentRange() {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (editor.contains(range.commonAncestorContainer)) {
+          lastEditorRange = range.cloneRange();
+        }
+      }
     }
 
-    function insertCustomTable(rows = 3, cols = 3, hasHeader = true) {
+    document.addEventListener('selectionchange', saveCurrentRange);
+    editor.addEventListener('keyup', saveCurrentRange);
+    editor.addEventListener('mouseup', saveCurrentRange);
+    editor.addEventListener('pointerup', saveCurrentRange);
+
+    function insertHtmlSafely(htmlString) {
+      editor.focus();
+      const sel = window.getSelection();
+      let range = null;
+      if (sel && sel.rangeCount > 0) {
+        const testRange = sel.getRangeAt(0);
+        if (editor.contains(testRange.commonAncestorContainer)) {
+          range = testRange;
+        }
+      }
+      if (!range && lastEditorRange && editor.contains(lastEditorRange.commonAncestorContainer)) {
+        range = lastEditorRange;
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      if (range) {
+        range.deleteContents();
+        const temp = document.createElement('div');
+        temp.innerHTML = htmlString;
+        const frag = document.createDocumentFragment();
+        let lastNode = null;
+        while (temp.firstChild) {
+          lastNode = frag.appendChild(temp.firstChild);
+        }
+        range.insertNode(frag);
+        if (lastNode) {
+          const newRange = document.createRange();
+          newRange.setStartAfter(lastNode);
+          newRange.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+          lastEditorRange = newRange;
+        }
+      } else {
+        const temp = document.createElement('div');
+        temp.innerHTML = htmlString;
+        while (temp.firstChild) {
+          editor.appendChild(temp.firstChild);
+        }
+      }
+    }
+
+    function insertTable(rows = 3, cols = 3) {
+      doInsertCustomTable(rows, cols, true);
+    }
+
+    function doInsertCustomTable(rows = 3, cols = 3, hasHeader = true) {
       closeAllPopups();
       let tableHtml = '<div class="stilo-table-wrapper" contenteditable="false"><table class="stilo-table" contenteditable="true">';
       if (hasHeader) {
@@ -1289,7 +1407,7 @@
       }
       tableHtml += '</table><div class="table-handle" contenteditable="false" draggable="false" title="Drag to resize table"></div></div><div><br></div>';
 
-      document.execCommand('insertHTML', false, tableHtml);
+      insertHtmlSafely(tableHtml);
       initAllHandles();
       const tables = editor.querySelectorAll('table.stilo-table');
       if (tables.length) {
@@ -1334,10 +1452,10 @@
       return { cell, table };
     }
 
-    function addTableRow() {
+    function doAddTableRow() {
       const { cell, table } = getActiveTableAndCell();
       if (!table) {
-        insertCustomTable(3, 3, true);
+        doInsertCustomTable(3, 3, true);
         return;
       }
       const firstRow = table.querySelector('tr');
@@ -1370,7 +1488,7 @@
       notifyChange();
     }
 
-    function addTableColumn() {
+    function doAddTableColumn() {
       const { cell, table } = getActiveTableAndCell();
       if (!table) return;
       const colIdx = cell ? Array.from(cell.parentElement.children).indexOf(cell) : -1;
@@ -1390,12 +1508,12 @@
       notifyChange();
     }
 
-    function deleteTableRow() {
+    function doDeleteTableRow() {
       const { cell, table } = getActiveTableAndCell();
       if (!table) return;
       const allRows = Array.from(table.querySelectorAll('tr'));
       if (allRows.length <= 1) {
-        deleteActiveTable();
+        doDeleteActiveTable();
         return;
       }
       let row = cell ? cell.closest('tr') : null;
@@ -1413,14 +1531,14 @@
       notifyChange();
     }
 
-    function deleteTableColumn() {
+    function doDeleteTableColumn() {
       const { cell, table } = getActiveTableAndCell();
       if (!table) return;
       const firstRow = table.querySelector('tr');
       if (!firstRow) return;
       const colCount = firstRow.querySelectorAll('th, td').length;
       if (colCount <= 1) {
-        deleteActiveTable();
+        doDeleteActiveTable();
         return;
       }
       const colIdx = cell ? Array.from(cell.parentElement.children).indexOf(cell) : colCount - 1;
@@ -1438,7 +1556,7 @@
       notifyChange();
     }
 
-    function deleteActiveTable() {
+    function doDeleteActiveTable() {
       const { table } = getActiveTableAndCell();
       if (table) {
         const wrapper = table.closest('.stilo-table-wrapper');
@@ -1498,7 +1616,7 @@
 
     function insertImageAtCursor(src, alt = 'Note image') {
       const imgHtml = `<div class="stilo-img-wrapper" contenteditable="false"><img src="${src}" alt="${alt}" class="stilo-img" draggable="false"><div class="image-handle" contenteditable="false" draggable="false" title="Drag to resize image"></div></div><div><br></div>`;
-      document.execCommand('insertHTML', false, imgHtml);
+      insertHtmlSafely(imgHtml);
       initAllHandles();
       notifyChange();
     }
@@ -1859,27 +1977,27 @@
 
     window.insertCustomTable = function(rows = 3, cols = 3, hasHeader = true) {
       saveUndoState();
-      insertCustomTable(rows, cols, hasHeader);
+      doInsertCustomTable(rows, cols, hasHeader);
     };
     window.addTableRow = function() {
       saveUndoState();
-      addTableRow();
+      doAddTableRow();
     };
     window.addTableColumn = function() {
       saveUndoState();
-      addTableColumn();
+      doAddTableColumn();
     };
     window.deleteTableRow = function() {
       saveUndoState();
-      deleteTableRow();
+      doDeleteTableRow();
     };
     window.deleteTableColumn = function() {
       saveUndoState();
-      deleteTableColumn();
+      doDeleteTableColumn();
     };
     window.deleteActiveTable = function() {
       saveUndoState();
-      deleteActiveTable();
+      doDeleteActiveTable();
     };
 
     window.execFormatting = function(command, value = null) {
@@ -1906,12 +2024,12 @@
       else if (command === 'highlight') applyHighlight();
       else if (command === 'quote') insertQuote();
       else if (command === 'code') insertCodeBlock();
-      else if (command === 'table') insertCustomTable(3, 3, true);
-      else if (command === 'table-add-row') addTableRow();
-      else if (command === 'table-add-col') addTableColumn();
-      else if (command === 'table-del-row') deleteTableRow();
-      else if (command === 'table-del-col') deleteTableColumn();
-      else if (command === 'table-delete') deleteActiveTable();
+      else if (command === 'table') doInsertCustomTable(3, 3, true);
+      else if (command === 'table-add-row') doAddTableRow();
+      else if (command === 'table-add-col') doAddTableColumn();
+      else if (command === 'table-del-row') doDeleteTableRow();
+      else if (command === 'table-del-col') doDeleteTableColumn();
+      else if (command === 'table-delete') doDeleteActiveTable();
       else if (command === 'divider') insertDivider();
       else if (command === 'link') promptLink();
       else if (command === 'image') triggerImagePicker();

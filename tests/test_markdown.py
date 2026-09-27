@@ -88,6 +88,11 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn('src="attachment://att-999"', html_back)
         self.assertIn('alt="photo"', html_back)
 
+        # Attribute order variations
+        html2 = '<div class="stilo-img-wrapper" contenteditable="false" style="width: 480px;"><img alt="sunset" draggable="false" class="stilo-img" src="file:///sunset.jpg"></div>'
+        md2 = html_to_markdown(html2)
+        self.assertEqual(md2, "![sunset|480](file:///sunset.jpg)")
+
     def test_table_conversion(self):
         md = "| Name | Age |\n| :--- | :--- |\n| Alice | 30 |\n| Bob | 25 |"
         html = markdown_to_html(md)

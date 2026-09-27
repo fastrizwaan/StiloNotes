@@ -81,24 +81,11 @@ RE_HTM_TD = re.compile(r'<td[^>]*>(.*?)</td>', re.DOTALL)
 RE_HTM_LI = re.compile(r'<li[^>]*>(.*?)</li>', re.DOTALL)
 RE_HTM_UL_START = re.compile(r'<ul[^>]*>')
 RE_HTM_OL_START = re.compile(r'<ol[^>]*>')
-RE_HTM_IMG_WITH_WRAPPER = re.compile(
-    r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*style=["\'][^"\']*width:\s*(\d+)px[^"\']*["\'][^>]*>\s*<img[^>]+src=["\']([^"\']+)["\'][^>]*alt=["\']([^"\']*)["\'][^>]*>\s*</div>',
+RE_HTM_IMG_WRAPPER = re.compile(
+    r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*>.*?<img[^>]+>.*?</div>',
     re.DOTALL
 )
-RE_HTM_IMG_WITH_WRAPPER_NO_ALT = re.compile(
-    r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*style=["\'][^"\']*width:\s*(\d+)px[^"\']*["\'][^>]*>\s*<img[^>]+src=["\']([^"\']+)["\'][^>]*>\s*</div>',
-    re.DOTALL
-)
-RE_HTM_IMG_WRAPPER_PLAIN = re.compile(
-    r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*>\s*<img[^>]+src=["\']([^"\']+)["\'][^>]*alt=["\']([^"\']*)["\'][^>]*>\s*</div>',
-    re.DOTALL
-)
-RE_HTM_IMG_WRAPPER_PLAIN_NO_ALT = re.compile(
-    r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*>\s*<img[^>]+src=["\']([^"\']+)["\'][^>]*>\s*</div>',
-    re.DOTALL
-)
-RE_HTM_IMG_ALT = re.compile(r'<img[^>]+src=["\']([^"\']+)["\'][^>]*alt=["\']([^"\']*)["\'][^>]*>')
-RE_HTM_IMG_NO_ALT = re.compile(r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>')
+RE_HTM_STANDALONE_IMG = re.compile(r'<img[^>]+>', re.DOTALL)
 RE_HTM_LINK = re.compile(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.DOTALL)
 
 RE_HTM_STRONG_EM = re.compile(r'<strong[^>]*><em>(.*?)</em></strong>', re.DOTALL)
@@ -526,12 +513,42 @@ def html_to_markdown(html_content: str) -> str:
     s = s.replace('</ol>', '\n')
 
     # Convert Images
-    s = RE_HTM_IMG_WITH_WRAPPER.sub(r'![\3|\1](\2)\n', s)
-    s = RE_HTM_IMG_WITH_WRAPPER_NO_ALT.sub(r'![|\1](\2)\n', s)
-    s = RE_HTM_IMG_WRAPPER_PLAIN.sub(r'![\2](\1)\n', s)
-    s = RE_HTM_IMG_WRAPPER_PLAIN_NO_ALT.sub(r'![](\1)\n', s)
-    s = RE_HTM_IMG_ALT.sub(r'![\2](\1)\n', s)
-    s = RE_HTM_IMG_NO_ALT.sub(r'![](\1)\n', s)
+    def _convert_img_wrapper_to_md(m: re.Match) -> str:
+        wrapper_html = m.group(0)
+        w_match = re.search(r'width:\s*(\d+)px', wrapper_html)
+        width = w_match.group(1) if w_match else ""
+        src_match = re.search(r'src=["\']([^"\']+)["\']', wrapper_html)
+        alt_match = re.search(r'alt=["\']([^"\']*)["\']', wrapper_html)
+        src = src_match.group(1) if src_match else ""
+        alt = alt_match.group(1) if alt_match else ""
+        if not src:
+            return ""
+        if width:
+            return f"![{alt}|{width}]({src})\n"
+        elif alt:
+            return f"![{alt}]({src})\n"
+        else:
+            return f"![]({src})\n"
+
+    def _convert_standalone_img_to_md(m: re.Match) -> str:
+        img_html = m.group(0)
+        w_match = re.search(r'width:\s*(\d+)px', img_html)
+        width = w_match.group(1) if w_match else ""
+        src_match = re.search(r'src=["\']([^"\']+)["\']', img_html)
+        alt_match = re.search(r'alt=["\']([^"\']*)["\']', img_html)
+        src = src_match.group(1) if src_match else ""
+        alt = alt_match.group(1) if alt_match else ""
+        if not src:
+            return ""
+        if width:
+            return f"![{alt}|{width}]({src})\n"
+        elif alt:
+            return f"![{alt}]({src})\n"
+        else:
+            return f"![]({src})\n"
+
+    s = RE_HTM_IMG_WRAPPER.sub(_convert_img_wrapper_to_md, s)
+    s = RE_HTM_STANDALONE_IMG.sub(_convert_standalone_img_to_md, s)
 
     # Convert Links
     s = RE_HTM_LINK.sub(lambda m: f"[{RE_HTML_TAGS.sub('', m.group(2)).strip()}]({m.group(1)})", s)
