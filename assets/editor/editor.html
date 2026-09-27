@@ -1828,6 +1828,10 @@
       if (selectUntitled || isUntitledText) {
         selectUntitledTitle();
       }
+
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.statsChanged) {
+        window.webkit.messageHandlers.statsChanged.postMessage(JSON.stringify(getStats()));
+      }
     };
 
     window.flushEditor = function() {
@@ -1851,6 +1855,7 @@
     window.performRedo = performRedo;
     window.selectUntitledTitle = selectUntitledTitle;
     window.focusEditor = focusEditor;
+    window.getStats = getStats;
 
     window.insertCustomTable = function(rows = 3, cols = 3, hasHeader = true) {
       saveUndoState();

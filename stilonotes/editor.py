@@ -18,7 +18,7 @@ from stilonotes.theme_selector import ThemeSelector
 from stilonotes.font_size_selector import FontSizeSelector
 from stilonotes.models import Note
 from stilonotes.editor_html import get_editor_html_page
-from stilonotes.markdown_utils import format_relative_date, html_to_markdown
+from stilonotes.markdown_utils import compute_note_stats, format_relative_date, html_to_markdown, markdown_to_html
 from stilonotes.exporter import export_note_dialog
 from stilonotes.const import get_assets_path
 
@@ -625,6 +625,8 @@ class NoteEditor(Gtk.Box):
         try:
             ucm.register_script_message_handler("contentChanged")
             ucm.connect("script-message-received::contentChanged", self._on_js_content_changed)
+            ucm.register_script_message_handler("statsChanged")
+            ucm.connect("script-message-received::statsChanged", self._on_js_stats_changed)
             ucm.register_script_message_handler("pickImage")
             ucm.connect("script-message-received::pickImage", self._on_js_pick_image)
             ucm.register_script_message_handler("uploadImage")
@@ -636,6 +638,7 @@ class NoteEditor(Gtk.Box):
 
     def _create_stats_popover(self) -> Gtk.Popover:
         popover = Gtk.Popover()
+        popover.connect("notify::visible", self._on_stats_popover_visible)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         box.set_margin_start(16)
         box.set_margin_end(16)
@@ -671,6 +674,13 @@ class NoteEditor(Gtk.Box):
         box.append(grid)
         popover.set_child(box)
         return popover
+
+    def _on_stats_popover_visible(self, popover, _pspec):
+        if popover.get_visible():
+            self.update_stats_popover()
+            if self._page_loaded:
+                script = "if (window.getStats && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.statsChanged) { window.webkit.messageHandlers.statsChanged.postMessage(JSON.stringify(window.getStats())); }"
+                self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
     def update_stats_popover(self):
         if not self.current_note:
@@ -799,6 +809,10 @@ class NoteEditor(Gtk.Box):
         # Update star button state
         self._update_star_btn(note.is_pinned)
 
+        # Pre-compute statistics immediately so Note Statistics popover has accurate values
+        self.latest_stats = compute_note_stats(note.content_html, note.content_markdown)
+        self.update_stats_popover()
+
         if not self._page_loaded:
             self._pending_load_note = note
             return
@@ -889,6 +903,19 @@ class NoteEditor(Gtk.Box):
             self._schedule_save()
         except Exception as e:
             print("Error parsing content change:", e)
+
+    def _on_js_stats_changed(self, _ucm, js_result):
+        try:
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            json_str = val.to_string() if hasattr(val, "to_string") else str(val)
+            if not json_str:
+                return
+            stats = json.loads(json_str)
+            if isinstance(stats, dict):
+                self.latest_stats = stats
+                self.update_stats_popover()
+        except Exception as e:
+            print("Stats changed error:", e)
 
     def _schedule_save(self):
         if self._save_timeout_id:

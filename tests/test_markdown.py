@@ -3,6 +3,7 @@
 
 import unittest
 from stilonotes.markdown_utils import (
+    compute_note_stats,
     markdown_to_html,
     html_to_markdown,
     extract_title_and_excerpt,
@@ -96,6 +97,25 @@ class TestMarkdown(unittest.TestCase):
         back_md = html_to_markdown(html)
         self.assertIn("| Name | Age |", back_md)
         self.assertIn("| Alice | 30 |", back_md)
+
+    def test_compute_note_stats(self):
+        html = "<h1>Meeting Notes</h1><div>Discussed project roadmap and deadlines.</div>"
+        stats_html = compute_note_stats(content_html=html)
+        self.assertEqual(stats_html["words"], 7)
+        self.assertEqual(stats_html["paragraphs"], 2)
+        self.assertTrue(stats_html["chars"] > 0)
+        self.assertEqual(stats_html["readTime"], "1 min")
+
+        md = "# Project Plan\n\nPhase 1 begins next week."
+        stats_md = compute_note_stats(content_markdown=md)
+        self.assertEqual(stats_md["words"], 7)
+        self.assertEqual(stats_md["paragraphs"], 2)
+
+        stats_empty = compute_note_stats("", "")
+        self.assertEqual(stats_empty["words"], 0)
+        self.assertEqual(stats_empty["paragraphs"], 0)
+        self.assertEqual(stats_empty["chars"], 0)
+        self.assertEqual(stats_empty["readTime"], "1 min")
 
 if __name__ == "__main__":
     unittest.main()

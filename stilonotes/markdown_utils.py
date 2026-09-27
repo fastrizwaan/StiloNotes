@@ -222,6 +222,33 @@ def extract_title_and_excerpt(markdown_text: str = "", html_text: str = "") -> T
     return title, excerpt
 
 
+def compute_note_stats(content_html: str = "", content_markdown: str = "") -> dict:
+    """Calculate word count, characters, paragraphs, and reading time from note content."""
+    content_html = content_html or ""
+    content_markdown = content_markdown or ""
+    if not content_html and content_markdown:
+        content_html = markdown_to_html(content_markdown)
+
+    text = ""
+    if content_html:
+        clean = RE_H1_TAG.sub(r'\1\n', content_html)
+        clean = re.sub(r'</?(?:div|p|br|li|tr|blockquote|h[1-6])[^>]*>', '\n', clean, flags=re.IGNORECASE)
+        clean = RE_HTML_TAGS.sub('', clean)
+        text = html.unescape(clean).replace('\u200b', '')
+
+    words = len(text.split())
+    chars = len(text)
+    paragraphs = len([p for p in text.splitlines() if p.strip()])
+    read_minutes = max(1, (words + 199) // 200)
+
+    return {
+        "words": words,
+        "chars": chars,
+        "paragraphs": paragraphs,
+        "readTime": f"{read_minutes} min"
+    }
+
+
 def _format_md_image(match: re.Match) -> str:
     alt = match.group(1)
     src = match.group(2)
