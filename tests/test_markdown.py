@@ -50,6 +50,14 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("*Italic*", back_md)
         self.assertIn("<u>Underline</u>", back_md)
 
+    def test_underline_variants(self):
+        md1 = "<u>Text One</u>"
+        md2 = "<ins>Text Two</ins>"
+        md3 = "++Text Three++"
+        self.assertIn("<u>Text One</u>", markdown_to_html(md1))
+        self.assertIn("<u>Text Two</u>", markdown_to_html(md2))
+        self.assertIn("<u>Text Three</u>", markdown_to_html(md3))
+
     def test_title_and_excerpt_extraction(self):
         md = "# My Great Journey\nHere is what happened today on the road.\nIt was amazing."
         title, excerpt = extract_title_and_excerpt(markdown_text=md)

@@ -813,45 +813,54 @@
 
     function hasMarkdownSyntax(str) {
       if (!str) return false;
-      return /\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\[.+\]\(.+\)/i.test(str);
+      return /\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)/i.test(str);
     }
 
     function formatMarkdownInText(str) {
-      let s = str;
-      s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (!str) return { html: str, matched: false };
+      let matched = false;
+      let s = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      function applyRule(regex, replacement) {
+        if (regex.test(s)) {
+          matched = true;
+          s = s.replace(regex, replacement);
+        }
+      }
 
       // 1. Triple asterisks or underscores: ***bold italic*** or ___bold italic___
-      s = s.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-      s = s.replace(/___([^_\n]+?)___/g, '<strong><em>$1</em></strong>');
+      applyRule(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+      applyRule(/___([^_\n]+?)___/g, '<strong><em>$1</em></strong>');
 
       // 2. Double asterisks or underscores: **bold** or __bold__ (allows spaces: ** bold **)
-      s = s.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
-      s = s.replace(/__(?!_)([^_\n]+?)__(?!_)/g, '<strong>$1</strong>');
+      applyRule(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+      applyRule(/__(?!_)([^_\n]+?)__(?!_)/g, '<strong>$1</strong>');
 
       // 3. Single asterisks or underscores: *italic* or _italic_
-      s = s.replace(/(?<!\*)\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)/g, '<em>$1</em>');
-      s = s.replace(/(?<!_)_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)/g, '<em>$1</em>');
+      applyRule(/(?<!\*)\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)/g, '<em>$1</em>');
+      applyRule(/(?<!_)_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)/g, '<em>$1</em>');
 
-      // 4. Underline: <u>underline</u> or <ins>underline</ins>
-      s = s.replace(/&lt;u&gt;([\s\S]+?)&lt;\/u&gt;/gi, '<u>$1</u>');
-      s = s.replace(/&lt;ins&gt;([\s\S]+?)&lt;\/ins&gt;/gi, '<u>$1</u>');
+      // 4. Underline: <u>underline</u> or <ins>underline</ins> or ++underline++
+      applyRule(/&lt;u&gt;([\s\S]+?)&lt;\/u&gt;/gi, '<u>$1</u>');
+      applyRule(/&lt;ins&gt;([\s\S]+?)&lt;\/ins&gt;/gi, '<u>$1</u>');
+      applyRule(/\+\+([^\+\n]+?)\+\+/g, '<u>$1</u>');
 
       // 5. Strikethrough: ~~strike~~
-      s = s.replace(/~~([^~\n]+?)~~/g, '<del>$1</del>');
+      applyRule(/~~([^~\n]+?)~~/g, '<del>$1</del>');
 
       // 6. Highlight: ==highlight==
-      s = s.replace(/==([^=\n]+?)==/g, '<mark class="stilo-highlight">$1</mark>');
+      applyRule(/==([^=\n]+?)==/g, '<mark class="stilo-highlight">$1</mark>');
 
       // 7. Inline code: `code`
-      s = s.replace(/`([^`\n]+)`/g, '<code class="stilo-inline-code">$1</code>');
+      applyRule(/`([^`\n]+)`/g, '<code class="stilo-inline-code">$1</code>');
 
       // 8. Markdown Link: [text](url)
-      s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="stilo-link" target="_blank">$1</a>');
+      applyRule(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="stilo-link" target="_blank">$1</a>');
 
       // 9. Tags: #tag (word characters and hyphens)
-      s = s.replace(/(^|\s)#([a-zA-Z0-9_\-]+)/g, '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
+      applyRule(/(^|\s)#([a-zA-Z0-9_\-]+)/g, '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
 
-      return s;
+      return { html: s, matched };
     }
 
     function convertMarkdownInBlock(block) {
@@ -860,6 +869,32 @@
 
       const rawText = block.textContent;
       if (!hasMarkdownSyntax(rawText)) return;
+
+      // Process only text nodes
+      const textNodes = [];
+      const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
+      let n;
+      while (n = walk.nextNode()) {
+        if (n.parentNode && (n.parentNode.tagName === 'CODE' || n.parentNode.tagName === 'A' || n.parentNode.classList.contains('stilo-tag'))) {
+          continue;
+        }
+        textNodes.push(n);
+      }
+
+      // Check which text nodes actually contain a complete markdown match
+      const matches = [];
+      for (const tn of textNodes) {
+        if (!tn.parentNode || !tn.textContent) continue;
+        if (!hasMarkdownSyntax(tn.textContent)) continue;
+
+        const res = formatMarkdownInText(tn.textContent);
+        if (res.matched) {
+          matches.push({ tn, html: res.html });
+        }
+      }
+
+      // If nothing actually matched a complete pattern, do not mutate the DOM
+      if (matches.length === 0) return;
 
       isConvertingMarkdown = true;
       try {
@@ -873,31 +908,13 @@
           range.insertNode(marker);
         }
 
-        // Process only text nodes
-        const textNodes = [];
-        const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
-        let n;
-        while (n = walk.nextNode()) {
-          if (n.parentNode && (n.parentNode.tagName === 'CODE' || n.parentNode.tagName === 'A' || n.parentNode.classList.contains('stilo-tag'))) {
-            continue;
-          }
-          textNodes.push(n);
-        }
-
-        let anyChanged = false;
-        for (const tn of textNodes) {
-          if (!tn.parentNode || !tn.textContent) continue;
-          if (!hasMarkdownSyntax(tn.textContent)) continue;
-
-          const formatted = formatMarkdownInText(tn.textContent);
-          if (formatted !== tn.textContent) {
-            try {
-              const frag = document.createRange().createContextualFragment(formatted);
-              tn.parentNode.replaceChild(frag, tn);
-              anyChanged = true;
-            } catch (e) {
-              console.error('Fragment replace error:', e);
-            }
+        for (const m of matches) {
+          if (!m.tn.parentNode) continue;
+          try {
+            const frag = document.createRange().createContextualFragment(m.html);
+            m.tn.parentNode.replaceChild(frag, m.tn);
+          } catch (e) {
+            console.error('Fragment replace error:', e);
           }
         }
 
@@ -907,38 +924,24 @@
           const parent = marker.parentNode;
           const next = marker.nextSibling;
 
-          if (anyChanged) {
-            // Place cursor in an unstyled trailing text node outside the formatted element
-            let targetTextNode;
-            if (next && next.nodeType === Node.TEXT_NODE && next.textContent.length > 0) {
-              targetTextNode = next;
-              parent.removeChild(marker);
-              newRange.setStart(targetTextNode, 0);
-            } else {
-              targetTextNode = document.createTextNode('\u200B');
-              parent.insertBefore(targetTextNode, marker);
-              parent.removeChild(marker);
-              newRange.setStart(targetTextNode, 1);
-            }
-            newRange.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(newRange);
-          } else {
+          // Place cursor in an unstyled trailing text node outside the formatted element
+          let targetTextNode;
+          if (next && next.nodeType === Node.TEXT_NODE && next.textContent.length > 0) {
+            targetTextNode = next;
             parent.removeChild(marker);
-            if (next) {
-              newRange.setStart(next, 0);
-            } else {
-              newRange.setStart(parent, parent.childNodes.length);
-            }
-            newRange.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(newRange);
+            newRange.setStart(targetTextNode, 0);
+          } else {
+            targetTextNode = document.createTextNode('\u200B');
+            parent.insertBefore(targetTextNode, marker);
+            parent.removeChild(marker);
+            newRange.setStart(targetTextNode, 1);
           }
+          newRange.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
         }
 
-        if (anyChanged) {
-          notifyChange();
-        }
+        notifyChange();
       } catch (err) {
         console.error('convertMarkdownInBlock error:', err);
       } finally {
@@ -1599,11 +1602,14 @@
       // 2. Check for markdown syntax in plain text
       const text = clipboardData.getData('text/plain');
       if (text && hasMarkdownSyntax(text)) {
-        e.preventDefault();
-        const formatted = formatMarkdownInText(text).replace(/\n/g, '<br>');
-        document.execCommand('insertHTML', false, formatted);
-        notifyChange();
-        return;
+        const res = formatMarkdownInText(text);
+        if (res.matched) {
+          e.preventDefault();
+          const formatted = res.html.replace(/\n/g, '<br>');
+          document.execCommand('insertHTML', false, formatted);
+          notifyChange();
+          return;
+        }
       }
 
       // 3. If HTML was copied, sanitize it before inserting
