@@ -27,6 +27,7 @@ class IndexView(Adw.BreakpointBin):
         self.active_filter_type = "all"
         self.active_category_name = ""
         self.search_query = ""
+        self._search_debounce_id = None
 
         self._build_ui()
         self._setup_breakpoint()
@@ -237,14 +238,28 @@ class IndexView(Adw.BreakpointBin):
         self.search_entry.grab_focus()
 
     def exit_search(self):
+        if self._search_debounce_id:
+            GLib.source_remove(self._search_debounce_id)
+            self._search_debounce_id = None
         self.search_query = ""
         self.search_entry.set_text("")
         self.header_stack.set_visible_child_name("main")
         self.refresh()
 
     def _on_search_text_changed(self, entry):
-        self.search_query = entry.get_text().strip()
-        self.refresh(update_sidebar=False)
+        if self._search_debounce_id:
+            GLib.source_remove(self._search_debounce_id)
+            self._search_debounce_id = None
+
+        def do_search():
+            self._search_debounce_id = None
+            query = entry.get_text().strip()
+            if query != self.search_query:
+                self.search_query = query
+                self.refresh(update_sidebar=False)
+            return False
+
+        self._search_debounce_id = GLib.timeout_add(150, do_search)
 
     def _on_selection_changed(self, _nl, count: int):
         checked = self.notes_list.get_checked_notes()

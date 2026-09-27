@@ -4,11 +4,12 @@
 import json
 import os
 import sqlite3
+import threading
 import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from gi.repository import GLib
 
 from stilonotes.models import Note, Category
@@ -21,7 +22,7 @@ from stilonotes.markdown_utils import (
 )
 
 class NoteDatabase:
-    """SQLite Database manager for Stilo Notes."""
+    """High-performance SQLite Database manager for Stilo Notes."""
 
     def __init__(self, db_path: Optional[str] = None):
         if db_path:
@@ -31,31 +32,50 @@ class NoteDatabase:
             data_dir.mkdir(parents=True, exist_ok=True)
             self.db_path = data_dir / "stilonotes.db"
 
-        if str(self.db_path) == ":memory:":
-            self._shared_mem_conn = sqlite3.connect(":memory:")
-            self._shared_mem_conn.row_factory = sqlite3.Row
-        else:
-            self._shared_mem_conn = None
+        self._lock = threading.RLock()
+        self._conn: Optional[sqlite3.Connection] = None
 
         self._init_db()
 
     @contextmanager
     def get_connection(self):
-        if self._shared_mem_conn:
-            yield self._shared_mem_conn
-        else:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
-            try:
-                yield conn
-            finally:
-                conn.close()
+        """Thread-safe context manager for persistent SQLite connection."""
+        with self._lock:
+            if self._conn is None:
+                is_mem = str(self.db_path) == ":memory:"
+                conn_path = ":memory:" if is_mem else str(self.db_path)
+                conn = sqlite3.connect(conn_path, check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+
+                # Performance tuning pragmas
+                if not is_mem:
+                    conn.execute("PRAGMA journal_mode = WAL")
+                    conn.execute("PRAGMA synchronous = NORMAL")
+                    conn.execute("PRAGMA temp_store = MEMORY")
+                    conn.execute("PRAGMA cache_size = -64000")
+                conn.execute("PRAGMA busy_timeout = 5000")
+                self._conn = conn
+
+            yield self._conn
+
+    def close(self):
+        """Cleanly close database connection and free resources."""
+        with self._lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
+
+    def __del__(self):
+        self.close()
 
     def _init_db(self):
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Notes table
+            # Notes table - content_markdown is the single source of truth
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS notes (
                 id TEXT PRIMARY KEY,
@@ -73,6 +93,20 @@ class NoteDatabase:
                 updated_at REAL
             )
             """)
+
+            # Attachments table for storing images and media as binary blobs
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS attachments (
+                id TEXT PRIMARY KEY,
+                note_id TEXT,
+                filename TEXT,
+                mime_type TEXT,
+                data BLOB,
+                size_bytes INTEGER,
+                created_at REAL
+            )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments (note_id)")
 
             # Categories table
             cursor.execute("""
@@ -93,11 +127,24 @@ class NoteDatabase:
             )
             """)
 
-            # Indices
+            # Indices for instant lookups and sorting
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed ON notes (is_trashed)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes (is_pinned)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_category ON notes (category)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_pinned_updated ON notes (is_trashed, is_pinned, updated_at DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_cat ON notes (is_trashed, category)")
+
+            # Migrate legacy notes if content_markdown is empty but content_html exists
+            cursor.execute("""
+            SELECT id, content_html FROM notes
+            WHERE (content_markdown IS NULL OR content_markdown = '')
+              AND (content_html IS NOT NULL AND content_html != '')
+            """)
+            legacy_notes = cursor.fetchall()
+            for r in legacy_notes:
+                md = html_to_markdown(r["content_html"])
+                cursor.execute("UPDATE notes SET content_markdown = ? WHERE id = ?", (md, r["id"]))
 
             conn.commit()
 
@@ -168,10 +215,15 @@ Enjoy writing with Stilo Notes!
         tag_name: str = "",
         search_query: str = ""
     ) -> List[Note]:
-        """Fetch notes with flexible filtering."""
+        """Fetch notes for list display without loading massive content fields into memory."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            query = "SELECT * FROM notes WHERE 1=1"
+            # Scalability: Select only metadata needed for list rendering (no content blobs)
+            query = """
+            SELECT id, title, excerpt, category, tags, is_pinned, is_archived, is_trashed,
+                   has_todo, created_at, updated_at
+            FROM notes WHERE 1=1
+            """
             params: List[Any] = []
 
             # Trash filtering
@@ -188,7 +240,6 @@ Enjoy writing with Stilo Notes!
             elif filter_type == "uncategorized":
                 query += " AND (category = '' OR category IS NULL)"
             elif filter_type == "category" and category_name:
-                # Match exact category OR any sub-category (Work/Projects matches Work/Projects/...)
                 query += " AND (category = ? OR category LIKE ?)"
                 params.append(category_name)
                 params.append(category_name + "/%")
@@ -206,12 +257,21 @@ Enjoy writing with Stilo Notes!
             return [Note.from_row(row) for row in cursor.fetchall()]
 
     def get_note(self, note_id: str) -> Optional[Note]:
-        """Retrieve single note by ID."""
+        """Retrieve single note by ID with full content (Markdown as authoritative source)."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM notes WHERE id = ?", (note_id,))
             row = cursor.fetchone()
-            return Note.from_row(row) if row else None
+            if not row:
+                return None
+
+            note = Note.from_row(row)
+            # Ensure content_html is dynamically synchronized with canonical Markdown
+            if note.content_markdown and not note.content_html:
+                note.content_html = markdown_to_html(note.content_markdown)
+            elif not note.content_markdown and note.content_html:
+                note.content_markdown = html_to_markdown(note.content_html)
+            return note
 
     def save_note(
         self,
@@ -225,8 +285,9 @@ Enjoy writing with Stilo Notes!
         is_pinned: Optional[bool] = None,
         is_archived: Optional[bool] = None,
         is_trashed: Optional[bool] = None,
+        has_todo: Optional[bool] = None,
     ) -> Note:
-        """Create or update a note with automatic excerpt and tag computation."""
+        """Save note with Markdown as the authoritative single source of truth."""
         now = time.time()
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -235,22 +296,37 @@ Enjoy writing with Stilo Notes!
 
             if row:
                 existing = Note.from_row(row)
-                new_html = content_html if content_html is not None else existing.content_html
-                new_md = content_markdown if content_markdown is not None else (
-                    html_to_markdown(new_html) if content_html is not None else existing.content_markdown
-                )
+                # Markdown is canonical
+                if content_markdown is not None:
+                    new_md = content_markdown
+                elif content_html is not None:
+                    new_md = html_to_markdown(content_html)
+                else:
+                    new_md = existing.content_markdown
 
-                extracted_title, extracted_excerpt = extract_title_and_excerpt(new_md, new_html)
-                new_title = title if (title is not None and title != "Untitled Note") else (
-                    extracted_title or existing.title or "Untitled Note"
-                )
-                new_excerpt = excerpt if excerpt is not None else extracted_excerpt
-                new_tags = tags if tags is not None else extract_tags(new_md or new_html)
+                # Synchronize HTML from canonical markdown
+                new_html = content_html if content_html is not None else markdown_to_html(new_md)
+
+                # Avoid redundant regex extraction when title/excerpt already supplied
+                if title is not None and title != "Untitled Note" and excerpt is not None:
+                    new_title = title
+                    new_excerpt = excerpt
+                else:
+                    extracted_title, extracted_excerpt = extract_title_and_excerpt(new_md, new_html)
+                    new_title = title if (title is not None and title != "Untitled Note") else (
+                        extracted_title or existing.title or "Untitled Note"
+                    )
+                    new_excerpt = excerpt if excerpt is not None else extracted_excerpt
+
+                new_tags = tags if tags is not None else extract_tags(new_md)
                 new_category = category if category is not None else existing.category
                 new_pinned = int(is_pinned if is_pinned is not None else existing.is_pinned)
                 new_archived = int(is_archived if is_archived is not None else existing.is_archived)
                 new_trashed = int(is_trashed if is_trashed is not None else existing.is_trashed)
-                new_todo = 1 if check_has_todo(new_html or new_md) else 0
+                if has_todo is not None:
+                    new_todo = 1 if has_todo else 0
+                else:
+                    new_todo = 1 if check_has_todo(new_md or new_html) else 0
 
                 cursor.execute("""
                 UPDATE notes SET
@@ -281,17 +357,32 @@ Enjoy writing with Stilo Notes!
                     note_id
                 ))
             else:
-                new_html = content_html or "<h1>Untitled Note</h1><div><br></div>"
-                new_md = content_markdown or (html_to_markdown(new_html) if new_html else "")
-                extracted_title, extracted_excerpt = extract_title_and_excerpt(new_md, new_html)
-                new_title = title if (title and title != "Untitled Note") else (extracted_title or "Untitled Note")
-                new_excerpt = excerpt if excerpt is not None else extracted_excerpt
-                new_tags = tags if tags is not None else extract_tags(new_md or new_html)
+                if content_markdown is not None:
+                    new_md = content_markdown
+                elif content_html:
+                    new_md = html_to_markdown(content_html)
+                else:
+                    new_md = ""
+
+                new_html = content_html or markdown_to_html(new_md)
+
+                if title and title != "Untitled Note" and excerpt is not None:
+                    new_title = title
+                    new_excerpt = excerpt
+                else:
+                    extracted_title, extracted_excerpt = extract_title_and_excerpt(new_md, new_html)
+                    new_title = title if (title and title != "Untitled Note") else (extracted_title or "Untitled Note")
+                    new_excerpt = excerpt if excerpt is not None else extracted_excerpt
+
+                new_tags = tags if tags is not None else extract_tags(new_md)
                 new_category = category or ""
                 new_pinned = int(is_pinned or 0)
                 new_archived = int(is_archived or 0)
                 new_trashed = int(is_trashed or 0)
-                new_todo = 1 if check_has_todo(new_html or new_md) else 0
+                if has_todo is not None:
+                    new_todo = 1 if has_todo else 0
+                else:
+                    new_todo = 1 if check_has_todo(new_md or new_html) else 0
 
                 cursor.execute("""
                 INSERT INTO notes (
@@ -315,13 +406,27 @@ Enjoy writing with Stilo Notes!
                 ))
 
             conn.commit()
-            return self.get_note(note_id)
+            return Note(
+                id=note_id,
+                title=new_title,
+                content_html=new_html,
+                content_markdown=new_md,
+                excerpt=new_excerpt,
+                category=new_category,
+                tags=new_tags,
+                is_pinned=bool(new_pinned),
+                is_archived=bool(new_archived),
+                is_trashed=bool(new_trashed),
+                has_todo=bool(new_todo),
+                created_at=row["created_at"] if row else now,
+                updated_at=now,
+            )
 
     def create_note(self, title: str = "Untitled Note", category: str = "", initial_text: str = "") -> Note:
         """Create a new note."""
         note_id = str(uuid.uuid4())
-        html_content = markdown_to_html(initial_text) if initial_text else f"<h1>{title}</h1><div><br></div>"
         md_content = initial_text or (f"# {title}\n\n" if title != "Untitled Note" else "")
+        html_content = markdown_to_html(md_content) if md_content else f"<h1>{title}</h1><div><br></div>"
         return self.save_note(
             note_id=note_id,
             title=title,
@@ -336,6 +441,7 @@ Enjoy writing with Stilo Notes!
             cursor = conn.cursor()
             if permanent:
                 cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+                cursor.execute("DELETE FROM attachments WHERE note_id = ?", (note_id,))
             else:
                 cursor.execute("UPDATE notes SET is_trashed = 1, updated_at = ? WHERE id = ?", (time.time(), note_id))
             conn.commit()
@@ -401,6 +507,7 @@ Enjoy writing with Stilo Notes!
             placeholders = ",".join("?" for _ in note_ids)
             if permanent:
                 cursor.execute(f"DELETE FROM notes WHERE id IN ({placeholders})", note_ids)
+                cursor.execute(f"DELETE FROM attachments WHERE note_id IN ({placeholders})", note_ids)
             else:
                 cursor.execute(f"UPDATE notes SET is_trashed = 1, updated_at = ? WHERE id IN ({placeholders})", [now] + note_ids)
             conn.commit()
@@ -435,7 +542,7 @@ Enjoy writing with Stilo Notes!
         if not note:
             return None
         new_id = str(uuid.uuid4())
-        return self.save_note(
+        dup = self.save_note(
             note_id=new_id,
             title=f"{note.title} (Copy)",
             category=note.category,
@@ -443,25 +550,91 @@ Enjoy writing with Stilo Notes!
             content_markdown=note.content_markdown,
             tags=note.tags
         )
-
-    def get_categories(self) -> List[Category]:
-        """Fetch categories with active note counts."""
+        # Duplicate attachments
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM categories ORDER BY name ASC")
-            cats = []
-            for row in cursor.fetchall():
-                c_name = row["name"]
-                cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0 AND category = ?", (c_name,))
-                count = cursor.fetchone()["cnt"]
-                cats.append(Category(
+            cursor.execute("SELECT * FROM attachments WHERE note_id = ?", (note_id,))
+            for att in cursor.fetchall():
+                self.save_attachment(
+                    note_id=new_id,
+                    filename=att["filename"],
+                    mime_type=att["mime_type"],
+                    data=att["data"]
+                )
+        return dup
+
+    # ── Attachments API ───────────────────────────────────────────────────
+
+    def save_attachment(
+        self,
+        note_id: str,
+        filename: str,
+        mime_type: str,
+        data: bytes,
+        attachment_id: Optional[str] = None
+    ) -> str:
+        """Store image or file as a binary blob in the attachments table."""
+        att_id = attachment_id or str(uuid.uuid4())
+        now = time.time()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+            INSERT OR REPLACE INTO attachments (id, note_id, filename, mime_type, data, size_bytes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (att_id, note_id, filename, mime_type, data, len(data), now))
+            conn.commit()
+        return att_id
+
+    def get_attachment(self, attachment_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve attachment binary data and metadata."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM attachments WHERE id = ?", (attachment_id,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "id": row["id"],
+                    "note_id": row["note_id"],
+                    "filename": row["filename"],
+                    "mime_type": row["mime_type"],
+                    "data": row["data"],
+                    "size_bytes": row["size_bytes"],
+                }
+            return None
+
+    def delete_attachment(self, attachment_id: str):
+        """Delete specific attachment."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM attachments WHERE id = ?", (attachment_id,))
+            conn.commit()
+
+    def get_categories(self) -> List[Category]:
+        """Fetch categories with active note counts in a single optimized query."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+            SELECT c.id, c.name, c.icon, c.color,
+                   COALESCE(n.cnt, 0) as count
+            FROM categories c
+            LEFT JOIN (
+                SELECT category, COUNT(*) as cnt
+                FROM notes
+                WHERE is_trashed = 0 AND category != '' AND category IS NOT NULL
+                GROUP BY category
+            ) n ON c.name = n.category
+            ORDER BY c.name ASC
+            """)
+            return [
+                Category(
                     id=row["id"],
-                    name=c_name,
+                    name=row["name"],
                     icon=row["icon"] or "folder-symbolic",
                     color=row["color"] or "",
-                    count=count
-                ))
-            return cats
+                    count=row["count"]
+                )
+                for row in cursor.fetchall()
+            ]
 
     def create_category(self, name: str, icon: str = "folder-symbolic", color: str = "") -> bool:
         """Create a new category."""
@@ -480,34 +653,64 @@ Enjoy writing with Stilo Notes!
         except sqlite3.IntegrityError:
             return False
 
-    def delete_category(self, name: str):
-        """Delete category and reset notes in that category."""
+    def rename_category(self, old_name: str, new_name: str):
+        """Rename a category and all its subcategories and update affected notes."""
+        old_name = old_name.strip()
+        new_name = new_name.strip()
+        if not old_name or not new_name or old_name == new_name:
+            return
+        now = time.time()
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM categories WHERE name = ?", (name,))
-            cursor.execute("UPDATE notes SET category = '' WHERE category = ?", (name,))
+            cursor.execute("UPDATE categories SET name = ? WHERE name = ?", (new_name, old_name))
+            old_prefix = old_name + "/"
+            new_prefix = new_name + "/"
+            cursor.execute(
+                "UPDATE categories SET name = ? || substr(name, ?) WHERE name LIKE ?",
+                (new_prefix, len(old_prefix) + 1, old_prefix + "%")
+            )
+            cursor.execute("UPDATE notes SET category = ?, updated_at = ? WHERE category = ?", (new_name, now, old_name))
+            cursor.execute(
+                "UPDATE notes SET category = ? || substr(category, ?), updated_at = ? WHERE category LIKE ?",
+                (new_prefix, len(old_prefix) + 1, now, old_prefix + "%")
+            )
+            conn.commit()
+
+    def delete_category(self, name: str):
+        """Delete category and any subcategories and reset affected notes' category."""
+        clean_name = name.strip()
+        if not clean_name:
+            return
+        now = time.time()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM categories WHERE name = ? OR name LIKE ?", (clean_name, clean_name + "/%"))
+            cursor.execute(
+                "UPDATE notes SET category = '', updated_at = ? WHERE category = ? OR category LIKE ?",
+                (now, clean_name, clean_name + "/%")
+            )
             conn.commit()
 
     def get_counts(self) -> Dict[str, int]:
-        """Return counts for standard tabs plus per-category counts."""
+        """Return counts for standard tabs plus per-category counts in 2 fast queries."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0")
-            all_cnt = cursor.fetchone()["cnt"]
+            cursor.execute("""
+            SELECT
+                COUNT(CASE WHEN is_trashed = 0 THEN 1 END) as all_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_pinned = 1 THEN 1 END) as pinned_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND has_todo = 1 THEN 1 END) as todo_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND (category = '' OR category IS NULL) THEN 1 END) as uncat_cnt,
+                COUNT(CASE WHEN is_trashed = 1 THEN 1 END) as trash_cnt
+            FROM notes
+            """)
+            counts_row = cursor.fetchone()
+            all_cnt = counts_row["all_cnt"]
+            pinned_cnt = counts_row["pinned_cnt"]
+            todo_cnt = counts_row["todo_cnt"]
+            uncat_cnt = counts_row["uncat_cnt"]
+            trash_cnt = counts_row["trash_cnt"]
 
-            cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0 AND is_pinned = 1")
-            pinned_cnt = cursor.fetchone()["cnt"]
-
-            cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0 AND has_todo = 1")
-            todo_cnt = cursor.fetchone()["cnt"]
-
-            cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 0 AND (category = '' OR category IS NULL)")
-            uncat_cnt = cursor.fetchone()["cnt"]
-
-            cursor.execute("SELECT COUNT(*) as cnt FROM notes WHERE is_trashed = 1")
-            trash_cnt = cursor.fetchone()["cnt"]
-
-            # Per-category counts (include subcategory notes in parent count)
             cursor.execute(
                 "SELECT category, COUNT(*) as cnt FROM notes "
                 "WHERE is_trashed = 0 AND category != '' AND category IS NOT NULL "
@@ -518,7 +721,6 @@ Enjoy writing with Stilo Notes!
             for row in cat_rows:
                 cat = row["category"]
                 cnt = row["cnt"]
-                # Add to the exact category and all ancestors
                 parts = cat.split("/")
                 for i in range(len(parts)):
                     ancestor = "/".join(parts[:i + 1])

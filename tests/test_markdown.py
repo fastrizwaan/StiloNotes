@@ -57,5 +57,32 @@ class TestMarkdown(unittest.TestCase):
         self.assertEqual(format_relative_date(now - 120), "2m ago")
         self.assertEqual(format_relative_date(now - 7200), "2h ago")
 
+    def test_image_conversion(self):
+        md = "# My Note\n\n![diagram](attachment://att-uuid-1234)\n\nSome text"
+        html = markdown_to_html(md)
+        self.assertIn('<div class="stilo-img-wrapper"><img src="attachment://att-uuid-1234" alt="diagram" class="stilo-img"></div>', html)
+        back_md = html_to_markdown(html)
+        self.assertIn("![diagram](attachment://att-uuid-1234)", back_md)
+
+    def test_image_resize_roundtrip(self):
+        html = '<div class="stilo-img-wrapper" style="width: 320px;"><img src="attachment://att-999" alt="photo" class="stilo-img"></div>'
+        md = html_to_markdown(html)
+        self.assertEqual(md, "![photo|320](attachment://att-999)")
+        html_back = markdown_to_html(md)
+        self.assertIn('style="width: 320px;"', html_back)
+        self.assertIn('src="attachment://att-999"', html_back)
+        self.assertIn('alt="photo"', html_back)
+
+    def test_table_conversion(self):
+        md = "| Name | Age |\n| :--- | :--- |\n| Alice | 30 |\n| Bob | 25 |"
+        html = markdown_to_html(md)
+        self.assertIn("<table", html)
+        self.assertIn("<th>Name</th>", html)
+        self.assertIn("<td>Alice</td>", html)
+        back_md = html_to_markdown(html)
+        self.assertIn("| Name | Age |", back_md)
+        self.assertIn("| Alice | 30 |", back_md)
+
 if __name__ == "__main__":
     unittest.main()
+

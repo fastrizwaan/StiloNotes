@@ -292,11 +292,7 @@ class NotesList(Gtk.Box):
         return sec_box, listbox
 
     def _clear_listbox(self, listbox: Gtk.ListBox):
-        while True:
-            row = listbox.get_row_at_index(0)
-            if not row:
-                break
-            listbox.remove(row)
+        listbox.remove_all()
 
     def set_notes(
         self,

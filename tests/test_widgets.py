@@ -9,6 +9,9 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
     def setUp(self):
         self.db = NoteDatabase(":memory:")
 
+    def tearDown(self):
+        self.db.close()
+
     def test_counts(self):
         counts = self.db.get_counts()
         self.assertIn("all", counts)

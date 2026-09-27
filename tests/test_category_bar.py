@@ -11,6 +11,9 @@ class TestCategoryHeaderBar(unittest.TestCase):
         self.db = NoteDatabase(":memory:")
         self.bar = CategoryHeaderBar()
 
+    def tearDown(self):
+        self.db.close()
+
     def test_set_categories_and_apply(self):
         self.bar.set_categories(["friend", "music", "work"])
         self.bar.entry.set_text("music")

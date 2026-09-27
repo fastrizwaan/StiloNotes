@@ -116,3 +116,9 @@ button.stilo-star-active {
   color: #E8B000;
 }
 
+/* Toolbar Pin active state */
+button.stilo-pin-active {
+  color: var(--accent-color, #7B2CBF);
+  background-color: alpha(currentColor, 0.14);
+}
+

@@ -116,11 +116,7 @@ class Sidebar(Adw.Bin):
         """Reload categories and counts."""
         self._updating = True
         try:
-            while True:
-                row = self.listbox.get_row_at_index(0)
-                if not row:
-                    break
-                self.listbox.remove(row)
+            self.listbox.remove_all()
 
             counts = self.db.get_counts()
 
@@ -332,28 +328,11 @@ class Sidebar(Adw.Bin):
             if response == "rename":
                 new_name = entry.get_text().strip().strip("/")
                 if new_name and new_name != old_name:
-                    with self.db.get_connection() as conn:
-                        # Rename category and any children (prefix rename)
-                        conn.execute(
-                            "UPDATE categories SET name = ? WHERE name = ?",
-                            (new_name, old_name)
-                        )
-                        # Rename child categories: old_name/... → new_name/...
-                        conn.execute(
-                            "UPDATE categories SET name = replace(name, ?, ?) WHERE name LIKE ?",
-                            (old_name + "/", new_name + "/", old_name + "/%")
-                        )
-                        # Update notes
-                        conn.execute(
-                            "UPDATE notes SET category = ? WHERE category = ?",
-                            (new_name, old_name)
-                        )
-                        conn.execute(
-                            "UPDATE notes SET category = replace(category, ?, ?) WHERE category LIKE ?",
-                            (old_name + "/", new_name + "/", old_name + "/%")
-                        )
+                    self.db.rename_category(old_name, new_name)
                     if self.active_category_name == old_name:
                         self.active_category_name = new_name
+                    elif self.active_category_name.startswith(old_name + "/"):
+                        self.active_category_name = new_name + self.active_category_name[len(old_name):]
                     self.refresh()
 
         dialog.connect("response", on_response)
@@ -375,15 +354,7 @@ class Sidebar(Adw.Bin):
 
         def on_response(_d, response):
             if response == "delete":
-                with self.db.get_connection() as conn:
-                    # Delete this category and all children
-                    conn.execute("DELETE FROM categories WHERE name = ?", (name,))
-                    conn.execute("DELETE FROM categories WHERE name LIKE ?", (name + "/%",))
-                    # Clear notes' category
-                    conn.execute("UPDATE notes SET category = '' WHERE category = ?", (name,))
-                    conn.execute(
-                        "UPDATE notes SET category = '' WHERE category LIKE ?", (name + "/%",)
-                    )
+                self.db.delete_category(name)
                 if self.active_category_name == name or self.active_category_name.startswith(name + "/"):
                     self.active_filter_type = "all"
                     self.active_category_name = ""

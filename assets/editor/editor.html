@@ -241,19 +241,37 @@
     }
 
     /* Tables */
+    .stilo-table-wrapper {
+      position: relative;
+      display: block;
+      margin: 16px 0;
+      max-width: 100%;
+      width: fit-content;
+      box-sizing: border-box;
+      transition: outline 0.15s ease;
+    }
+
+    .stilo-table-wrapper.table-active {
+      outline: 2px solid var(--accent-color, #7B2CBF);
+      border-radius: 8px;
+    }
+
     table.stilo-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 16px 0;
+      margin: 0;
       border: 1px solid var(--table-border);
       border-radius: 8px;
-      overflow: hidden;
+      box-sizing: border-box;
     }
 
     table.stilo-table th, table.stilo-table td {
       border: 1px solid var(--table-border);
       padding: 8px 14px;
       text-align: left;
+      position: relative;
+      min-width: 40px;
+      box-sizing: border-box;
     }
 
     table.stilo-table th {
@@ -261,62 +279,74 @@
       font-weight: 600;
     }
 
-    /* Horizontal Rules */
-    hr.stilo-hr {
-      border: none;
-      height: 2px;
-      background-color: var(--hr-color);
-      margin: 22px 0;
-      border-radius: 1px;
-    }
-
-    /* Tag Pills */
-    .stilo-tag {
-      display: inline-block;
-      background-color: var(--tag-bg);
-      color: var(--tag-text);
-      font-weight: 500;
-      font-size: 13.5px;
-      padding: 2px 8px;
-      border-radius: 12px;
-      margin: 0 3px;
-      cursor: pointer;
-      user-select: none;
-      transition: background-color 0.15s ease;
-    }
-
-    .stilo-tag:hover {
-      background-color: var(--tag-hover);
-    }
-
-    /* Highlight */
-    mark.stilo-highlight {
-      background-color: var(--highlight-bg);
-      color: inherit;
-      padding: 1px 4px;
-      border-radius: 3px;
-    }
-
-    /* Links */
-    a.stilo-link {
-      color: var(--accent-color);
-      text-decoration: underline;
-      text-underline-offset: 3px;
-      cursor: pointer;
-    }
-
     /* Images */
     .stilo-img-wrapper {
       margin: 16px 0;
-      text-align: center;
+      display: inline-block;
+      max-width: 100%;
+      position: relative;
+      line-height: 0;
+      box-sizing: border-box;
+      transition: outline 0.15s ease;
+    }
+
+    .stilo-img-wrapper.img-active {
+      outline: 2px solid var(--accent-color, #7B2CBF);
+      border-radius: 8px;
     }
 
     .stilo-img {
       max-width: 100%;
+      height: auto;
       border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      display: block;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-user-drag: none;
     }
 
+    /* Interactive Resize Handles */
+    .table-handle, .image-handle {
+      position: absolute;
+      bottom: -7px;
+      right: -7px;
+      width: 14px;
+      height: 14px;
+      cursor: nwse-resize;
+      background: var(--accent-color, #7B2CBF);
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+      border-radius: 50%;
+      z-index: 100;
+      user-select: none;
+      -webkit-user-select: none;
+      display: none;
+    }
+
+    .stilo-table-wrapper:hover .table-handle,
+    .stilo-table-wrapper.table-active .table-handle,
+    .stilo-img-wrapper:hover .image-handle,
+    .stilo-img-wrapper.img-active .image-handle {
+      display: block;
+    }
+
+    .col-resize-handle {
+      position: absolute;
+      top: 0;
+      right: -3px;
+      width: 6px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+      -webkit-user-select: none;
+      z-index: 50;
+    }
+
+    .col-resize-handle:hover {
+      background-color: var(--accent-color, #7B2CBF);
+      opacity: 0.7;
+    }
   </style>
 </head>
 <body>
@@ -331,9 +361,31 @@
     const editor = document.getElementById('editor');
     let saveTimeout = null;
     let isUpdatingFromPython = false;
+    let lastSavedHtml = '';
+    let lastSavedTitle = '';
+
+    let lastActiveTable = null;
+    let lastActiveCell = null;
+    let lastActiveImage = null;
+
+    let isResizingTable = false;
+    let resizingTableEl = null;
+    let tableStartX = 0;
+    let tableStartWidth = 0;
+
+    let isResizingCol = false;
+    let resizingColEl = null;
+    let colStartX = 0;
+    let colStartWidth = 0;
+
+    let isResizingImg = false;
+    let resizingImgEl = null;
+    let imgStartX = 0;
+    let imgStartWidth = 0;
 
     window.addEventListener('load', () => {
       setupEventHandlers();
+      initAllHandles();
     });
 
     function setupEventHandlers() {
@@ -343,11 +395,228 @@
       editor.addEventListener('paste', onPaste);
       editor.addEventListener('drop', onDrop);
 
-      document.addEventListener('click', (e) => {
-        if (!e.target.closest('#floating-toolbar')) {
-          closeAllPopups();
+      editor.addEventListener('click', updateActiveElement);
+      editor.addEventListener('mouseover', updateActiveElement);
+      editor.addEventListener('keyup', updateActiveElement);
+
+      document.addEventListener('selectionchange', () => {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) {
+          let node = sel.getRangeAt(0).commonAncestorContainer;
+          if (node.nodeType === 3) node = node.parentNode;
+          const table = node ? node.closest('table.stilo-table') : null;
+          const cell = node ? node.closest('td, th') : null;
+          const imgWrapper = node ? node.closest('.stilo-img-wrapper') : null;
+          if (table) {
+            lastActiveTable = table;
+            const wrap = table.closest('.stilo-table-wrapper') || table;
+            document.querySelectorAll('.stilo-table-wrapper, table.stilo-table').forEach(t => {
+              if (t !== wrap && t !== table) t.classList.remove('table-active');
+            });
+            wrap.classList.add('table-active');
+          }
+          if (cell) {
+            lastActiveCell = cell;
+          }
+          if (imgWrapper) {
+            lastActiveImage = imgWrapper;
+            document.querySelectorAll('.stilo-img-wrapper').forEach(w => {
+              if (w !== imgWrapper) w.classList.remove('img-active');
+            });
+            imgWrapper.classList.add('img-active');
+          }
         }
       });
+
+      window.addEventListener('blur', () => {
+        clearTimeout(saveTimeout);
+        notifyChange();
+      });
+      editor.addEventListener('blur', () => {
+        clearTimeout(saveTimeout);
+        notifyChange();
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (isResizingTable && resizingTableEl) {
+          e.preventDefault();
+          const deltaX = e.clientX - tableStartX;
+          const maxW = editor.clientWidth || 720;
+          const newWidth = Math.max(120, Math.min(maxW, tableStartWidth + deltaX));
+          resizingTableEl.style.width = newWidth + 'px';
+          const tbl = resizingTableEl.querySelector('table');
+          if (tbl) tbl.style.width = '100%';
+        }
+        if (isResizingCol && resizingColEl) {
+          e.preventDefault();
+          const deltaX = e.clientX - colStartX;
+          const newWidth = Math.max(30, colStartWidth + deltaX);
+          resizingColEl.style.width = newWidth + 'px';
+          resizingColEl.style.minWidth = newWidth + 'px';
+          const tbl = resizingColEl.closest('table');
+          if (tbl) tbl.style.tableLayout = 'fixed';
+        }
+        if (isResizingImg && resizingImgEl) {
+          e.preventDefault();
+          const deltaX = e.clientX - imgStartX;
+          const maxW = editor.clientWidth || 720;
+          const newWidth = Math.max(60, Math.min(maxW, imgStartWidth + deltaX));
+          resizingImgEl.style.width = newWidth + 'px';
+          const img = resizingImgEl.querySelector('img');
+          if (img) img.style.width = '100%';
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (isResizingTable || isResizingCol || isResizingImg) {
+          isResizingTable = false;
+          resizingTableEl = null;
+          isResizingCol = false;
+          resizingColEl = null;
+          isResizingImg = false;
+          resizingImgEl = null;
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          notifyChange();
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#floating-toolbar') && !e.target.closest('.stilo-table-wrapper') && !e.target.closest('.stilo-img-wrapper')) {
+          document.querySelectorAll('.stilo-table-wrapper, table.stilo-table').forEach(t => t.classList.remove('table-active'));
+          document.querySelectorAll('.stilo-img-wrapper').forEach(w => w.classList.remove('img-active'));
+        }
+      });
+    }
+
+    function initTableHandles(table) {
+      if (!table) return;
+
+      // Wrap in .stilo-table-wrapper if not already wrapped
+      let wrapper = table.parentElement;
+      if (!wrapper || !wrapper.classList.contains('stilo-table-wrapper')) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'stilo-table-wrapper';
+        wrapper.setAttribute('contenteditable', 'false');
+        if (table.style.width) {
+          wrapper.style.width = table.style.width;
+          table.style.width = '100%';
+        }
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+      }
+      wrapper.setAttribute('contenteditable', 'false');
+      table.setAttribute('contenteditable', 'true');
+
+      let handle = wrapper.querySelector(':scope > .table-handle');
+      if (!handle) {
+        handle = document.createElement('div');
+        handle.className = 'table-handle';
+        handle.setAttribute('contenteditable', 'false');
+        handle.setAttribute('draggable', 'false');
+        handle.title = 'Drag to resize table width';
+
+        handle.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          isResizingTable = true;
+          resizingTableEl = wrapper;
+          tableStartX = e.clientX;
+          tableStartWidth = wrapper.offsetWidth;
+          document.body.style.cursor = 'nwse-resize';
+          document.body.style.userSelect = 'none';
+        });
+        wrapper.appendChild(handle);
+      }
+
+      const headers = table.querySelectorAll('th, thead td, tr:first-child td');
+      headers.forEach(cell => {
+        let colHandle = cell.querySelector(':scope > .col-resize-handle');
+        if (!colHandle) {
+          colHandle = document.createElement('div');
+          colHandle.className = 'col-resize-handle';
+          colHandle.setAttribute('contenteditable', 'false');
+          colHandle.setAttribute('draggable', 'false');
+          colHandle.title = 'Drag to resize column';
+
+          colHandle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isResizingCol = true;
+            resizingColEl = cell;
+            colStartX = e.clientX;
+            colStartWidth = cell.offsetWidth;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+          });
+          cell.appendChild(colHandle);
+        }
+      });
+    }
+
+    function initImageHandles(wrapper) {
+      if (!wrapper) return;
+      wrapper.setAttribute('contenteditable', 'false');
+      const img = wrapper.querySelector('img');
+      if (img) {
+        img.setAttribute('draggable', 'false');
+        img.addEventListener('dragstart', (e) => e.preventDefault());
+      }
+
+      let handle = wrapper.querySelector(':scope > .image-handle');
+      if (!handle) {
+        handle = document.createElement('div');
+        handle.className = 'image-handle';
+        handle.setAttribute('contenteditable', 'false');
+        handle.setAttribute('draggable', 'false');
+        handle.title = 'Drag to resize image';
+
+        handle.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          isResizingImg = true;
+          resizingImgEl = wrapper;
+          imgStartX = e.clientX;
+          imgStartWidth = wrapper.offsetWidth;
+          document.body.style.cursor = 'nwse-resize';
+          document.body.style.userSelect = 'none';
+        });
+        wrapper.appendChild(handle);
+      }
+    }
+
+    function initAllHandles() {
+      editor.querySelectorAll('table.stilo-table').forEach(initTableHandles);
+      editor.querySelectorAll('.stilo-img-wrapper').forEach(initImageHandles);
+    }
+
+    function updateActiveElement(e) {
+      const target = e.target;
+      if (!target) return;
+      const table = target.closest('table.stilo-table');
+      const cell = target.closest('td, th');
+      const imgWrapper = target.closest('.stilo-img-wrapper');
+
+      if (table) {
+        lastActiveTable = table;
+        const wrap = table.closest('.stilo-table-wrapper') || table;
+        document.querySelectorAll('.stilo-table-wrapper, table.stilo-table').forEach(t => {
+          if (t !== wrap && t !== table) t.classList.remove('table-active');
+        });
+        wrap.classList.add('table-active');
+        initTableHandles(table);
+      }
+      if (cell) {
+        lastActiveCell = cell;
+      }
+      if (imgWrapper) {
+        lastActiveImage = imgWrapper;
+        document.querySelectorAll('.stilo-img-wrapper').forEach(w => {
+          if (w !== imgWrapper) w.classList.remove('img-active');
+        });
+        imgWrapper.classList.add('img-active');
+        initImageHandles(imgWrapper);
+      }
     }
 
     // ==========================================
@@ -737,22 +1006,202 @@
     }
 
     function insertTable(rows = 3, cols = 3) {
+      insertCustomTable(rows, cols, true);
+    }
+
+    function insertCustomTable(rows = 3, cols = 3, hasHeader = true) {
       closeAllPopups();
-      let tableHtml = '<table class="stilo-table"><thead><tr>';
-      for (let c = 0; c < cols; c++) {
-        tableHtml += `<th>Header ${c + 1}</th>`;
-      }
-      tableHtml += '</tr></thead><tbody>';
-      for (let r = 0; r < rows - 1; r++) {
-        tableHtml += '<tr>';
+      let tableHtml = '<div class="stilo-table-wrapper" contenteditable="false"><table class="stilo-table" contenteditable="true">';
+      if (hasHeader) {
+        tableHtml += '<thead><tr>';
         for (let c = 0; c < cols; c++) {
-          tableHtml += '<td>Cell</td>';
+          tableHtml += `<th>Header ${c + 1}</th>`;
         }
-        tableHtml += '</tr>';
+        tableHtml += '</tr></thead><tbody>';
+        const bodyRows = Math.max(1, rows - 1);
+        for (let r = 0; r < bodyRows; r++) {
+          tableHtml += '<tr>';
+          for (let c = 0; c < cols; c++) {
+            tableHtml += '<td>Cell</td>';
+          }
+          tableHtml += '</tr>';
+        }
+        tableHtml += '</tbody>';
+      } else {
+        tableHtml += '<tbody>';
+        for (let r = 0; r < rows; r++) {
+          tableHtml += '<tr>';
+          for (let c = 0; c < cols; c++) {
+            tableHtml += '<td>Cell</td>';
+          }
+          tableHtml += '</tr>';
+        }
+        tableHtml += '</tbody>';
       }
-      tableHtml += '</tbody></table><div><br></div>';
+      tableHtml += '</table><div class="table-handle" contenteditable="false" draggable="false" title="Drag to resize table"></div></div><div><br></div>';
+
       document.execCommand('insertHTML', false, tableHtml);
+      initAllHandles();
+      const tables = editor.querySelectorAll('table.stilo-table');
+      if (tables.length) {
+        const newestTable = tables[tables.length - 1];
+        lastActiveTable = newestTable;
+        lastActiveCell = newestTable.querySelector('td, th');
+        if (lastActiveCell) setCursorAtStart(lastActiveCell);
+      }
       notifyChange();
+    }
+
+    function getActiveTableAndCell() {
+      let table = lastActiveTable;
+      let cell = lastActiveCell;
+
+      if (table && !document.contains(table)) {
+        table = null;
+        lastActiveTable = null;
+      }
+      if (cell && !document.contains(cell)) {
+        cell = null;
+        lastActiveCell = null;
+      }
+
+      if (!table) {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) {
+          let node = sel.getRangeAt(0).commonAncestorContainer;
+          if (node.nodeType === 3) node = node.parentNode;
+          table = node ? node.closest('table.stilo-table') : null;
+          cell = node ? node.closest('td, th') : null;
+        }
+      }
+
+      if (!table) {
+        table = editor.querySelector('table.stilo-table');
+        if (table) {
+          cell = table.querySelector('tbody td') || table.querySelector('td, th');
+        }
+      }
+
+      return { cell, table };
+    }
+
+    function addTableRow() {
+      const { cell, table } = getActiveTableAndCell();
+      if (!table) {
+        insertCustomTable(3, 3, true);
+        return;
+      }
+      const firstRow = table.querySelector('tr');
+      const colCount = firstRow ? firstRow.querySelectorAll('th, td').length : 3;
+      const newRow = document.createElement('tr');
+      for (let i = 0; i < colCount; i++) {
+        const td = document.createElement('td');
+        td.innerHTML = '<br>';
+        newRow.appendChild(td);
+      }
+
+      let tbody = table.querySelector('tbody');
+      if (!tbody) {
+        tbody = document.createElement('tbody');
+        table.appendChild(tbody);
+      }
+
+      if (cell && cell.closest('tbody')) {
+        cell.closest('tr').insertAdjacentElement('afterend', newRow);
+      } else if (cell && cell.closest('thead')) {
+        tbody.insertAdjacentElement('afterbegin', newRow);
+      } else {
+        tbody.appendChild(newRow);
+      }
+
+      lastActiveTable = table;
+      lastActiveCell = newRow.firstElementChild;
+      initTableHandles(table);
+      setCursorAtStart(newRow.firstElementChild);
+      notifyChange();
+    }
+
+    function addTableColumn() {
+      const { cell, table } = getActiveTableAndCell();
+      if (!table) return;
+      const colIdx = cell ? Array.from(cell.parentElement.children).indexOf(cell) : -1;
+      const rows = table.querySelectorAll('tr');
+      rows.forEach(row => {
+        const isHeader = (row.parentElement && row.parentElement.tagName === 'THEAD') || (row === rows[0] && row.querySelector('th'));
+        const newCell = document.createElement(isHeader ? 'th' : 'td');
+        newCell.innerHTML = isHeader ? 'Header' : '<br>';
+        if (colIdx >= 0 && colIdx < row.children.length) {
+          row.children[colIdx].insertAdjacentElement('afterend', newCell);
+        } else {
+          row.appendChild(newCell);
+        }
+      });
+      lastActiveTable = table;
+      initTableHandles(table);
+      notifyChange();
+    }
+
+    function deleteTableRow() {
+      const { cell, table } = getActiveTableAndCell();
+      if (!table) return;
+      const allRows = Array.from(table.querySelectorAll('tr'));
+      if (allRows.length <= 1) {
+        deleteActiveTable();
+        return;
+      }
+      let row = cell ? cell.closest('tr') : null;
+      if (!row || (row.parentElement && row.parentElement.tagName === 'THEAD')) {
+        const bodyRows = table.querySelectorAll('tbody tr');
+        row = bodyRows.length ? bodyRows[bodyRows.length - 1] : allRows[allRows.length - 1];
+      }
+      if (!row) return;
+
+      const nextCell = row.nextElementSibling ? row.nextElementSibling.querySelector('td, th') :
+                       row.previousElementSibling ? row.previousElementSibling.querySelector('td, th') : null;
+      row.remove();
+      lastActiveCell = nextCell || table.querySelector('td, th');
+      initTableHandles(table);
+      notifyChange();
+    }
+
+    function deleteTableColumn() {
+      const { cell, table } = getActiveTableAndCell();
+      if (!table) return;
+      const firstRow = table.querySelector('tr');
+      if (!firstRow) return;
+      const colCount = firstRow.querySelectorAll('th, td').length;
+      if (colCount <= 1) {
+        deleteActiveTable();
+        return;
+      }
+      const colIdx = cell ? Array.from(cell.parentElement.children).indexOf(cell) : colCount - 1;
+      const targetIdx = (colIdx >= 0 && colIdx < colCount) ? colIdx : colCount - 1;
+
+      table.querySelectorAll('tr').forEach(row => {
+        const cells = Array.from(row.children);
+        if (cells[targetIdx]) {
+          cells[targetIdx].remove();
+        }
+      });
+
+      lastActiveCell = table.querySelector('td, th');
+      initTableHandles(table);
+      notifyChange();
+    }
+
+    function deleteActiveTable() {
+      const { table } = getActiveTableAndCell();
+      if (table) {
+        const wrapper = table.closest('.stilo-table-wrapper');
+        if (wrapper) {
+          wrapper.remove();
+        } else {
+          table.remove();
+        }
+        lastActiveTable = null;
+        lastActiveCell = null;
+        notifyChange();
+      }
     }
 
     function insertCodeBlock() {
@@ -799,8 +1248,9 @@
     }
 
     function insertImageAtCursor(src, alt = 'Note image') {
-      const imgHtml = `<div class="stilo-img-wrapper"><img src="${src}" alt="${alt}" class="stilo-img"></div><div><br></div>`;
+      const imgHtml = `<div class="stilo-img-wrapper" contenteditable="false"><img src="${src}" alt="${alt}" class="stilo-img" draggable="false"><div class="image-handle" contenteditable="false" draggable="false" title="Drag to resize image"></div></div><div><br></div>`;
       document.execCommand('insertHTML', false, imgHtml);
+      initAllHandles();
       notifyChange();
     }
 
@@ -828,39 +1278,104 @@
       }
     }
 
-    function onPaste(e) {
-      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-      for (let item of items) {
-        if (item.type.indexOf('image') === 0) {
-          e.preventDefault();
-          const file = item.getAsFile();
-          const reader = new FileReader();
-          reader.onload = function(event) {
-            insertImageAtCursor(event.target.result);
+    function sanitizeHtml(html) {
+      if (!html) return '';
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // Strip dangerous tags
+      const dangerousTags = ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link', 'style', 'applet'];
+      dangerousTags.forEach(tag => {
+        doc.body.querySelectorAll(tag).forEach(el => el.remove());
+      });
+
+      // Strip dangerous attributes and javascript:/vbscript: URLs
+      const allEls = doc.body.querySelectorAll('*');
+      allEls.forEach(el => {
+        for (let attr of Array.from(el.attributes)) {
+          const attrName = attr.name.toLowerCase();
+          if (attrName.startsWith('on')) {
+            el.removeAttribute(attr.name);
+          }
+        }
+        ['href', 'src', 'action'].forEach(attrName => {
+          const val = el.getAttribute(attrName);
+          if (val) {
+            const trimmed = val.trim().toLowerCase();
+            if (trimmed.startsWith('javascript:') || trimmed.startsWith('vbscript:')) {
+              el.removeAttribute(attrName);
+            }
+          }
+        });
+      });
+
+      return doc.body.innerHTML;
+    }
+
+    function handleImageUpload(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const dataUrl = event.target.result;
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.uploadImage) {
+          const payload = {
+            filename: file.name || 'image.png',
+            mimeType: file.type || 'image/png',
+            dataUrl: dataUrl
           };
-          reader.readAsDataURL(file);
-          return;
+          window.webkit.messageHandlers.uploadImage.postMessage(JSON.stringify(payload));
+        } else {
+          insertImageAtCursor(dataUrl, file.name || 'image');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function onPaste(e) {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      // 1. Check for image files in clipboard
+      const items = clipboardData.items;
+      if (items) {
+        for (let item of items) {
+          if (item.type && item.type.indexOf('image') === 0) {
+            e.preventDefault();
+            const file = item.getAsFile();
+            if (file) {
+              handleImageUpload(file);
+            }
+            return;
+          }
         }
       }
 
-      const text = (e.clipboardData || window.clipboardData).getData('text');
+      // 2. Check for markdown syntax in plain text
+      const text = clipboardData.getData('text/plain');
       if (text && hasMarkdownSyntax(text)) {
         e.preventDefault();
         const formatted = formatMarkdownInText(text).replace(/\n/g, '<br>');
         document.execCommand('insertHTML', false, formatted);
         notifyChange();
+        return;
+      }
+
+      // 3. If HTML was copied, sanitize it before inserting
+      const html = clipboardData.getData('text/html');
+      if (html) {
+        e.preventDefault();
+        const clean = sanitizeHtml(html);
+        document.execCommand('insertHTML', false, clean);
+        notifyChange();
+        return;
       }
     }
 
     function onDrop(e) {
-      const files = e.dataTransfer.files;
-      if (files.length > 0 && files[0].type.startsWith('image/')) {
+      const files = e.dataTransfer ? e.dataTransfer.files : [];
+      if (files && files.length > 0 && files[0].type.startsWith('image/')) {
         e.preventDefault();
-        const reader = new FileReader();
-        reader.onload = function(event) {
-          insertImageAtCursor(event.target.result);
-        };
-        reader.readAsDataURL(files[0]);
+        handleImageUpload(files[0]);
       }
     }
 
@@ -995,18 +1510,47 @@
       return editor.querySelector('.stilo-task') !== null;
     }
 
+    function getCleanHtml() {
+      const clone = editor.cloneNode(true);
+      clone.querySelectorAll('.table-handle, .image-handle, .col-resize-handle').forEach(h => h.remove());
+      clone.querySelectorAll('.table-active, .img-active').forEach(el => {
+        el.classList.remove('table-active');
+        el.classList.remove('img-active');
+      });
+      // Unwrap .stilo-table-wrapper to keep clean HTML markup while retaining width
+      clone.querySelectorAll('.stilo-table-wrapper').forEach(wrapper => {
+        const tbl = wrapper.querySelector('table.stilo-table');
+        if (tbl) {
+          if (wrapper.style.width && !tbl.style.width) {
+            tbl.style.width = wrapper.style.width;
+          }
+          wrapper.parentNode.insertBefore(tbl, wrapper);
+          wrapper.remove();
+        }
+      });
+      return clone.innerHTML;
+    }
+
     function notifyChangeDebounced() {
       clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(notifyChange, 350);
+      saveTimeout = setTimeout(notifyChange, 100);
     }
 
     function notifyChange() {
       if (isUpdatingFromPython) return;
+      const currentHtml = getCleanHtml();
+      const currentTitle = getTitle();
+      if (currentHtml === lastSavedHtml && currentTitle === lastSavedTitle) {
+        return;
+      }
+      lastSavedHtml = currentHtml;
+      lastSavedTitle = currentTitle;
+
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.contentChanged) {
         const payload = {
-          title: getTitle(),
+          title: currentTitle,
           excerpt: getExcerpt(),
-          html: editor.innerHTML,
+          html: currentHtml,
           tags: getTags(),
           stats: getStats(),
           has_todo: hasTodo()
@@ -1019,16 +1563,31 @@
     window.setEditorContent = function(html) {
       isUpdatingFromPython = true;
       editor.innerHTML = html || '<h1>Untitled Note</h1><div><br></div>';
+      initAllHandles();
+      lastSavedHtml = getCleanHtml();
+      lastSavedTitle = getTitle();
       isUpdatingFromPython = false;
     };
 
+    window.flushEditor = function() {
+      notifyChange();
+      return getCleanHtml();
+    };
+
     window.getEditorContent = function() {
-      return editor.innerHTML;
+      return getCleanHtml();
     };
 
     window.setEditorTheme = function(isDark) {
       document.documentElement.className = isDark ? 'dark-theme' : 'light-theme';
     };
+
+    window.insertCustomTable = insertCustomTable;
+    window.addTableRow = addTableRow;
+    window.addTableColumn = addTableColumn;
+    window.deleteTableRow = deleteTableRow;
+    window.deleteTableColumn = deleteTableColumn;
+    window.deleteActiveTable = deleteActiveTable;
 
     window.execFormatting = function(command, value = null) {
       if (command === 'heading1') applyHeading('h1');
@@ -1045,7 +1604,12 @@
       else if (command === 'highlight') applyHighlight();
       else if (command === 'quote') insertQuote();
       else if (command === 'code') insertCodeBlock();
-      else if (command === 'table') insertTable();
+      else if (command === 'table') insertCustomTable(3, 3, true);
+      else if (command === 'table-add-row') addTableRow();
+      else if (command === 'table-add-col') addTableColumn();
+      else if (command === 'table-del-row') deleteTableRow();
+      else if (command === 'table-del-col') deleteTableColumn();
+      else if (command === 'table-delete') deleteActiveTable();
       else if (command === 'divider') insertDivider();
       else if (command === 'link') promptLink();
       else if (command === 'image') triggerImagePicker();

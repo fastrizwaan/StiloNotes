@@ -42,20 +42,23 @@ class Note:
 
     @classmethod
     def from_row(cls, row: Any) -> "Note":
-        tags_raw = row["tags"] if "tags" in row.keys() else "[]"
+        keys = row.keys()
+        tags_raw = row["tags"] if "tags" in keys else "[]"
         try:
             tags = json.loads(tags_raw) if tags_raw else []
         except Exception:
             tags = [t.strip() for t in str(tags_raw).split(",") if t.strip()]
 
-        category = row["category"] if "category" in row.keys() and row["category"] else ""
+        category = row["category"] if "category" in keys and row["category"] else ""
+        content_md = row["content_markdown"] if "content_markdown" in keys and row["content_markdown"] else ""
+        content_html = row["content_html"] if "content_html" in keys and row["content_html"] else ""
 
         return cls(
             id=str(row["id"]),
             title=row["title"] or "Untitled Note",
-            content_html=row["content_html"] or "",
-            content_markdown=row["content_markdown"] or "",
-            excerpt=row["excerpt"] or "",
+            content_html=content_html,
+            content_markdown=content_md,
+            excerpt=row["excerpt"] if "excerpt" in keys and row["excerpt"] else "",
             category=category,
             tags=tags,
             is_pinned=bool(row["is_pinned"]),

@@ -14,7 +14,8 @@ class TestDatabase(unittest.TestCase):
         self.db = NoteDatabase(self.db_path)
 
     def tearDown(self):
-        shutil.rmtree(self.test_dir)
+        self.db.close()
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_initial_welcome_note(self):
         notes = self.db.get_notes()
@@ -69,5 +70,76 @@ class TestDatabase(unittest.TestCase):
         proj_cat = next(c for c in cats_after if c.name == "Projects")
         self.assertEqual(proj_cat.count, 1)
 
+    def test_rename_category_and_subcategories(self):
+        self.db.create_category("Work")
+        self.db.create_category("Work/Alpha")
+        note1 = self.db.create_note("Task 1", category="Work")
+        note2 = self.db.create_note("Task 2", category="Work/Alpha")
+
+        self.db.rename_category("Work", "Office")
+
+        cats = [c.name for c in self.db.get_categories()]
+        self.assertIn("Office", cats)
+        self.assertIn("Office/Alpha", cats)
+        self.assertNotIn("Work", cats)
+        self.assertNotIn("Work/Alpha", cats)
+
+        n1 = self.db.get_note(note1.id)
+        n2 = self.db.get_note(note2.id)
+        self.assertEqual(n1.category, "Office")
+        self.assertEqual(n2.category, "Office/Alpha")
+
+    def test_delete_category_and_subcategories(self):
+        self.db.create_category("Hobbies")
+        self.db.create_category("Hobbies/Gaming")
+        note = self.db.create_note("Play Game", category="Hobbies/Gaming")
+
+        self.db.delete_category("Hobbies")
+
+        cats = [c.name for c in self.db.get_categories()]
+        self.assertNotIn("Hobbies", cats)
+        self.assertNotIn("Hobbies/Gaming", cats)
+
+        n = self.db.get_note(note.id)
+        self.assertEqual(n.category, "")
+
+    def test_attachments(self):
+        note = self.db.create_note("Test Note")
+        sample_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        att_id = self.db.save_attachment(
+            note_id=note.id,
+            filename="diagram.png",
+            mime_type="image/png",
+            data=sample_png
+        )
+        self.assertTrue(att_id)
+
+        att = self.db.get_attachment(att_id)
+        self.assertIsNotNone(att)
+        self.assertEqual(att["filename"], "diagram.png")
+        self.assertEqual(att["mime_type"], "image/png")
+        self.assertEqual(att["data"], sample_png)
+
+        self.db.delete_attachment(att_id)
+        self.assertIsNone(self.db.get_attachment(att_id))
+
+    def test_get_notes_lightweight(self):
+        note = self.db.create_note("Heavy Note", initial_text="Long markdown content " * 100)
+        # get_note returns full content
+        full_note = self.db.get_note(note.id)
+        self.assertTrue(len(full_note.content_markdown) > 0)
+
+        # get_notes returns metadata list
+        notes = self.db.get_notes()
+        match = next(n for n in notes if n.id == note.id)
+        self.assertEqual(match.title, "Heavy Note")
+        self.assertEqual(match.content_markdown, "")
+
+    def test_settings_persistence(self):
+        self.assertEqual(self.db.get_setting("toolbar_pinned", "false"), "false")
+        self.db.set_setting("toolbar_pinned", "true")
+        self.assertEqual(self.db.get_setting("toolbar_pinned", "false"), "true")
+
 if __name__ == "__main__":
     unittest.main()
+

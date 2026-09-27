@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from typing import List
+import warnings
 
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, GObject, Gdk, GLib
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 class CategoryHeaderBar(Adw.Bin):
@@ -54,22 +57,24 @@ class CategoryHeaderBar(Adw.Bin):
         self.entry.connect("icon-release", lambda _e, _pos: self._show_completion_popup())
 
         # Setup EntryCompletion with suggestions
-        self.completion = Gtk.EntryCompletion()
-        self.completion.set_inline_completion(True)
-        self.completion.set_popup_completion(True)
-        self.completion.set_minimum_key_length(0)
-        self.completion.set_text_column(0)
-        self.completion.connect("match-selected", self._on_match_selected)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            self.completion = Gtk.EntryCompletion()
+            self.completion.set_inline_completion(True)
+            self.completion.set_popup_completion(True)
+            self.completion.set_minimum_key_length(0)
+            self.completion.set_text_column(0)
+            self.completion.connect("match-selected", self._on_match_selected)
 
-        cell = Gtk.CellRendererText()
-        cell.set_property("xpad", 8)
-        cell.set_property("ypad", 6)
-        self.completion.pack_start(cell, False)
-        self.completion.add_attribute(cell, "text", 0)
+            cell = Gtk.CellRendererText()
+            cell.set_property("xpad", 8)
+            cell.set_property("ypad", 6)
+            self.completion.pack_start(cell, False)
+            self.completion.add_attribute(cell, "text", 0)
 
-        self.list_store = Gtk.ListStore(str)
-        self.completion.set_model(self.list_store)
-        self.entry.set_completion(self.completion)
+            self.list_store = Gtk.ListStore(str)
+            self.completion.set_model(self.list_store)
+            self.entry.set_completion(self.completion)
 
         # Key controller for Escape key to abort
         key_ctrl = Gtk.EventControllerKey.new()
@@ -100,10 +105,12 @@ class CategoryHeaderBar(Adw.Bin):
 
     def set_categories(self, categories: List[str]):
         """Populate completion suggestions with current categories."""
-        self.list_store.clear()
-        for cat in sorted(set(categories)):
-            if cat and cat.strip():
-                self.list_store.append([cat.strip()])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            self.list_store.clear()
+            for cat in sorted(set(categories)):
+                if cat and cat.strip():
+                    self.list_store.append([cat.strip()])
 
     def activate(self, current_category: str = ""):
         """Activate the category header bar with current note's category."""

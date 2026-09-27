@@ -128,6 +128,9 @@ class StiloWindow(Adw.ApplicationWindow):
         self.config_manager.set_last_opened_note_id("")
 
     def _on_close_request(self, _win):
+        # Flush any pending editor changes
+        if hasattr(self, "editor"):
+            self.editor.flush_save()
         # Save window geometry
         w = self.get_width()
         h = self.get_height()
@@ -137,7 +140,8 @@ class StiloWindow(Adw.ApplicationWindow):
 
     def open_note(self, note: Note, immediate: bool = False):
         """Open a note in the editor and navigate to it."""
-        self.editor.load_note(note)
+        full_note = self.db.get_note(note.id)
+        self.editor.load_note(full_note or note)
         self.config_manager.set_last_opened_note_id(note.id)
 
         visible_page = self.navigation.get_visible_page()
@@ -154,17 +158,10 @@ class StiloWindow(Adw.ApplicationWindow):
         category = self.index_view.active_category_name if self.index_view.active_filter_type == "category" else ""
         note = self.db.create_note(title="Untitled Note", category=category)
         self.index_view.refresh()
-        self.open_note(note, immediate=False)
+        full_note = self.db.get_note(note.id)
+        self.open_note(full_note or note, immediate=False)
 
     def _on_note_updated(self, _ed, note_id: str, title: str, excerpt: str, html: str, md: str, tags: list, has_todo: bool):
-        self.db.save_note(
-            note_id=note_id,
-            title=title,
-            excerpt=excerpt,
-            content_html=html,
-            content_markdown=md,
-            tags=tags
-        )
         if self.navigation.get_visible_page() != self.editor_page:
             self.index_view.refresh(update_sidebar=False)
 
@@ -198,6 +195,7 @@ class StiloWindow(Adw.ApplicationWindow):
             if hasattr(self.editor, "header_stack") and self.editor.header_stack.get_visible_child_name() == "category":
                 self.editor.header_stack.set_visible_child_name("main")
                 return
+            self.editor.flush_save()
             self.navigation.pop()
             self.index_view.refresh(update_sidebar=True)
             self.config_manager.set_last_opened_note_id("")
