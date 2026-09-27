@@ -50,6 +50,11 @@ label.index-category-pill {
 }
 
 /* Editor Header Bar */
+.stilo-editor-title {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
 .stilo-editor-title-btn {
   font-weight: 700;
   font-size: 14.5px;

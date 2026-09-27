@@ -353,6 +353,7 @@ class NoteEditor(Gtk.Box):
         self._page_loaded = False
         self._pending_load_note = None
         self._save_timeout_id = None
+        self._syncing_format_btn = False
         _register_attachment_scheme(self.db)
         self._build_ui()
 
@@ -374,34 +375,17 @@ class NoteEditor(Gtk.Box):
         self.back_btn.connect("clicked", lambda _b: self.emit("back"))
         self.main_header_bar.pack_start(self.back_btn)
 
-        title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        title_box.set_valign(Gtk.Align.CENTER)
-
-        self.title_button = Gtk.Button()
-        self.title_button.add_css_class("flat")
-        self.title_button.add_css_class("stilo-editor-title-btn")
         self.title_label = Gtk.Label(label="Untitled Note")
+        self.title_label.add_css_class("title")
+        self.title_label.add_css_class("stilo-editor-title")
         self.title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.title_label.set_max_width_chars(32)
-        self.title_button.set_child(self.title_label)
-        self.title_button.connect("clicked", self._on_title_clicked)
-        title_box.append(self.title_button)
+        self.main_header_bar.set_title_widget(self.title_label)
 
         self.status_label = Gtk.Label(label="")
-        self.status_label.add_css_class("stilo-status-label")
-        title_box.append(self.status_label)
+        self.status_label.set_visible(False)
 
-        self.main_header_bar.set_title_widget(title_box)
-
-        # Stats button
-        self.stats_popover = self._create_stats_popover()
-        self.info_btn = Gtk.MenuButton()
-        self.info_btn.set_icon_name("dialog-information-symbolic")
-        self.info_btn.set_tooltip_text("Note Statistics")
-        self.info_btn.set_popover(self.stats_popover)
-        self.main_header_bar.pack_end(self.info_btn)
-
-        # Editor menu (more)
+        # 1. Editor menu (more) - all the way right
         self.more_btn = Gtk.MenuButton()
         self.more_btn.set_icon_name("view-more-symbolic")
         self.more_btn.set_tooltip_text("Editor Menu")
@@ -413,14 +397,32 @@ class NoteEditor(Gtk.Box):
         self.font_size_selector = FontSizeSelector(self.config_manager, on_font_size_changed=self.update_font_size)
         more_popover.add_child(self.font_size_selector, "fontsize")
 
-        self.main_header_bar.pack_end(self.more_btn)
+        # 2. Stats button
+        self.stats_popover = self._create_stats_popover()
+        self.info_btn = Gtk.MenuButton()
+        self.info_btn.set_icon_name("dialog-information-symbolic")
+        self.info_btn.set_tooltip_text("Note Statistics")
+        self.info_btn.set_popover(self.stats_popover)
 
-        # Star / Favorites toggle button
+        # 3. Format Toolbar Toggle button
+        self.format_btn = Gtk.ToggleButton()
+        self.format_btn.set_icon_name("format-text-bold-symbolic")
+        self.format_btn.set_tooltip_text("Toggle Formatting Bar (Ctrl+Shift+F)")
+        self.format_btn.set_focus_on_click(False)
+        self.format_btn.add_css_class("flat")
+        self.format_btn.connect("toggled", self._on_format_btn_toggled)
+
+        # 4. Star / Favorites toggle button
         self.star_btn = Gtk.Button()
         self.star_btn.set_icon_name("non-starred-symbolic")
         self.star_btn.set_tooltip_text("Pin to Favorites")
         self.star_btn.add_css_class("flat")
         self.star_btn.connect("clicked", lambda _b: self._on_toggle_pin())
+
+        # In GTK HeaderBar pack_end, the first widget packed is placed at the far right.
+        self.main_header_bar.pack_end(self.more_btn)
+        self.main_header_bar.pack_end(self.info_btn)
+        self.main_header_bar.pack_end(self.format_btn)
         self.main_header_bar.pack_end(self.star_btn)
 
         self.header_stack.add_named(self.main_header_bar, "main")
@@ -482,6 +484,7 @@ class NoteEditor(Gtk.Box):
         self.fmt_revealer.set_hexpand(True)
         self.fmt_revealer.set_reveal_child(True)
         self.fmt_revealer.set_child(self.fmt_bar)
+        self.fmt_revealer.connect("notify::reveal-child", lambda _r, _p: self._sync_format_btn())
 
         # Mouse motion on bottom revealer so it stays visible while hovering
         revealer_motion = Gtk.EventControllerMotion()
@@ -501,6 +504,26 @@ class NoteEditor(Gtk.Box):
         self.append(overlay)
 
     # ── Toolbar auto-hide / hover / pin handling ──────────────────────────
+
+    def _sync_format_btn(self):
+        if hasattr(self, "format_btn") and hasattr(self, "fmt_revealer"):
+            is_revealed = self.fmt_revealer.get_reveal_child()
+            if self.format_btn.get_active() != is_revealed:
+                self._syncing_format_btn = True
+                self.format_btn.set_active(is_revealed)
+                self._syncing_format_btn = False
+
+    def _on_format_btn_toggled(self, btn):
+        if getattr(self, "_syncing_format_btn", False):
+            return
+        reveal = btn.get_active()
+        if reveal:
+            self._show_toolbar()
+        else:
+            if self._toolbar_reveal_timeout:
+                GLib.source_remove(self._toolbar_reveal_timeout)
+                self._toolbar_reveal_timeout = None
+            self.fmt_revealer.set_reveal_child(False)
 
     def _insert_table_at_cursor(self, rows: int, cols: int, has_header: bool):
         script = f"if (window.insertCustomTable) {{ window.insertCustomTable({rows}, {cols}, {'true' if has_header else 'false'}); }}"
@@ -723,6 +746,7 @@ class NoteEditor(Gtk.Box):
         act("export-md",     lambda: self._export_note("md",   window))
         act("export-html",   lambda: self._export_note("html", window))
         act("export-txt",    lambda: self._export_note("txt",  window))
+        act("toggle-format-toolbar", lambda: self.format_btn.set_active(not self.format_btn.get_active()))
         act("delete",        self._on_delete)
 
         self.insert_action_group("editor", ag)
@@ -734,6 +758,7 @@ class NoteEditor(Gtk.Box):
             app.set_accels_for_action("editor.increase-font-size", ["<Control>plus", "<Control>equal"])
             app.set_accels_for_action("editor.decrease-font-size", ["<Control>minus", "<Control>underscore"])
             app.set_accels_for_action("editor.reset-font-size", ["<Control>0"])
+            app.set_accels_for_action("editor.toggle-format-toolbar", ["<Control><Shift>f"])
 
     # ── Category editing ──────────────────────────────────────────────────
 
