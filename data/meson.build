@@ -47,6 +47,11 @@ install_data(
   install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', 'symbolic', 'apps')
 )
 
+install_data(
+  'icons/hicolor/symbolic/apps/heading-symbolic.svg',
+  install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', 'symbolic', 'actions')
+)
+
 # Assets (editor template, CSS)
 install_subdir(
   '../assets',

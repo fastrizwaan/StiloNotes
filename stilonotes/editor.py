@@ -111,7 +111,7 @@ class FormattingBar(Gtk.Box):
 
         # 1. Heading menu button
         heading_menu = Gtk.MenuButton()
-        heading_menu.set_icon_name("format-text-larger-symbolic")
+        heading_menu.set_icon_name("heading-symbolic")
         heading_menu.set_tooltip_text("Heading")
         heading_menu.set_focus_on_click(False)
         heading_menu.add_css_class("flat")

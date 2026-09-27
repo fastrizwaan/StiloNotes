@@ -23,8 +23,17 @@ class StiloApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        self._setup_icons()
         self._load_css()
         self._setup_actions()
+
+    def _setup_icons(self):
+        display = Gdk.Display.get_default()
+        if display:
+            icon_theme = Gtk.IconTheme.get_for_display(display)
+            icons_dir = get_assets_path() / "icons"
+            if icons_dir.exists():
+                icon_theme.add_search_path(str(icons_dir))
 
     def do_activate(self):
         if not self.db:
