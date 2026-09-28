@@ -137,6 +137,29 @@ class TestNotesListAndCards(unittest.TestCase):
         note_no_img = Note(title="Plain Text", content_markdown="Just some text.")
         self.assertIsNone(get_note_image_bytes(note_no_img, self.db))
 
+    def test_create_thumbnail_texture_dimensions(self):
+        from PIL import Image
+        import io
+        from stilonotes.notes_list import _create_thumbnail_texture
+
+        # Test large 1920x1080 image
+        img = Image.new("RGB", (1920, 1080), color="blue")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        tex = _create_thumbnail_texture(buf.getvalue())
+        self.assertIsNotNone(tex)
+        self.assertEqual(tex.get_width(), 216)
+        self.assertEqual(tex.get_height(), 80)
+
+        # Test tall 400x1200 image
+        img_tall = Image.new("RGB", (400, 1200), color="green")
+        buf_tall = io.BytesIO()
+        img_tall.save(buf_tall, format="PNG")
+        tex_tall = _create_thumbnail_texture(buf_tall.getvalue())
+        self.assertIsNotNone(tex_tall)
+        self.assertEqual(tex_tall.get_width(), 216)
+        self.assertEqual(tex_tall.get_height(), 80)
+
     def test_grid_card_with_image(self):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:

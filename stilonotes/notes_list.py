@@ -85,7 +85,7 @@ def get_note_image_bytes(note: Note, db=None) -> Optional[bytes]:
 
 
 def _create_thumbnail_texture(img_bytes: bytes) -> Optional[Gdk.Texture]:
-    """Create a bounded Gdk.Texture from image bytes, downsampling if too large."""
+    """Create a bounded Gdk.Texture from image bytes, scaled and center-cropped to 216x80."""
     try:
         import gi
         gi.require_version('GdkPixbuf', '2.0')
@@ -95,20 +95,30 @@ def _create_thumbnail_texture(img_bytes: bytes) -> Optional[Gdk.Texture]:
         loader.close()
         pix = loader.get_pixbuf()
         if pix:
+            target_w, target_h = 216, 80
             w, h = pix.get_width(), pix.get_height()
-            max_w, max_h = 300, 200
-            if w > max_w or h > max_h:
-                scale = min(max_w / w, max_h / h)
-                pix = pix.scale_simple(max(1, int(w * scale)), max(1, int(h * scale)), GdkPixbuf.InterpType.BILINEAR)
-            success, buf = pix.save_to_bufferv("png", [], [])
-            if success:
-                return Gdk.Texture.new_from_bytes(GLib.Bytes.new(buf))
+            if w > 0 and h > 0:
+                scale = max(target_w / w, target_h / h)
+                scaled_w = max(target_w, int(w * scale))
+                scaled_h = max(target_h, int(h * scale))
+                pix_scaled = pix.scale_simple(scaled_w, scaled_h, GdkPixbuf.InterpType.BILINEAR)
+                if pix_scaled:
+                    src_x = max(0, (scaled_w - target_w) // 2)
+                    src_y = max(0, (scaled_h - target_h) // 2)
+                    pix_cropped = GdkPixbuf.Pixbuf.new(
+                        GdkPixbuf.Colorspace.RGB,
+                        pix.get_has_alpha(),
+                        8,
+                        target_w,
+                        target_h
+                    )
+                    pix_scaled.copy_area(src_x, src_y, target_w, target_h, pix_cropped, 0, 0)
+                    success, buf = pix_cropped.save_to_bufferv("png", [], [])
+                    if success:
+                        return Gdk.Texture.new_from_bytes(GLib.Bytes.new(buf))
     except Exception:
         pass
-    try:
-        return Gdk.Texture.new_from_bytes(GLib.Bytes.new(img_bytes))
-    except Exception:
-        return None
+    return None
 
 
 def _get_note_preview(note: Note) -> str:
@@ -225,17 +235,21 @@ class NoteGridCard(BaseNoteCard):
     __gtype_name__ = "NoteGridCard"
 
     def _build_ui(self, selection_mode: bool):
-        self.set_size_request(240, 210)
+        self.set_size_request(240, 220)
         self.set_hexpand(False)
         self.set_vexpand(False)
-        self.set_halign(Gtk.Align.START)
-        self.set_valign(Gtk.Align.START)
+        self.set_halign(Gtk.Align.FILL)
+        self.set_valign(Gtk.Align.FILL)
+        self.set_overflow(Gtk.Overflow.HIDDEN)
 
-        self.card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        self.card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.card_box.add_css_class("note-grid-card")
-        self.card_box.set_size_request(240, 210)
-        self.card_box.set_hexpand(False)
-        self.card_box.set_vexpand(False)
+        self.card_box.set_size_request(240, 220)
+        self.card_box.set_hexpand(True)
+        self.card_box.set_vexpand(True)
+        self.card_box.set_halign(Gtk.Align.FILL)
+        self.card_box.set_valign(Gtk.Align.FILL)
+        self.card_box.set_overflow(Gtk.Overflow.HIDDEN)
 
         # 1. Top Row: Checkbox revealer + Dot + Title + (Pin/Todo Icons)
         top_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -301,30 +315,31 @@ class NoteGridCard(BaseNoteCard):
             self.date_lbl.set_halign(Gtk.Align.START)
             self.date_lbl.set_xalign(0.0)
             self.date_lbl.set_lines(1)
+            self.date_lbl.set_single_line_mode(True)
             self.date_lbl.set_ellipsize(Pango.EllipsizeMode.END)
             self.card_box.append(self.date_lbl)
 
         # 3. Thumbnail Image Banner (BELOW TITLE AND DATE!)
         img_bytes = get_note_image_bytes(self.note, self.db)
+        self.thumb = None
         if img_bytes:
             texture = _create_thumbnail_texture(img_bytes)
             if texture:
-                img_container = Gtk.Box()
-                img_container.set_size_request(216, 85)
+                img_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                img_container.set_size_request(216, 80)
                 img_container.set_hexpand(False)
+                img_container.set_vexpand(False)
                 img_container.set_halign(Gtk.Align.CENTER)
+                img_container.set_valign(Gtk.Align.CENTER)
+                img_container.set_overflow(Gtk.Overflow.HIDDEN)
 
                 self.thumb = Gtk.Picture.new_for_paintable(texture)
                 self.thumb.set_can_shrink(True)
                 self.thumb.set_content_fit(Gtk.ContentFit.COVER)
-                self.thumb.set_size_request(216, 85)
+                self.thumb.set_size_request(216, 80)
                 self.thumb.add_css_class("note-grid-thumbnail")
                 img_container.append(self.thumb)
                 self.card_box.append(img_container)
-            else:
-                self.thumb = None
-        else:
-            self.thumb = None
 
         # 4. Body excerpt preview (multi-line)
         preview_text = _get_note_preview(self.note)
@@ -333,7 +348,7 @@ class NoteGridCard(BaseNoteCard):
         self.body_lbl.set_wrap(True)
         self.body_lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self.body_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-        self.body_lbl.set_lines(2 if img_bytes else 4)
+        self.body_lbl.set_lines(2 if self.thumb else 5)
         self.body_lbl.set_halign(Gtk.Align.START)
         self.body_lbl.set_valign(Gtk.Align.START)
         self.body_lbl.set_xalign(0.0)
@@ -341,16 +356,21 @@ class NoteGridCard(BaseNoteCard):
         self.body_lbl.set_vexpand(True)
         self.card_box.append(self.body_lbl)
 
-        # 5. Bottom Row: Category pill (if present and shown)
+        # 5. Bottom Row: Category pill (anchored to bottom)
+        footer_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        footer_box.set_valign(Gtk.Align.END)
+        footer_box.set_halign(Gtk.Align.START)
+        footer_box.set_vexpand(False)
+
         if self.note.category and self.show_category_pill:
-            cat_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-            cat_box.set_halign(Gtk.Align.START)
             pill = Gtk.Label(label=self.note.category)
             pill.add_css_class("index-category-pill")
             pill.set_ellipsize(Pango.EllipsizeMode.END)
             pill.set_lines(1)
-            cat_box.append(pill)
-            self.card_box.append(cat_box)
+            pill.set_single_line_mode(True)
+            footer_box.append(pill)
+
+        self.card_box.append(footer_box)
 
         self.set_child(self.card_box)
 
@@ -584,7 +604,7 @@ class NotesList(Gtk.Box):
         flowbox.set_min_children_per_line(1)
         flowbox.set_max_children_per_line(24)
         flowbox.set_valign(Gtk.Align.START)
-        flowbox.set_halign(Gtk.Align.START)
+        flowbox.set_halign(Gtk.Align.FILL if self.view_mode == "list" else Gtk.Align.START)
         flowbox.set_hexpand(True)
         flowbox.add_css_class("notes-flowbox")
         flowbox.connect("child-activated", self._on_child_activated)
@@ -636,6 +656,7 @@ class NotesList(Gtk.Box):
             ]:
                 fb.set_column_spacing(col_sp)
                 fb.set_row_spacing(row_sp)
+                fb.set_halign(Gtk.Align.FILL if mode == "list" else Gtk.Align.START)
             self.set_notes(
                 self.current_notes,
                 is_search=self.is_search,
