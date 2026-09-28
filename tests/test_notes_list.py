@@ -369,6 +369,39 @@ class TestNotesListAndCards(unittest.TestCase):
         self.assertIsNone(card_plain.table_preview)
         self.assertEqual(card_plain.body_lbl.get_lines(), 5)
 
+        # 4. Verify table excerpt suppression on table-only card
+        self.assertEqual(card_table.body_lbl.get_text(), "")
+        self.assertFalse(card_table.body_lbl.get_visible())
+
+    def test_calculate_cols_for_width(self):
+        """Test responsive grid column calculation."""
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        notes_list = NotesList(self.db, view_mode="grid")
+        self.assertEqual(notes_list._calculate_cols_for_width(0), 1)
+        self.assertEqual(notes_list._calculate_cols_for_width(400), 1)
+        self.assertEqual(notes_list._calculate_cols_for_width(700), 3)
+        self.assertEqual(notes_list._calculate_cols_for_width(950), 4)
+        self.assertEqual(notes_list._calculate_cols_for_width(1200), 5)
+
+    def test_grid_flowbox_fills_horizontally(self):
+        """Verify flowboxes use Align.FILL and hexpand=True so cards stretch horizontally."""
+        from gi.repository import Gdk, Gtk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        notes_list = NotesList(self.db, view_mode="grid")
+        for fb in notes_list._get_all_flowboxes():
+            self.assertEqual(fb.get_halign(), Gtk.Align.FILL)
+            self.assertTrue(fb.get_hexpand())
+
+        notes_list.set_view_mode("list")
+        for fb in notes_list._get_all_flowboxes():
+            self.assertEqual(fb.get_halign(), Gtk.Align.FILL)
+            self.assertTrue(fb.get_hexpand())
+
 
 if __name__ == "__main__":
     unittest.main()

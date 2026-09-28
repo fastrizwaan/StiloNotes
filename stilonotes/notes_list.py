@@ -194,11 +194,11 @@ def _create_table_preview_widget(table_rows: List[List[str]]) -> Optional[Gtk.Wi
         return None
 
     outer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    outer_box.set_size_request(216, 80)
-    outer_box.set_hexpand(False)
+    outer_box.set_size_request(-1, 80)
+    outer_box.set_hexpand(True)
     outer_box.set_vexpand(False)
-    outer_box.set_halign(Gtk.Align.CENTER)
-    outer_box.set_valign(Gtk.Align.CENTER)
+    outer_box.set_halign(Gtk.Align.FILL)
+    outer_box.set_valign(Gtk.Align.FILL)
     outer_box.set_overflow(Gtk.Overflow.HIDDEN)
     outer_box.add_css_class("note-grid-table-preview")
 
@@ -368,8 +368,8 @@ class NoteGridCard(BaseNoteCard):
     __gtype_name__ = "NoteGridCard"
 
     def _build_ui(self, selection_mode: bool):
-        self.set_size_request(240, 220)
-        self.set_hexpand(False)
+        self.set_size_request(200, 220)
+        self.set_hexpand(True)
         self.set_vexpand(False)
         self.set_halign(Gtk.Align.FILL)
         self.set_valign(Gtk.Align.FILL)
@@ -377,7 +377,7 @@ class NoteGridCard(BaseNoteCard):
 
         self.card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.card_box.add_css_class("note-grid-card")
-        self.card_box.set_size_request(240, 220)
+        self.card_box.set_size_request(-1, 220)
         self.card_box.set_hexpand(True)
         self.card_box.set_vexpand(True)
         self.card_box.set_halign(Gtk.Align.FILL)
@@ -457,22 +457,25 @@ class NoteGridCard(BaseNoteCard):
         img_bytes = get_note_image_bytes(self.note, self.db)
         self.thumb = None
         self.table_preview = None
+        table_data = None
 
         if img_bytes:
             texture = _create_thumbnail_texture(img_bytes)
             if texture:
                 img_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                img_container.set_size_request(216, 80)
-                img_container.set_hexpand(False)
+                img_container.set_size_request(-1, 80)
+                img_container.set_hexpand(True)
                 img_container.set_vexpand(False)
-                img_container.set_halign(Gtk.Align.CENTER)
-                img_container.set_valign(Gtk.Align.CENTER)
+                img_container.set_halign(Gtk.Align.FILL)
+                img_container.set_valign(Gtk.Align.FILL)
                 img_container.set_overflow(Gtk.Overflow.HIDDEN)
 
                 self.thumb = Gtk.Picture.new_for_paintable(texture)
                 self.thumb.set_can_shrink(True)
                 self.thumb.set_content_fit(Gtk.ContentFit.COVER)
-                self.thumb.set_size_request(216, 80)
+                self.thumb.set_size_request(-1, 80)
+                self.thumb.set_hexpand(True)
+                self.thumb.set_halign(Gtk.Align.FILL)
                 self.thumb.add_css_class("note-grid-thumbnail")
                 img_container.append(self.thumb)
                 self.card_box.append(img_container)
@@ -489,6 +492,18 @@ class NoteGridCard(BaseNoteCard):
         has_media = bool(self.thumb or self.table_preview)
         if has_media and preview_text == "Type text here...":
             preview_text = ""
+
+        # Suppress duplicate table excerpt when table preview banner is shown
+        if self.table_preview and table_data and preview_text:
+            all_table_words = set(
+                word.lower()
+                for row in table_data
+                for cell in row
+                for word in re.findall(r'\w+', cell)
+            )
+            preview_words = [w.lower() for w in re.findall(r'\w+', preview_text)]
+            if preview_words and all(w in all_table_words for w in preview_words):
+                preview_text = ""
 
         self.body_lbl = Gtk.Label(label=preview_text)
         self.body_lbl.add_css_class("note-grid-body")
@@ -647,6 +662,8 @@ class NotesList(Gtk.Box):
         self.is_search = False
         self.active_filter_type = "all"
         self.active_category_name = ""
+        self._current_cols = 1
+        self._pending_cols_idle = False
 
         self._build_ui()
 
@@ -741,6 +758,48 @@ class NotesList(Gtk.Box):
         row_spacing = 8 if self.view_mode == "grid" else 6
         return col_spacing, row_spacing
 
+    def _get_all_flowboxes(self) -> List[Gtk.FlowBox]:
+        return [
+            self.fav_flowbox,
+            self.today_flowbox,
+            self.yesterday_flowbox,
+            self.week_flowbox,
+            self.month_flowbox,
+            self.earlier_flowbox,
+            self.search_flowbox
+        ]
+
+    def _calculate_cols_for_width(self, width: int) -> int:
+        if self.view_mode != "grid" or width <= 0:
+            return 1
+        avail_w = max(200, width - 32)
+        cols = max(1, min(12, int((avail_w + 8) // 218)))
+        return cols
+
+    def _apply_grid_columns(self, cols: int):
+        self._current_cols = cols
+        for fb in self._get_all_flowboxes():
+            if self.view_mode == "grid":
+                fb.set_min_children_per_line(cols)
+                fb.set_max_children_per_line(cols)
+            else:
+                fb.set_min_children_per_line(1)
+                fb.set_max_children_per_line(1)
+        return False
+
+    def _on_cols_idle(self, cols: int):
+        self._pending_cols_idle = False
+        self._apply_grid_columns(cols)
+        return False
+
+    def do_size_allocate(self, width: int, height: int, baseline: int):
+        super().do_size_allocate(width, height, baseline)
+        if self.view_mode == "grid":
+            cols = self._calculate_cols_for_width(width)
+            if cols != self._current_cols and not self._pending_cols_idle:
+                self._pending_cols_idle = True
+                GLib.idle_add(self._on_cols_idle, cols)
+
     def _create_flowbox(self) -> Gtk.FlowBox:
         flowbox = Gtk.FlowBox()
         flowbox.set_homogeneous(True)
@@ -749,10 +808,11 @@ class NotesList(Gtk.Box):
         col_sp, row_sp = self._get_spacing()
         flowbox.set_column_spacing(col_sp)
         flowbox.set_row_spacing(row_sp)
-        flowbox.set_min_children_per_line(1)
-        flowbox.set_max_children_per_line(24)
+        cols = self._current_cols if self.view_mode == "grid" else 1
+        flowbox.set_min_children_per_line(cols)
+        flowbox.set_max_children_per_line(cols if self.view_mode == "grid" else 24)
         flowbox.set_valign(Gtk.Align.START)
-        flowbox.set_halign(Gtk.Align.FILL if self.view_mode == "list" else Gtk.Align.START)
+        flowbox.set_halign(Gtk.Align.FILL)
         flowbox.set_hexpand(True)
         flowbox.add_css_class("notes-flowbox")
         flowbox.connect("child-activated", self._on_child_activated)
@@ -793,18 +853,18 @@ class NotesList(Gtk.Box):
         if self.view_mode != mode:
             self.view_mode = mode
             col_sp, row_sp = self._get_spacing()
-            for fb in [
-                self.fav_flowbox,
-                self.today_flowbox,
-                self.yesterday_flowbox,
-                self.week_flowbox,
-                self.month_flowbox,
-                self.earlier_flowbox,
-                self.search_flowbox
-            ]:
+            for fb in self._get_all_flowboxes():
                 fb.set_column_spacing(col_sp)
                 fb.set_row_spacing(row_sp)
-                fb.set_halign(Gtk.Align.FILL if mode == "list" else Gtk.Align.START)
+                fb.set_halign(Gtk.Align.FILL)
+
+            if mode == "grid":
+                alloc_w = self.get_allocated_width()
+                cols = self._calculate_cols_for_width(alloc_w if alloc_w > 0 else 800)
+                self._apply_grid_columns(cols)
+            else:
+                self._apply_grid_columns(1)
+
             self.set_notes(
                 self.current_notes,
                 is_search=self.is_search,

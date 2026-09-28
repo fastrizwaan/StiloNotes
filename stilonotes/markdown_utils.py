@@ -535,8 +535,12 @@ def extract_title_and_excerpt(markdown_text: str = "", html_text: str = "") -> T
     if lines:
         title = strip_markdown(lines[0]) or "Untitled Note"
         if len(lines) > 1:
-            raw_excerpt = " ".join(lines[1:5])
-            excerpt = strip_markdown(raw_excerpt)[:160]
+            non_table_lines = [l for l in lines[1:] if not (l.startswith("|") and l.endswith("|"))]
+            if non_table_lines:
+                raw_excerpt = " ".join(non_table_lines[:4])
+                excerpt = strip_markdown(raw_excerpt)[:160]
+            else:
+                excerpt = ""
 
     return title, excerpt
 
