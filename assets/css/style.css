@@ -84,7 +84,7 @@ flowboxchild:active .note-list-card {
 
 /* Note Grid Card Specifics */
 .note-grid-card {
-  min-width: 180px;
+  min-width: 160px;
   min-height: 220px;
   padding: 12px;
 }

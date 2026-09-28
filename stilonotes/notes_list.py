@@ -368,7 +368,7 @@ class NoteGridCard(BaseNoteCard):
     __gtype_name__ = "NoteGridCard"
 
     def _build_ui(self, selection_mode: bool):
-        self.set_size_request(200, 220)
+        self.set_size_request(160, 220)
         self.set_hexpand(True)
         self.set_vexpand(False)
         self.set_halign(Gtk.Align.FILL)
@@ -685,8 +685,8 @@ class NotesList(Gtk.Box):
         self.scrolled.set_hexpand(True)
 
         self.clamp = Adw.Clamp()
-        self.clamp.set_maximum_size(2400)
-        self.clamp.set_tightening_threshold(1600)
+        self.clamp.set_maximum_size(4000)
+        self.clamp.set_tightening_threshold(2600)
 
         # Sections Container
         self.sections_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
@@ -772,16 +772,17 @@ class NotesList(Gtk.Box):
     def _calculate_cols_for_width(self, width: int) -> int:
         if self.view_mode != "grid" or width <= 0:
             return 1
-        avail_w = max(200, width - 32)
-        cols = max(1, min(12, int((avail_w + 8) // 218)))
+        avail_w = max(160, width - 32)
+        cols = max(1, min(30, int((avail_w + 8) // 168)))
         return cols
 
     def _apply_grid_columns(self, cols: int):
         self._current_cols = cols
+        max_cols = max(10, cols)
         for fb in self._get_all_flowboxes():
             if self.view_mode == "grid":
                 fb.set_min_children_per_line(cols)
-                fb.set_max_children_per_line(cols)
+                fb.set_max_children_per_line(max_cols)
             else:
                 fb.set_min_children_per_line(1)
                 fb.set_max_children_per_line(1)
@@ -809,8 +810,9 @@ class NotesList(Gtk.Box):
         flowbox.set_column_spacing(col_sp)
         flowbox.set_row_spacing(row_sp)
         cols = self._current_cols if self.view_mode == "grid" else 1
+        max_cols = max(10, cols) if self.view_mode == "grid" else 24
         flowbox.set_min_children_per_line(cols)
-        flowbox.set_max_children_per_line(cols if self.view_mode == "grid" else 24)
+        flowbox.set_max_children_per_line(max_cols)
         flowbox.set_valign(Gtk.Align.START)
         flowbox.set_halign(Gtk.Align.FILL)
         flowbox.set_hexpand(True)

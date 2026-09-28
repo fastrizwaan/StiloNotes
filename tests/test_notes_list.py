@@ -381,13 +381,15 @@ class TestNotesListAndCards(unittest.TestCase):
 
         notes_list = NotesList(self.db, view_mode="grid")
         self.assertEqual(notes_list._calculate_cols_for_width(0), 1)
-        self.assertEqual(notes_list._calculate_cols_for_width(400), 1)
-        self.assertEqual(notes_list._calculate_cols_for_width(700), 3)
-        self.assertEqual(notes_list._calculate_cols_for_width(950), 4)
-        self.assertEqual(notes_list._calculate_cols_for_width(1200), 5)
+        self.assertEqual(notes_list._calculate_cols_for_width(400), 2)
+        self.assertEqual(notes_list._calculate_cols_for_width(700), 4)
+        self.assertEqual(notes_list._calculate_cols_for_width(950), 5)
+        self.assertEqual(notes_list._calculate_cols_for_width(1200), 6)
+        self.assertEqual(notes_list._calculate_cols_for_width(1800), 10)
+        self.assertEqual(notes_list._calculate_cols_for_width(2200), 12)
 
     def test_grid_flowbox_fills_horizontally(self):
-        """Verify flowboxes use Align.FILL and hexpand=True so cards stretch horizontally."""
+        """Verify flowboxes use Align.FILL, hexpand=True, and max_children_per_line is 10+."""
         from gi.repository import Gdk, Gtk
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
@@ -396,6 +398,7 @@ class TestNotesListAndCards(unittest.TestCase):
         for fb in notes_list._get_all_flowboxes():
             self.assertEqual(fb.get_halign(), Gtk.Align.FILL)
             self.assertTrue(fb.get_hexpand())
+            self.assertGreaterEqual(fb.get_max_children_per_line(), 10)
 
         notes_list.set_view_mode("list")
         for fb in notes_list._get_all_flowboxes():
