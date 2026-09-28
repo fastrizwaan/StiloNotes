@@ -368,20 +368,15 @@ class NoteGridCard(BaseNoteCard):
     __gtype_name__ = "NoteGridCard"
 
     def _build_ui(self, selection_mode: bool):
-        self.set_size_request(160, 220)
+        self.set_size_request(220, 220)
         self.set_hexpand(True)
-        self.set_vexpand(False)
         self.set_halign(Gtk.Align.FILL)
-        self.set_valign(Gtk.Align.FILL)
         self.set_overflow(Gtk.Overflow.HIDDEN)
 
         self.card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.card_box.add_css_class("note-grid-card")
-        self.card_box.set_size_request(-1, 220)
         self.card_box.set_hexpand(True)
         self.card_box.set_vexpand(True)
-        self.card_box.set_halign(Gtk.Align.FILL)
-        self.card_box.set_valign(Gtk.Align.FILL)
         self.card_box.set_overflow(Gtk.Overflow.HIDDEN)
 
         # 1. Top Row: Checkbox revealer + Dot + Title + (Pin/Todo Icons)
@@ -662,8 +657,6 @@ class NotesList(Gtk.Box):
         self.is_search = False
         self.active_filter_type = "all"
         self.active_category_name = ""
-        self._current_cols = 1
-        self._pending_cols_idle = False
 
         self._build_ui()
 
@@ -685,8 +678,8 @@ class NotesList(Gtk.Box):
         self.scrolled.set_hexpand(True)
 
         self.clamp = Adw.Clamp()
-        self.clamp.set_maximum_size(4000)
-        self.clamp.set_tightening_threshold(2600)
+        self.clamp.set_maximum_size(2400)
+        self.clamp.set_tightening_threshold(1600)
 
         # Sections Container
         self.sections_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
@@ -769,38 +762,6 @@ class NotesList(Gtk.Box):
             self.search_flowbox
         ]
 
-    def _calculate_cols_for_width(self, width: int) -> int:
-        if self.view_mode != "grid" or width <= 0:
-            return 1
-        avail_w = max(160, width - 32)
-        cols = max(1, min(30, int((avail_w + 8) // 168)))
-        return cols
-
-    def _apply_grid_columns(self, cols: int):
-        self._current_cols = cols
-        max_cols = max(10, cols)
-        for fb in self._get_all_flowboxes():
-            if self.view_mode == "grid":
-                fb.set_min_children_per_line(cols)
-                fb.set_max_children_per_line(max_cols)
-            else:
-                fb.set_min_children_per_line(1)
-                fb.set_max_children_per_line(1)
-        return False
-
-    def _on_cols_idle(self, cols: int):
-        self._pending_cols_idle = False
-        self._apply_grid_columns(cols)
-        return False
-
-    def do_size_allocate(self, width: int, height: int, baseline: int):
-        super().do_size_allocate(width, height, baseline)
-        if self.view_mode == "grid":
-            cols = self._calculate_cols_for_width(width)
-            if cols != self._current_cols and not self._pending_cols_idle:
-                self._pending_cols_idle = True
-                GLib.idle_add(self._on_cols_idle, cols)
-
     def _create_flowbox(self) -> Gtk.FlowBox:
         flowbox = Gtk.FlowBox()
         flowbox.set_homogeneous(True)
@@ -809,10 +770,8 @@ class NotesList(Gtk.Box):
         col_sp, row_sp = self._get_spacing()
         flowbox.set_column_spacing(col_sp)
         flowbox.set_row_spacing(row_sp)
-        cols = self._current_cols if self.view_mode == "grid" else 1
-        max_cols = max(10, cols) if self.view_mode == "grid" else 24
-        flowbox.set_min_children_per_line(cols)
-        flowbox.set_max_children_per_line(max_cols)
+        flowbox.set_min_children_per_line(1)
+        flowbox.set_max_children_per_line(24)
         flowbox.set_valign(Gtk.Align.START)
         flowbox.set_halign(Gtk.Align.FILL)
         flowbox.set_hexpand(True)
@@ -858,15 +817,6 @@ class NotesList(Gtk.Box):
             for fb in self._get_all_flowboxes():
                 fb.set_column_spacing(col_sp)
                 fb.set_row_spacing(row_sp)
-                fb.set_halign(Gtk.Align.FILL)
-
-            if mode == "grid":
-                alloc_w = self.get_allocated_width()
-                cols = self._calculate_cols_for_width(alloc_w if alloc_w > 0 else 800)
-                self._apply_grid_columns(cols)
-            else:
-                self._apply_grid_columns(1)
-
             self.set_notes(
                 self.current_notes,
                 is_search=self.is_search,

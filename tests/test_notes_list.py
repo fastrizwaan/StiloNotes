@@ -373,23 +373,8 @@ class TestNotesListAndCards(unittest.TestCase):
         self.assertEqual(card_table.body_lbl.get_text(), "")
         self.assertFalse(card_table.body_lbl.get_visible())
 
-    def test_calculate_cols_for_width(self):
-        """Test responsive grid column calculation."""
-        from gi.repository import Gdk
-        if Gdk.Display.get_default() is None:
-            raise unittest.SkipTest("No Gdk.Display available (headless)")
-
-        notes_list = NotesList(self.db, view_mode="grid")
-        self.assertEqual(notes_list._calculate_cols_for_width(0), 1)
-        self.assertEqual(notes_list._calculate_cols_for_width(400), 2)
-        self.assertEqual(notes_list._calculate_cols_for_width(700), 4)
-        self.assertEqual(notes_list._calculate_cols_for_width(950), 5)
-        self.assertEqual(notes_list._calculate_cols_for_width(1200), 6)
-        self.assertEqual(notes_list._calculate_cols_for_width(1800), 10)
-        self.assertEqual(notes_list._calculate_cols_for_width(2200), 12)
-
     def test_grid_flowbox_fills_horizontally(self):
-        """Verify flowboxes use Align.FILL, hexpand=True, and max_children_per_line is 10+."""
+        """Verify flowboxes use Align.FILL, hexpand=True, and homogeneous=True."""
         from gi.repository import Gdk, Gtk
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
@@ -398,7 +383,8 @@ class TestNotesListAndCards(unittest.TestCase):
         for fb in notes_list._get_all_flowboxes():
             self.assertEqual(fb.get_halign(), Gtk.Align.FILL)
             self.assertTrue(fb.get_hexpand())
-            self.assertGreaterEqual(fb.get_max_children_per_line(), 10)
+            self.assertTrue(fb.get_homogeneous())
+            self.assertEqual(fb.get_max_children_per_line(), 24)
 
         notes_list.set_view_mode("list")
         for fb in notes_list._get_all_flowboxes():
@@ -408,6 +394,3 @@ class TestNotesListAndCards(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-
