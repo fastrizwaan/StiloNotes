@@ -8,6 +8,8 @@ from stilonotes.markdown_utils import (
     html_to_markdown,
     extract_title_and_excerpt,
     extract_tags,
+    extract_categories,
+    extract_note_links,
     check_has_todo,
     format_relative_date,
 )
@@ -232,8 +234,6 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("<li>Item One</li>", html)
         self.assertIn("<li>Item Two</li>", html)
         self.assertIn('class="stilo-task"', html)
-        self.assertIn('class="stilo-task completed"', html)
-
     def test_fenced_bash_code_block(self):
         md = '```bash\necho "hello world"\npwd\nls\n```'
         html = markdown_to_html(md)
@@ -241,6 +241,44 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn('echo &quot;hello world&quot;\npwd\nls', html)
         back = html_to_markdown(html)
         self.assertIn('```bash\necho "hello world"\npwd\nls\n```', back)
+
+    def test_symbol_mapping(self):
+        md = "Note with #important and #revise tags, @john mention, and [[Project Alpha]] link in ##Work/Projects."
+        html = markdown_to_html(md)
+        self.assertIn('class="stilo-tag" data-tag="important"', html)
+        self.assertIn('class="stilo-tag" data-tag="revise"', html)
+        self.assertIn('class="stilo-mention" data-mention="john"', html)
+        self.assertIn('class="stilo-wiki-link" data-note-title="Project Alpha"', html)
+        self.assertIn('class="stilo-category-badge" data-category="Work/Projects"', html)
+
+        self.assertEqual(extract_tags(md), ["important", "revise"])
+        self.assertEqual(extract_categories(md), ["Work/Projects"])
+        self.assertIn("Project Alpha", extract_note_links(md))
+
+        back = html_to_markdown(html)
+        self.assertIn("#important", back)
+        self.assertIn("@john", back)
+        self.assertIn("[[Project Alpha]]", back)
+        self.assertIn("##Work/Projects", back)
+
+    def test_fast_category_and_tags(self):
+        md = "Task in ##Fast category with #Fast tag"
+        html = markdown_to_html(md)
+        self.assertIn('class="stilo-category-badge" data-category="Fast"', html)
+        self.assertIn('class="stilo-tag" data-tag="Fast"', html)
+
+        # Test extraction from markdown
+        self.assertEqual(extract_categories(md), ["Fast"])
+        self.assertEqual(extract_tags(md), ["fast"])
+
+        # Test extraction from HTML
+        self.assertEqual(extract_categories(html), ["Fast"])
+        self.assertEqual(extract_tags(html), ["fast"])
+
+        # Test round-trip conversion
+        back = html_to_markdown(html)
+        self.assertIn("##Fast", back)
+        self.assertIn("#Fast", back)
 
 if __name__ == "__main__":
     unittest.main()

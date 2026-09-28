@@ -350,6 +350,8 @@ class NoteEditor(Gtk.Box):
         "note-pin-toggled":      (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-duplicated":       (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-category-changed": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
+        "tag-clicked":           (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "open-note-link":        (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "back":                  (GObject.SignalFlags.RUN_FIRST, None, ()),
         "toggle-app-theme":      (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
@@ -649,6 +651,12 @@ class NoteEditor(Gtk.Box):
             ucm.connect("script-message-received::pickImage", self._on_js_pick_image)
             ucm.register_script_message_handler("uploadImage")
             ucm.connect("script-message-received::uploadImage", self._on_js_upload_image)
+            ucm.register_script_message_handler("tagClicked")
+            ucm.connect("script-message-received::tagClicked", self._on_js_tag_clicked)
+            ucm.register_script_message_handler("openNoteLink")
+            ucm.connect("script-message-received::openNoteLink", self._on_js_open_note_link)
+            ucm.register_script_message_handler("categorySelected")
+            ucm.connect("script-message-received::categorySelected", self._on_js_category_selected)
         except Exception as e:
             print("Message handler registration error:", e)
 
@@ -852,6 +860,7 @@ class NoteEditor(Gtk.Box):
 
         self._show_toolbar()
         self.update_stats_popover()
+        self._sync_autocomplete_data()
         GLib.idle_add(self.focus_editor)
 
     def update_theme(self, is_dark: bool):
@@ -901,6 +910,7 @@ class NoteEditor(Gtk.Box):
             new_title   = data.get("title",   self.current_note.title)
             new_excerpt = data.get("excerpt",  self.current_note.excerpt)
             new_html    = data.get("html",     self.current_note.content_html)
+            tags        = data.get("tags",     [])
             stats       = data.get("stats",    {})
             has_todo    = data.get("has_todo", False)
 
@@ -910,6 +920,7 @@ class NoteEditor(Gtk.Box):
             self.current_note.title = new_title
             self.current_note.excerpt = new_excerpt
             self.current_note.content_html = new_html
+            self.current_note.tags = tags
             self.current_note.has_todo = has_todo
 
             self.update_stats_popover()
@@ -919,12 +930,63 @@ class NoteEditor(Gtk.Box):
                 "title": new_title,
                 "excerpt": new_excerpt,
                 "html": new_html,
+                "tags": tags,
                 "has_todo": has_todo,
             }
             self.status_label.set_text("Saving…")
             self._schedule_save()
         except Exception as e:
             print("Error parsing content change:", e)
+
+    def _sync_autocomplete_data(self):
+        """Send existing categories, tags, and note titles to editor WebKit for instant autocomplete."""
+        try:
+            categories = [c.name for c in self.db.get_categories()]
+            tags = [t[0] for t in self.db.get_all_tags()]
+            notes = self.db.get_all_note_titles()
+            payload = json.dumps({
+                "categories": categories,
+                "tags": tags,
+                "notes": notes,
+                "mentions": []
+            })
+            script = f"if (window.setAutocompleteData) {{ window.setAutocompleteData({payload}); }}"
+            self.webview.evaluate_javascript(script, -1, None, None, None, None)
+        except Exception as e:
+            print("Error syncing autocomplete data:", e)
+
+    def _on_js_tag_clicked(self, _ucm, js_result):
+        try:
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            tag = val.to_string() if hasattr(val, "to_string") else str(val)
+            if tag:
+                self.emit("tag-clicked", tag.strip().lstrip("#"))
+        except Exception as e:
+            print("Tag clicked error:", e)
+
+    def _on_js_open_note_link(self, _ucm, js_result):
+        try:
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            title = val.to_string() if hasattr(val, "to_string") else str(val)
+            if title:
+                self.emit("open-note-link", title.strip())
+        except Exception as e:
+            print("Open note link error:", e)
+
+    def _on_js_category_selected(self, _ucm, js_result):
+        try:
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            cat_name = val.to_string() if hasattr(val, "to_string") else str(val)
+            cat_name = cat_name.strip().strip("/")
+            if cat_name and self.current_note:
+                self.current_note.category = cat_name
+                self.db.create_category(cat_name)
+                self.db.save_note(self.current_note.id, category=cat_name)
+                self.category_header_bar.set_category(cat_name)
+                self.emit("note-category-changed", self.current_note.id, cat_name)
+                self._sync_autocomplete_data()
+        except Exception as e:
+            print("Category selected error:", e)
 
     def _on_js_stats_changed(self, _ucm, js_result):
         try:
@@ -953,12 +1015,14 @@ class NoteEditor(Gtk.Box):
             def worker():
                 try:
                     md_content = html_to_markdown(data["html"])
+                    note_tags = data.get("tags") or None
                     self.db.save_note(
                         note_id=data["note_id"],
                         title=data["title"],
                         excerpt=data["excerpt"],
                         content_html=data["html"],
                         content_markdown=md_content,
+                        tags=note_tags,
                         has_todo=data["has_todo"]
                     )
                     if self.current_note and self.current_note.id == data["note_id"]:
@@ -968,7 +1032,7 @@ class NoteEditor(Gtk.Box):
                         if self._pending_save_data and self._pending_save_data.get("html") == data["html"]:
                             self._pending_save_data = None
                             self.status_label.set_text("Saved")
-                            self.emit("note-updated", data["note_id"], data["title"], data["excerpt"], data["html"], md_content, [], data["has_todo"])
+                            self.emit("note-updated", data["note_id"], data["title"], data["excerpt"], data["html"], md_content, data.get("tags", []), data["has_todo"])
                         return False
 
                     GLib.idle_add(on_done)

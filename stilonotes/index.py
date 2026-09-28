@@ -224,10 +224,13 @@ class IndexView(Adw.BreakpointBin):
             self.window_title.set_title("Trash")
         elif self.active_filter_type == "category":
             self.window_title.set_title(self.active_category_name or "Category")
+        elif self.active_filter_type == "tag":
+            self.window_title.set_title(f"#{self.active_category_name}")
 
         notes = self.db.get_notes(
             filter_type=self.active_filter_type,
             category_name=self.active_category_name,
+            tag_name=self.active_category_name if self.active_filter_type == "tag" else "",
             search_query=self.search_query
         )
         self.notes_list.set_notes(
@@ -236,6 +239,15 @@ class IndexView(Adw.BreakpointBin):
             active_filter_type=self.active_filter_type,
             active_category_name=self.active_category_name
         )
+
+    def filter_by_tag(self, tag_name: str):
+        """Programmatically switch filter to a specific tag."""
+        clean_tag = tag_name.strip().lstrip("#")
+        self.active_filter_type = "tag"
+        self.active_category_name = clean_tag
+        self.sidebar.active_filter_type = "tag"
+        self.sidebar.active_category_name = clean_tag
+        self.refresh()
 
     def _on_sidebar_filter_changed(self, _sb, filter_type: str, category_name: str):
         self.active_filter_type = filter_type

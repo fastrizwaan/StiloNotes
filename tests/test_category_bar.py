@@ -38,6 +38,15 @@ class TestCategoryHeaderBar(unittest.TestCase):
         self.assertEqual(len(applied), 1)
         self.assertEqual(applied[0], "")
 
+    def test_set_and_get_category(self):
+        self.bar.set_category("Fast")
+        self.assertEqual(self.bar.get_category(), "Fast")
+        self.assertEqual(self.bar.entry.get_text(), "Fast")
+
+        self.bar.set_category("")
+        self.assertEqual(self.bar.get_category(), "")
+        self.assertEqual(self.bar.entry.get_text(), "")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -112,9 +112,17 @@ class CategoryHeaderBar(Adw.Bin):
                 if cat and cat.strip():
                     self.list_store.append([cat.strip()])
 
+    def set_category(self, category: str):
+        """Set the current category in the entry."""
+        self.entry.set_text(category or "")
+
+    def get_category(self) -> str:
+        """Get the current category from the entry."""
+        return self.entry.get_text().strip()
+
     def activate(self, current_category: str = ""):
         """Activate the category header bar with current note's category."""
-        self.entry.set_text(current_category or "")
+        self.set_category(current_category)
         self.entry.grab_focus()
         self.entry.select_region(0, -1)
         GLib.idle_add(self._show_completion_popup)

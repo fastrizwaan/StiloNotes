@@ -279,7 +279,19 @@ RE_HTM_P = re.compile(r'<p[^>]*>(.*?)</p>', re.DOTALL)
 RE_HTM_BR = re.compile(r'<br[^>]*>')
 RE_HTM_MULTI_NEWLINES = re.compile(r'\n{3,}')
 
-MD_SPECIAL_CHARS = set("#*_`[<~=-+:^")
+# Symbol Mappings: #tag, @mention, [[Wiki Link]], ##Category
+RE_TAG_EXTRACT = re.compile(r'(?<![#\w])#([a-zA-Z0-9_\-]+)(?![#\w])')
+RE_CAT_HASH = re.compile(r'(?<!#)##([a-zA-Z0-9_\-]+(?:/[a-zA-Z0-9_\-]+)*)')
+RE_CAT_SLASH = re.compile(r'(?:^|(?<=\s))/([a-zA-Z0-9_\-]+(?:/[a-zA-Z0-9_\-]+)*)(?=$|[\s.,;:!?])')
+RE_MENTION_EXTRACT = re.compile(r'(?<![\w@])@([a-zA-Z0-9_\.\-]+)(?![@\w])')
+RE_WIKI_LINK = re.compile(r'\[\[([^\]\n]+)\]\]')
+
+RE_HTM_TAG = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-tag[^"\']*["\'][^>]*data-tag=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
+RE_HTM_MENTION = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-mention[^"\']*["\'][^>]*data-mention=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
+RE_HTM_WIKI = re.compile(r'<a[^>]*class=["\'][^"\']*stilo-wiki-link[^"\']*["\'][^>]*data-note-title=["\']([^"\']+)["\'][^>]*>.*?</a>', re.DOTALL)
+RE_HTM_CAT_BADGE = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-category-badge[^"\']*["\'][^>]*data-category=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
+
+MD_SPECIAL_CHARS = set("#*_`[<~=-+:^@/")
 
 
 def format_relative_date(timestamp: float) -> str:
@@ -324,8 +336,74 @@ def check_has_todo(content: str) -> bool:
 
 
 def extract_tags(text: str) -> List[str]:
-    """Deprecated tag extractor; returns empty list as app is category-based."""
-    return []
+    """Extract all #tags from markdown/HTML text, ignoring headings and code blocks."""
+    if not text:
+        return []
+    seen = set()
+    result = []
+    # Check for HTML tag badges first: <span class="stilo-tag" data-tag="...">
+    for t in RE_HTM_TAG.findall(text):
+        tag = t.strip().lstrip("#").lower()
+        if tag and tag not in seen:
+            seen.add(tag)
+            result.append(tag)
+
+    clean = re.sub(r'```[\s\S]*?```', '', text)
+    clean = re.sub(r'`[^`\n]+`', '', clean)
+    clean = RE_HTML_TAGS.sub(' ', clean)
+    matches = RE_TAG_EXTRACT.findall(clean)
+    for m in matches:
+        tag = m.strip().lstrip("#").lower()
+        if tag and tag not in seen:
+            seen.add(tag)
+            result.append(tag)
+    return result
+
+
+def extract_categories(text: str) -> List[str]:
+    """Extract category declarations such as ##Category/Sub or /Category/Sub or HTML badges."""
+    if not text:
+        return []
+    seen = set()
+    result = []
+    # Check for HTML category badges first: <span class="stilo-category-badge" data-category="...">
+    for c in RE_HTM_CAT_BADGE.findall(text):
+        clean_c = c.strip()
+        if clean_c and clean_c not in seen:
+            seen.add(clean_c)
+            result.append(clean_c)
+
+    clean = re.sub(r'```[\s\S]*?```', '', text)
+    clean = re.sub(r'`[^`\n]+`', '', clean)
+    clean = RE_HTML_TAGS.sub(' ', clean)
+    matches = []
+    for m in RE_CAT_HASH.findall(clean):
+        matches.append(m.strip())
+    for m in RE_CAT_SLASH.findall(clean):
+        matches.append(m.strip())
+    for c in matches:
+        if c and c not in seen:
+            seen.add(c)
+            result.append(c)
+    return result
+
+
+def extract_note_links(text: str) -> List[str]:
+    """Extract internal note link titles [[Note Title]]."""
+    if not text:
+        return []
+    clean = re.sub(r'```[\s\S]*?```', '', text)
+    clean = re.sub(r'`[^`\n]+`', '', clean)
+    clean = RE_HTML_TAGS.sub(' ', clean)
+    matches = RE_WIKI_LINK.findall(clean)
+    seen = set()
+    result = []
+    for l in matches:
+        link = l.strip()
+        if link and link not in seen:
+            seen.add(link)
+            result.append(link)
+    return result
 
 
 def strip_markdown(text: str) -> str:
@@ -344,6 +422,12 @@ def strip_markdown(text: str) -> str:
     s = RE_LIST_NUMBERS.sub('', s)
     s = RE_BLOCKQUOTES.sub('', s)
     s = RE_DIVIDERS.sub('', s)
+    s = RE_HTM_WIKI.sub(r'\1', s)
+    s = RE_WIKI_LINK.sub(r'\1', s)
+    s = RE_HTM_TAG.sub(r'#\1', s)
+    s = RE_HTM_MENTION.sub(r'@\1', s)
+    s = RE_HTM_CAT_BADGE.sub(r'\1', s)
+    s = RE_CAT_HASH.sub(r'\1', s)
     s = RE_CODE_FENCES.sub('', s)
     s = RE_INLINE_CODE.sub(r'\1', s)
     s = RE_IMAGES.sub(r'\1', s)
@@ -486,6 +570,18 @@ def markdown_to_html(md_text: str) -> str:
 
         # Emoji shortcodes (:joy: -> 😂)
         s = RE_MD_EMOJI.sub(lambda m: EMOJI_MAP.get(m.group(0), m.group(0)), s)
+
+        # Internal Note Links: [[Note Title]]
+        s = RE_WIKI_LINK.sub(r'<a href="stilo-note://\1" class="stilo-wiki-link" data-note-title="\1">[[\1]]</a>', s)
+
+        # Tags: #tag
+        s = RE_TAG_EXTRACT.sub(r'<span class="stilo-tag" data-tag="\1">#\1</span>', s)
+
+        # Mentions: @name
+        s = RE_MENTION_EXTRACT.sub(r'<span class="stilo-mention" data-mention="\1">@\1</span>', s)
+
+        # Categories: ##Category/Sub
+        s = RE_CAT_HASH.sub(r'<span class="stilo-category-badge" data-category="\1">📁 \1</span>', s)
 
         return s
 
@@ -970,6 +1066,12 @@ def html_to_markdown(html_content: str) -> str:
 
     s = RE_HTM_IMG_WRAPPER.sub(_convert_img_wrapper_to_md, s)
     s = RE_HTM_STANDALONE_IMG.sub(_convert_standalone_img_to_md, s)
+
+    # 10.5 Convert Wiki Links, Tags, Mentions, Category Badges
+    s = RE_HTM_WIKI.sub(r'[[\1]]', s)
+    s = RE_HTM_TAG.sub(r'#\1', s)
+    s = RE_HTM_MENTION.sub(r'@\1', s)
+    s = RE_HTM_CAT_BADGE.sub(r'##\1', s)
 
     # 11. Convert Links
     def _convert_link_to_md(m: re.Match) -> str:

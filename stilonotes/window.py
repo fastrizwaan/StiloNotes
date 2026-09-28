@@ -49,6 +49,8 @@ class StiloWindow(Adw.ApplicationWindow):
         self.editor.connect("note-pin-toggled", self._on_editor_note_pin_toggled)
         self.editor.connect("note-duplicated", self._on_editor_note_duplicated)
         self.editor.connect("note-category-changed", self._on_editor_category_changed)
+        self.editor.connect("tag-clicked", self._on_editor_tag_clicked)
+        self.editor.connect("open-note-link", self._on_editor_open_note_link)
         self.editor.connect("back", self._on_editor_back)
         self.editor.connect("toggle-app-theme", lambda _ed: self._toggle_theme())
 
@@ -192,6 +194,16 @@ class StiloWindow(Adw.ApplicationWindow):
     def _on_editor_category_changed(self, _ed, note_id: str, new_category: str):
         self.index_view.refresh(update_sidebar=True)
 
+    def _on_editor_tag_clicked(self, _ed, tag_name: str):
+        self._go_back()
+        self.index_view.filter_by_tag(tag_name)
+
+    def _on_editor_open_note_link(self, _ed, note_title: str):
+        target = self.db.find_note_by_title(note_title)
+        if not target:
+            target = self.db.create_note(title=note_title, initial_text=f"# {note_title}\n\n")
+            self.index_view.refresh()
+        self.open_note(target)
 
     def _on_editor_back(self, _ed):
         self._go_back()

@@ -462,12 +462,150 @@
       background-color: var(--accent-color, #7B2CBF);
       opacity: 0.7;
     }
+
+    /* Symbol Mapping Badges: #tag, @mention, [[wiki-link]], ##category */
+    .stilo-tag {
+      display: inline-block;
+      padding: 1px 7px;
+      margin: 0 2px;
+      border-radius: 6px;
+      background: var(--tag-bg, #EDE7F6);
+      color: var(--tag-text, #6A1B9A);
+      font-size: 0.9em;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: all;
+      transition: background 0.15s ease;
+    }
+    .stilo-tag:hover {
+      background: var(--tag-hover, #D1C4E9);
+    }
+
+    .stilo-mention {
+      display: inline-block;
+      padding: 1px 7px;
+      margin: 0 2px;
+      border-radius: 6px;
+      background: rgba(53, 132, 228, 0.12);
+      color: #1c71d8;
+      font-size: 0.9em;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: all;
+      transition: background 0.15s ease;
+    }
+    html.dark-theme .stilo-mention {
+      background: rgba(98, 160, 234, 0.2);
+      color: #78aeed;
+    }
+    .stilo-mention:hover {
+      background: rgba(53, 132, 228, 0.22);
+    }
+
+    .stilo-wiki-link {
+      color: var(--accent-color, #7B2CBF);
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      cursor: pointer;
+      font-weight: 500;
+      border-radius: 4px;
+      padding: 0 2px;
+      transition: background 0.15s ease;
+    }
+    .stilo-wiki-link:hover {
+      text-decoration-style: solid;
+      background: var(--accent-soft);
+    }
+
+    .stilo-category-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 7px;
+      margin: 0 2px;
+      border-radius: 6px;
+      background: rgba(230, 97, 0, 0.12);
+      color: #e66100;
+      font-size: 0.9em;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: all;
+      transition: background 0.15s ease;
+    }
+    html.dark-theme .stilo-category-badge {
+      background: rgba(255, 163, 72, 0.18);
+      color: #ffa348;
+    }
+    .stilo-category-badge:hover {
+      background: rgba(230, 97, 0, 0.22);
+    }
+
+    /* Floating Autocomplete Popover */
+    .stilo-autocomplete-popover {
+      position: absolute;
+      z-index: 10000;
+      min-width: 220px;
+      max-width: 340px;
+      max-height: 250px;
+      overflow-y: auto;
+      background: var(--editor-bg, #ffffff);
+      border: 1px solid var(--border-color, #E2E4E9);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      padding: 5px;
+      font-family: var(--font-stack);
+      font-size: 13.5px;
+    }
+    .stilo-autocomplete-popover.hidden {
+      display: none !important;
+    }
+    .stilo-ac-header {
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 4px;
+    }
+    .stilo-ac-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--text-color);
+      transition: background 0.1s ease;
+    }
+    .stilo-ac-item .ac-icon {
+      font-size: 14px;
+      width: 18px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .stilo-ac-item .ac-label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .stilo-ac-item:hover, .stilo-ac-item.selected {
+      background: var(--accent-color, #7B2CBF);
+      color: #ffffff;
+    }
   </style>
 </head>
 <body>
 
   <div id="editor-container">
     <div id="editor" contenteditable="true" spellcheck="true"></div>
+  </div>
+
+  <div id="stilo-autocomplete-popover" class="stilo-autocomplete-popover hidden">
+    <div id="stilo-ac-header" class="stilo-ac-header">Suggestions</div>
+    <div id="stilo-ac-list" class="stilo-ac-list"></div>
   </div>
 
 
@@ -649,6 +787,314 @@
       }
     }
 
+    // ==========================================
+    // Keyboard-Oriented Autocomplete: ##, /, #, @, [[
+    // ==========================================
+    let autocompleteData = {
+      categories: [],
+      tags: [],
+      notes: [],
+      mentions: []
+    };
+
+    let acState = {
+      active: false,
+      triggerType: null, // 'tag', 'category', 'mention', 'wiki'
+      query: '',
+      matchStr: '',
+      items: [],
+      selectedIndex: 0,
+      targetNode: null,
+      startOffset: 0,
+      endOffset: 0
+    };
+
+    window.setAutocompleteData = function(data) {
+      if (!data) return;
+      if (Array.isArray(data.categories)) autocompleteData.categories = data.categories;
+      if (Array.isArray(data.tags)) autocompleteData.tags = data.tags;
+      if (Array.isArray(data.notes)) autocompleteData.notes = data.notes;
+      if (Array.isArray(data.mentions)) autocompleteData.mentions = data.mentions;
+    };
+
+    function checkAutocompleteTrigger() {
+      const sel = window.getSelection();
+      if (!sel.rangeCount || !sel.isCollapsed) {
+        hideAutocomplete();
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      const node = range.startContainer;
+      if (!node || node.nodeType !== Node.TEXT_NODE) {
+        hideAutocomplete();
+        return;
+      }
+
+      if (node.parentElement && (node.parentElement.closest('pre') || node.parentElement.closest('code'))) {
+        hideAutocomplete();
+        return;
+      }
+
+      const text = node.textContent;
+      const offset = range.startOffset;
+      const textBefore = text.slice(0, offset);
+
+      const wikiMatch = textBefore.match(/(?:^|\s)\[\[([^\]\n]*)$/);
+      const catHashMatch = textBefore.match(/(?<!#)##([a-zA-Z0-9_\-/]*)$/);
+      const catSlashMatch = textBefore.match(/(?:^|\s)\/([a-zA-Z0-9_\-/]*)$/);
+      const tagMatch = textBefore.match(/(?<![#\w])#([a-zA-Z0-9_\-]*)$/);
+      const mentionMatch = textBefore.match(/(?<![\w@])@([a-zA-Z0-9_\.\-]*)$/);
+
+      let triggerType = null;
+      let query = '';
+      let matchStr = '';
+
+      if (wikiMatch) {
+        triggerType = 'wiki';
+        query = wikiMatch[1];
+        matchStr = wikiMatch[0].trimStart();
+      } else if (catHashMatch) {
+        triggerType = 'category';
+        query = catHashMatch[1];
+        matchStr = catHashMatch[0];
+      } else if (catSlashMatch) {
+        triggerType = 'category';
+        query = catSlashMatch[1];
+        matchStr = catSlashMatch[0].trimStart();
+      } else if (tagMatch) {
+        triggerType = 'tag';
+        query = tagMatch[1];
+        matchStr = tagMatch[0];
+      } else if (mentionMatch) {
+        triggerType = 'mention';
+        query = mentionMatch[1];
+        matchStr = mentionMatch[0];
+      }
+
+      if (!triggerType) {
+        hideAutocomplete();
+        return;
+      }
+
+      const suggestions = [];
+      const qLower = query.toLowerCase();
+
+      if (triggerType === 'tag') {
+        const matching = autocompleteData.tags.filter(t => t.toLowerCase().includes(qLower));
+        for (const t of matching) {
+          suggestions.push({ label: '#' + t, value: t, type: 'tag', icon: '🏷️' });
+        }
+        if (query && !matching.some(t => t.toLowerCase() === qLower)) {
+          suggestions.unshift({ label: `Create Tag "#${query}"`, value: query, type: 'tag', icon: '✨' });
+        }
+      } else if (triggerType === 'category') {
+        const matching = autocompleteData.categories.filter(c => c.toLowerCase().includes(qLower));
+        for (const c of matching) {
+          suggestions.push({ label: c, value: c, type: 'category', icon: '📁' });
+        }
+        if (query && !matching.some(c => c.toLowerCase() === qLower)) {
+          suggestions.unshift({ label: `Set Category to "${query}"`, value: query, type: 'category', icon: '✨' });
+        }
+      } else if (triggerType === 'mention') {
+        const matching = (autocompleteData.mentions || []).filter(m => m.toLowerCase().includes(qLower));
+        for (const m of matching) {
+          suggestions.push({ label: '@' + m, value: m, type: 'mention', icon: '👤' });
+        }
+        if (query) {
+          suggestions.unshift({ label: `Mention "@${query}"`, value: query, type: 'mention', icon: '👤' });
+        }
+      } else if (triggerType === 'wiki') {
+        const matching = autocompleteData.notes.filter(n => n.toLowerCase().includes(qLower));
+        for (const n of matching) {
+          suggestions.push({ label: n, value: n, type: 'wiki', icon: '📄' });
+        }
+        if (query && !matching.some(n => n.toLowerCase() === qLower)) {
+          suggestions.unshift({ label: `Create Note "[[${query}]]"`, value: query, type: 'wiki', icon: '✨' });
+        }
+      }
+
+      if (suggestions.length === 0) {
+        hideAutocomplete();
+        return;
+      }
+
+      acState.active = true;
+      acState.triggerType = triggerType;
+      acState.query = query;
+      acState.matchStr = matchStr;
+      acState.items = suggestions;
+      acState.selectedIndex = 0;
+      acState.targetNode = node;
+      acState.endOffset = offset;
+      acState.startOffset = offset - matchStr.length;
+
+      renderAutocomplete(range);
+    }
+
+    function renderAutocomplete(range) {
+      const popover = document.getElementById('stilo-autocomplete-popover');
+      const header = document.getElementById('stilo-ac-header');
+      const list = document.getElementById('stilo-ac-list');
+      if (!popover || !list) return;
+
+      const titles = {
+        'tag': 'Tags (Select or Enter)',
+        'category': 'Categories (Select or Enter)',
+        'mention': 'Mentions',
+        'wiki': 'Internal Note Links'
+      };
+      if (header) header.textContent = titles[acState.triggerType] || 'Suggestions';
+
+      list.innerHTML = '';
+      acState.items.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'stilo-ac-item' + (index === acState.selectedIndex ? ' selected' : '');
+        div.innerHTML = `<span class="ac-icon">${item.icon}</span><span class="ac-label">${escapeHtml(item.label)}</span>`;
+        div.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          applyAutocomplete(index);
+        });
+        list.appendChild(div);
+      });
+
+      popover.classList.remove('hidden');
+      try {
+        const rect = range.getBoundingClientRect();
+        let top = rect.bottom + window.scrollY + 6;
+        let left = rect.left + window.scrollX;
+        const popWidth = popover.offsetWidth || 240;
+        const popHeight = popover.offsetHeight || 180;
+
+        if (left + popWidth > window.innerWidth - 16) {
+          left = Math.max(16, window.innerWidth - popWidth - 16);
+        }
+        if (rect.bottom + popHeight > window.innerHeight && rect.top - popHeight > 0) {
+          top = rect.top + window.scrollY - popHeight - 6;
+        }
+
+        popover.style.top = top + 'px';
+        popover.style.left = left + 'px';
+      } catch (e) {
+        console.error('Positioning error:', e);
+      }
+    }
+
+    function hideAutocomplete() {
+      acState.active = false;
+      const popover = document.getElementById('stilo-autocomplete-popover');
+      if (popover) popover.classList.add('hidden');
+    }
+
+    function selectNextAutocomplete() {
+      if (!acState.active || !acState.items.length) return;
+      acState.selectedIndex = (acState.selectedIndex + 1) % acState.items.length;
+      updateAutocompleteSelection();
+    }
+
+    function selectPrevAutocomplete() {
+      if (!acState.active || !acState.items.length) return;
+      acState.selectedIndex = (acState.selectedIndex - 1 + acState.items.length) % acState.items.length;
+      updateAutocompleteSelection();
+    }
+
+    function updateAutocompleteSelection() {
+      const list = document.getElementById('stilo-ac-list');
+      if (!list) return;
+      const items = list.querySelectorAll('.stilo-ac-item');
+      items.forEach((el, idx) => {
+        if (idx === acState.selectedIndex) {
+          el.classList.add('selected');
+          el.scrollIntoView({ block: 'nearest' });
+        } else {
+          el.classList.remove('selected');
+        }
+      });
+    }
+
+    function applyAutocomplete(index = null) {
+      if (!acState.active) return;
+      const idx = (index !== null) ? index : acState.selectedIndex;
+      const item = acState.items[idx];
+      if (!item) {
+        hideAutocomplete();
+        return;
+      }
+
+      const node = acState.targetNode;
+      if (!node || !node.parentNode) {
+        hideAutocomplete();
+        return;
+      }
+
+      const text = node.textContent;
+      const before = text.slice(0, acState.startOffset);
+      const after = text.slice(acState.endOffset);
+
+      let insertFragment = null;
+
+      if (item.type === 'tag') {
+        const cleanTag = item.value.replace(/^#+/, '').trim();
+        insertFragment = document.createElement('span');
+        insertFragment.className = 'stilo-tag';
+        insertFragment.setAttribute('data-tag', cleanTag);
+        insertFragment.textContent = '#' + cleanTag;
+        if (!autocompleteData.tags.includes(cleanTag)) {
+          autocompleteData.tags.push(cleanTag);
+        }
+      } else if (item.type === 'category') {
+        const cleanCat = item.value.replace(/^[#/]+/, '').trim();
+        insertFragment = document.createElement('span');
+        insertFragment.className = 'stilo-category-badge';
+        insertFragment.setAttribute('data-category', cleanCat);
+        insertFragment.innerHTML = `📁 ${escapeHtml(cleanCat)}`;
+        if (!autocompleteData.categories.includes(cleanCat)) {
+          autocompleteData.categories.push(cleanCat);
+        }
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.categorySelected) {
+          window.webkit.messageHandlers.categorySelected.postMessage(cleanCat);
+        }
+      } else if (item.type === 'mention') {
+        const cleanMention = item.value.replace(/^@+/, '').trim();
+        insertFragment = document.createElement('span');
+        insertFragment.className = 'stilo-mention';
+        insertFragment.setAttribute('data-mention', cleanMention);
+        insertFragment.textContent = '@' + cleanMention;
+        if (!autocompleteData.mentions.includes(cleanMention)) {
+          autocompleteData.mentions.push(cleanMention);
+        }
+      } else if (item.type === 'wiki') {
+        const title = item.value.trim();
+        insertFragment = document.createElement('a');
+        insertFragment.className = 'stilo-wiki-link';
+        insertFragment.href = 'stilo-note://' + encodeURIComponent(title);
+        insertFragment.setAttribute('data-note-title', title);
+        insertFragment.textContent = '[[' + title + ']]';
+        if (!autocompleteData.notes.includes(title)) {
+          autocompleteData.notes.push(title);
+        }
+      }
+
+      const space = document.createTextNode('\u00A0');
+      const parent = node.parentNode;
+
+      node.textContent = before;
+      const afterNode = document.createTextNode(after);
+
+      parent.insertBefore(insertFragment, node.nextSibling);
+      parent.insertBefore(space, insertFragment.nextSibling);
+      parent.insertBefore(afterNode, space.nextSibling);
+
+      const newRange = document.createRange();
+      newRange.setStart(space, 1);
+      newRange.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+
+      hideAutocomplete();
+      notifyChange();
+    }
+
     window.addEventListener('load', () => {
       setupEventHandlers();
       initAllHandles();
@@ -658,11 +1104,60 @@
 
     function setupEventHandlers() {
       editor.addEventListener('pointerdown', () => { userInteractedWithCurrentNote = true; });
-      editor.addEventListener('input', (e) => { userInteractedWithCurrentNote = true; onEditorInput(e); });
-      editor.addEventListener('keydown', (e) => { userInteractedWithCurrentNote = true; onKeyDown(e); });
+      editor.addEventListener('input', (e) => {
+        userInteractedWithCurrentNote = true;
+        onEditorInput(e);
+        checkAutocompleteTrigger();
+      });
+      editor.addEventListener('keydown', (e) => {
+        userInteractedWithCurrentNote = true;
+        if (acState.active) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            selectNextAutocomplete();
+            return;
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            e.stopPropagation();
+            selectPrevAutocomplete();
+            return;
+          } else if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            e.stopPropagation();
+            applyAutocomplete();
+            return;
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            hideAutocomplete();
+            return;
+          }
+        }
+        onKeyDown(e);
+      });
+      editor.addEventListener('keyup', (e) => {
+        updateActiveElement(e);
+        if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key) && acState.active) {
+          return;
+        }
+        checkAutocompleteTrigger();
+      });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#stilo-autocomplete-popover')) {
+          hideAutocomplete();
+        }
+      });
       editor.addEventListener('click', onEditorClick);
       editor.addEventListener('paste', onPaste);
       editor.addEventListener('drop', onDrop);
+      editor.addEventListener('blur', () => {
+        hideAutocomplete();
+        const block = getClosestBlockElement();
+        if (block && hasMarkdownSyntax(block.textContent, true)) {
+          convertMarkdownInBlock(block, true);
+        }
+      });
 
       editor.addEventListener('click', updateActiveElement);
       editor.addEventListener('pointerdown', (e) => {
@@ -988,12 +1483,15 @@
         .replace(/'/g, '&#39;');
     }
 
-    function hasMarkdownSyntax(str) {
+    function hasMarkdownSyntax(str, allowEndOfString = false) {
       if (!str) return false;
-      return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/)/m.test(str);
+      if (allowEndOfString) {
+        return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)|\[\[[^\n\]]+\]\]|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/|(?<!#)##[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*(?=$|[\s.,;:!?])|(?<![#\w])#[a-zA-Z0-9_\-]+(?=$|[\s.,;:!?])|(?<![\w@])@[a-zA-Z0-9_\.\-]+(?=$|[\s.,;:!?]))/m.test(str);
+      }
+      return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*[^*\n]+?\*\*|__(?!_)[^_\n]+?__(?!_)|\*(?!\*)[^*\s\n](?:[^*\n]*?[^*\s\n])?\*(?!\*)|_(?!_)[^_\s\n](?:[^_\n]*?[^_\s\n])?_(?!_)|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+`|<\/?u>|<\/?ins>|\+\+[^\+\n]+?\+\+|\[.+\]\(.+\)|\[\[[^\n\]]+\]\]|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/|(?<!#)##[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*(?=[\s.,;:!?])|(?<![#\w])#[a-zA-Z0-9_\-]+(?=[\s.,;:!?])|(?<![\w@])@[a-zA-Z0-9_\.\-]+(?=[\s.,;:!?]))/m.test(str);
     }
 
-    function formatMarkdownInText(str) {
+    function formatMarkdownInText(str, allowEndOfString = false) {
       if (!str) return { html: str, matched: false };
       let matched = false;
       let s = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1052,11 +1550,23 @@
         return EMOJI_MAP[match] || match;
       });
 
-      // 14. Tags: #tag (word characters and hyphens)
-      applyRule(/(^|\s)#([a-zA-Z0-9_\-]+)/g, '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
+      // 14. Internal Note Links: [[Note Title]]
+      applyRule(/\[\[([^\]\n]+)\]\]/g, '<a href="stilo-note://$1" class="stilo-wiki-link" data-note-title="$1">[[$1]]</a>');
+
+      const endLookahead = allowEndOfString ? '(?=$|[\\s.,;:!?])' : '(?=[\\s.,;:!?])';
+
+      // 15. Categories / Folders: ##Category/Sub (checked before #tag)
+      applyRule(new RegExp('(^|[\\s.,;:!?])##([a-zA-Z0-9_\\-]+(?:\\/[a-zA-Z0-9_\\-]+)*)' + endLookahead, 'g'), '$1<span class="stilo-category-badge" data-category="$2">📁 $2</span>');
+
+      // 16. Tags: #tag (word characters and hyphens)
+      applyRule(new RegExp('(^|[\\s.,;:!?])#([a-zA-Z0-9_\\-]+)' + endLookahead, 'g'), '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
+
+      // 17. Mentions: @person
+      applyRule(new RegExp('(^|[\\s.,;:!?])@([a-zA-Z0-9_\\.\\-]+)' + endLookahead, 'g'), '$1<span class="stilo-mention" data-mention="$2">@$2</span>');
 
       return { html: s, matched };
     }
+
 
     function parseMarkdownToHtml(mdText) {
       if (!mdText) return '';
@@ -1111,7 +1621,7 @@
             for (let i = 0; i < headers.length; i++) {
               const align = alignments[i] || 'left';
               const style = align !== 'left' ? ` style="text-align: ${align};"` : '';
-              tblHtml += `<th${style}>${formatMarkdownInText(headers[i]).html || '<br>'}</th>`;
+              tblHtml += `<th${style}>${formatMarkdownInText(headers[i], true).html || '<br>'}</th>`;
             }
             tblHtml += '</tr></thead><tbody>';
             for (let row of dataRows) {
@@ -1120,7 +1630,7 @@
                 const cellVal = i < row.length ? row[i] : '';
                 const align = alignments[i] || 'left';
                 const style = align !== 'left' ? ` style="text-align: ${align};"` : '';
-                tblHtml += `<td${style}>${formatMarkdownInText(cellVal).html || '<br>'}</td>`;
+                tblHtml += `<td${style}>${formatMarkdownInText(cellVal, true).html || '<br>'}</td>`;
               }
               tblHtml += '</tr>';
             }
@@ -1128,7 +1638,7 @@
             out.push(tblHtml);
           } else {
             for (let r of tableRows) {
-              out.push(`<div>${formatMarkdownInText(r).html}</div>`);
+              out.push(`<div>${formatMarkdownInText(r, true).html}</div>`);
             }
           }
           inTable = false;
@@ -1171,7 +1681,7 @@
         if (hMatch) {
           closeList();
           const level = hMatch[1].length;
-          const content = formatMarkdownInText(hMatch[2]).html;
+          const content = formatMarkdownInText(hMatch[2], true).html;
           out.push(`<h${level}>${content}</h${level}>`);
           continue;
         }
@@ -1179,7 +1689,7 @@
         const qMatch = line.match(/^>\s?(.*)$/);
         if (qMatch) {
           closeList();
-          const content = formatMarkdownInText(qMatch[1]).html;
+          const content = formatMarkdownInText(qMatch[1], true).html;
           out.push(`<blockquote class="stilo-quote">${content || '<br>'}</blockquote>`);
           continue;
         }
@@ -1188,7 +1698,7 @@
         if (taskMatch) {
           closeList();
           const checked = taskMatch[1].toLowerCase() === 'x';
-          const content = formatMarkdownInText(taskMatch[2]).html;
+          const content = formatMarkdownInText(taskMatch[2], true).html;
           out.push(`<div class="stilo-task${checked ? ' completed' : ''}"><input type="checkbox" class="stilo-checkbox"${checked ? ' checked' : ''}><span class="task-text">${content || '<br>'}</span></div>`);
           continue;
         }
@@ -1201,7 +1711,7 @@
             listType = 'ul';
             out.push('<ul>');
           }
-          const content = formatMarkdownInText(ulMatch[1]).html;
+          const content = formatMarkdownInText(ulMatch[1], true).html;
           out.push(`<li>${content || '<br>'}</li>`);
           continue;
         }
@@ -1214,7 +1724,7 @@
             listType = 'ol';
             out.push('<ol>');
           }
-          const content = formatMarkdownInText(olMatch[1]).html;
+          const content = formatMarkdownInText(olMatch[1], true).html;
           out.push(`<li>${content || '<br>'}</li>`);
           continue;
         }
@@ -1226,7 +1736,7 @@
         }
 
         closeList();
-        const content = formatMarkdownInText(line).html;
+        const content = formatMarkdownInText(line, true).html;
         out.push(`<div>${content}</div>`);
       }
 
@@ -1236,12 +1746,12 @@
       return out.join('');
     }
 
-    function convertMarkdownInBlock(block) {
+    function convertMarkdownInBlock(block, allowEndOfString = false) {
       if (!block || isConvertingMarkdown) return;
       if (block.tagName === 'PRE' || block.classList.contains('stilo-code-block')) return;
 
       const rawText = block.textContent;
-      if (!hasMarkdownSyntax(rawText)) return;
+      if (!hasMarkdownSyntax(rawText, allowEndOfString)) return;
 
       const rawTrimmed = rawText.trim();
       const codeBlockMatch = rawTrimmed.match(/^(?:```|~~~)([a-zA-Z0-9_\-\.\+]*)\r?\n([\s\S]*?)\r?\n(?:```|~~~)$/);
@@ -1269,7 +1779,14 @@
       const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
       let n;
       while (n = walk.nextNode()) {
-        if (n.parentNode && (n.parentNode.tagName === 'CODE' || n.parentNode.tagName === 'A' || n.parentNode.classList.contains('stilo-tag'))) {
+        if (n.parentNode && (
+          n.parentNode.tagName === 'CODE' ||
+          n.parentNode.tagName === 'A' ||
+          n.parentNode.classList.contains('stilo-tag') ||
+          n.parentNode.classList.contains('stilo-mention') ||
+          n.parentNode.classList.contains('stilo-category-badge') ||
+          n.parentNode.classList.contains('stilo-wiki-link')
+        )) {
           continue;
         }
         textNodes.push(n);
@@ -1279,9 +1796,9 @@
       const matches = [];
       for (const tn of textNodes) {
         if (!tn.parentNode || !tn.textContent) continue;
-        if (!hasMarkdownSyntax(tn.textContent)) continue;
+        if (!hasMarkdownSyntax(tn.textContent, allowEndOfString)) continue;
 
-        const res = formatMarkdownInText(tn.textContent);
+        const res = formatMarkdownInText(tn.textContent, allowEndOfString);
         if (res.matched) {
           matches.push({ tn, html: res.html });
         }
@@ -1333,6 +1850,15 @@
           newRange.collapse(true);
           sel.removeAllRanges();
           sel.addRange(newRange);
+        }
+
+        const catBadges = block.querySelectorAll('.stilo-category-badge');
+        if (catBadges.length > 0) {
+          const lastBadge = catBadges[catBadges.length - 1];
+          const cat = lastBadge.getAttribute('data-category');
+          if (cat && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.categorySelected) {
+            window.webkit.messageHandlers.categorySelected.postMessage(cat);
+          }
         }
 
         notifyChange();
@@ -1506,7 +2032,7 @@
               notifyChange();
               return;
             } else {
-              convertMarkdownInBlock(task);
+              convertMarkdownInBlock(task, true);
               e.preventDefault();
               const newTask = document.createElement('div');
               newTask.className = 'stilo-task';
@@ -1520,7 +2046,7 @@
             }
           }
 
-          convertMarkdownInBlock(block);
+          convertMarkdownInBlock(block, true);
         }
       }
 
@@ -1626,8 +2152,8 @@
       if (isUpdatingFromPython || isUndoRedoAction || isConvertingMarkdown) return;
 
       const block = getClosestBlockElement();
-      if (block && hasMarkdownSyntax(block.textContent)) {
-        convertMarkdownInBlock(block);
+      if (block && hasMarkdownSyntax(block.textContent, false)) {
+        convertMarkdownInBlock(block, false);
       }
 
       // Record undo state for typing bursts
@@ -1659,12 +2185,35 @@
         return;
       }
 
-      // Tag pill click
-      if (e.target.classList.contains('stilo-tag')) {
-        const tagName = e.target.getAttribute('data-tag');
+      // Wiki link click: [[Note Title]]
+      const wikiLink = e.target.closest('.stilo-wiki-link');
+      if (wikiLink) {
+        e.preventDefault();
+        const noteTitle = wikiLink.getAttribute('data-note-title');
+        if (noteTitle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openNoteLink) {
+          window.webkit.messageHandlers.openNoteLink.postMessage(noteTitle);
+        }
+        return;
+      }
+
+      // Tag pill click: #tag
+      const tagEl = e.target.closest('.stilo-tag');
+      if (tagEl) {
+        const tagName = tagEl.getAttribute('data-tag');
         if (tagName && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tagClicked) {
           window.webkit.messageHandlers.tagClicked.postMessage(tagName);
         }
+        return;
+      }
+
+      // Category badge click: 📁 Category
+      const catBadge = e.target.closest('.stilo-category-badge');
+      if (catBadge) {
+        const catName = catBadge.getAttribute('data-category');
+        if (catName && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.categorySelected) {
+          window.webkit.messageHandlers.categorySelected.postMessage(catName);
+        }
+        return;
       }
     }
 
@@ -2497,8 +3046,16 @@
       const tags = new Set();
       tagEls.forEach(el => {
         const t = el.getAttribute('data-tag');
-        if (t) tags.add(t);
+        if (t) tags.add(t.toLowerCase());
       });
+      const text = (editor.innerText || '').replace(/\u200B/g, '');
+      const rawMatches = text.match(/(?:^|[\s.,;:!?])#([a-zA-Z0-9_\-]+)(?=$|[\s.,;:!?])/g);
+      if (rawMatches) {
+        rawMatches.forEach(m => {
+          const t = m.trim().replace(/^#/, '').toLowerCase();
+          if (t) tags.add(t);
+        });
+      }
       return Array.from(tags);
     }
 

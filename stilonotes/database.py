@@ -16,6 +16,7 @@ from stilonotes.models import Note, Category
 from stilonotes.markdown_utils import (
     extract_title_and_excerpt,
     extract_tags,
+    extract_categories,
     check_has_todo,
     markdown_to_html,
     html_to_markdown,
@@ -243,6 +244,11 @@ Enjoy writing with Stilo Notes!
                 query += " AND (category = ? OR category LIKE ?)"
                 params.append(category_name)
                 params.append(category_name + "/%")
+            elif (filter_type == "tag" and (category_name or tag_name)) or tag_name:
+                t = (tag_name or category_name).strip().lstrip("#").lower()
+                query += " AND (tags LIKE ? OR content_markdown LIKE ?)"
+                params.append(f'%"{t}"%')
+                params.append(f'%#{t}%')
 
             # Search query
             if search_query:
@@ -318,8 +324,20 @@ Enjoy writing with Stilo Notes!
                     )
                     new_excerpt = excerpt if excerpt is not None else extracted_excerpt
 
-                new_tags = tags if tags is not None else extract_tags(new_md)
-                new_category = category if category is not None else existing.category
+                extracted_tags = extract_tags(new_md or new_html)
+                if tags is not None:
+                    new_tags = list(dict.fromkeys(tags + extracted_tags))
+                else:
+                    new_tags = extracted_tags
+
+                extracted_cats = extract_categories(new_md or new_html)
+                if category is not None:
+                    new_category = category
+                elif extracted_cats:
+                    new_category = extracted_cats[0]
+                    self._create_category_sync(conn, new_category)
+                else:
+                    new_category = existing.category
                 new_pinned = int(is_pinned if is_pinned is not None else existing.is_pinned)
                 new_archived = int(is_archived if is_archived is not None else existing.is_archived)
                 new_trashed = int(is_trashed if is_trashed is not None else existing.is_trashed)
@@ -374,8 +392,17 @@ Enjoy writing with Stilo Notes!
                     new_title = title if (title and title != "Untitled Note") else (extracted_title or "Untitled Note")
                     new_excerpt = excerpt if excerpt is not None else extracted_excerpt
 
-                new_tags = tags if tags is not None else extract_tags(new_md)
+                extracted_tags = extract_tags(new_md or new_html)
+                if tags is not None:
+                    new_tags = list(dict.fromkeys(tags + extracted_tags))
+                else:
+                    new_tags = extracted_tags
                 new_category = category or ""
+                if not new_category:
+                    extracted_cats = extract_categories(new_md or new_html)
+                    if extracted_cats:
+                        new_category = extracted_cats[0]
+                        self._create_category_sync(conn, new_category)
                 new_pinned = int(is_pinned or 0)
                 new_archived = int(is_archived or 0)
                 new_trashed = int(is_trashed or 0)
@@ -735,7 +762,67 @@ Enjoy writing with Stilo Notes!
                 "trash": trash_cnt,
             }
             result.update(cat_counts)
+            for tag_name, cnt in self.get_all_tags():
+                result[f"tag:{tag_name}"] = cnt
             return result
+
+    def _create_category_sync(self, conn: sqlite3.Connection, full_name: str):
+        """Helper to create category and missing ancestor categories within an existing transaction."""
+        parts = full_name.split("/")
+        now = time.time()
+        for i in range(len(parts)):
+            sub = "/".join(parts[:i + 1])
+            conn.execute(
+                "INSERT OR IGNORE INTO categories (id, name, created_at) VALUES (?, ?, ?)",
+                (str(uuid.uuid4()), sub, now)
+            )
+
+    def get_all_tags(self) -> List[Tuple[str, int]]:
+        """Return list of (tag_name, count) for all tags in non-trashed notes, sorted by count."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT tags, content_markdown FROM notes WHERE is_trashed = 0"
+            )
+            tag_counts: Dict[str, int] = {}
+            for r in cursor.fetchall():
+                raw = r["tags"]
+                t_list = []
+                if raw:
+                    try:
+                        t_list = json.loads(raw)
+                    except Exception:
+                        t_list = [x.strip() for x in str(raw).split(",") if x.strip()]
+                if not t_list and r["content_markdown"]:
+                    t_list = extract_tags(r["content_markdown"])
+                for t in t_list:
+                    t_clean = t.strip().lstrip("#").lower()
+                    if t_clean:
+                        tag_counts[t_clean] = tag_counts.get(t_clean, 0) + 1
+            return sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
+
+    def find_note_by_title(self, title: str) -> Optional[Note]:
+        """Find non-trashed note by title (case-insensitive exact match)."""
+        clean_title = title.strip()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM notes WHERE is_trashed = 0 AND LOWER(TRIM(title)) = LOWER(?) LIMIT 1",
+                (clean_title,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return Note.from_row(row)
+            return None
+
+    def get_all_note_titles(self) -> List[str]:
+        """Return list of distinct note titles for internal link autocompletion."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT title FROM notes WHERE is_trashed = 0 AND title IS NOT NULL AND title != '' AND title != 'Untitled Note'"
+            )
+            return [r["title"] for r in cursor.fetchall()]
 
     def get_setting(self, key: str, default: str = "") -> str:
         try:

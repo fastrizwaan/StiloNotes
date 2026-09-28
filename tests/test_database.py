@@ -140,6 +140,52 @@ class TestDatabase(unittest.TestCase):
         self.db.set_setting("toolbar_pinned", "true")
         self.assertEqual(self.db.get_setting("toolbar_pinned", "false"), "true")
 
+    def test_tags_and_symbol_mapping(self):
+        # 1. Create notes with #tags and ##category
+        note1 = self.db.create_note(
+            "Poem Study",
+            initial_text="Analyzing sonnet #important #poetry in ##English/poetry"
+        )
+        note2 = self.db.create_note(
+            "Grammar Rules",
+            initial_text="Key rules #revise #important in /English/grammar"
+        )
+
+        # Verify auto-extracted tags
+        n1 = self.db.get_note(note1.id)
+        self.assertIn("important", n1.tags)
+        self.assertIn("poetry", n1.tags)
+        self.assertEqual(n1.category, "English/poetry")
+
+        n2 = self.db.get_note(note2.id)
+        self.assertIn("important", n2.tags)
+        self.assertIn("revise", n2.tags)
+        self.assertEqual(n2.category, "English/grammar")
+
+        # Verify ancestor categories auto-created
+        cat_names = [c.name for c in self.db.get_categories()]
+        self.assertIn("English", cat_names)
+        self.assertIn("English/poetry", cat_names)
+        self.assertIn("English/grammar", cat_names)
+
+        # Verify get_all_tags
+        all_tags = dict(self.db.get_all_tags())
+        self.assertEqual(all_tags.get("important"), 2)
+        self.assertEqual(all_tags.get("poetry"), 1)
+        self.assertEqual(all_tags.get("revise"), 1)
+
+        # Verify tag filtering
+        important_notes = self.db.get_notes(filter_type="tag", tag_name="important")
+        self.assertEqual(len(important_notes), 2)
+
+        poetry_notes = self.db.get_notes(filter_type="tag", tag_name="poetry")
+        self.assertEqual(len(poetry_notes), 1)
+        self.assertEqual(poetry_notes[0].id, note1.id)
+
+        # Verify find_note_by_title and get_all_note_titles
+        self.assertEqual(self.db.find_note_by_title("Poem Study").id, note1.id)
+        self.assertIn("Poem Study", self.db.get_all_note_titles())
+
 if __name__ == "__main__":
     unittest.main()
 

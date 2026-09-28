@@ -77,7 +77,7 @@ class Sidebar(Adw.Bin):
         self.add_cat_btn.connect("clicked", self._on_add_category_clicked)
         self.header_bar.pack_start(self.add_cat_btn)
 
-        self.window_title = Adw.WindowTitle(title="Categories")
+        self.window_title = Adw.WindowTitle(title="Categories & Tags")
         self.header_bar.set_title_widget(self.window_title)
 
         self.menu_btn = Gtk.MenuButton()
@@ -147,19 +147,56 @@ class Sidebar(Adw.Bin):
             # 4. Nested categories tree
             categories = self.db.get_categories()
             tree_items = _build_category_tree(categories)
-            for full_name, depth, display_name in tree_items:
-                # Pick icon based on depth
-                icon = "folder-symbolic" if depth == 0 else "folder-open-symbolic"
-                self._add_row("category", full_name, display_name, icon,
-                              counts.get(f"cat:{full_name}", 0),
-                              is_user_category=True, depth=depth)
+            if tree_items:
+                self._add_section_header("Categories", "folder-symbolic")
+                for full_name, depth, display_name in tree_items:
+                    # Pick icon based on depth
+                    icon = "folder-symbolic" if depth == 0 else "folder-open-symbolic"
+                    self._add_row("category", full_name, display_name, icon,
+                                  counts.get(f"cat:{full_name}", 0),
+                                  is_user_category=True, depth=depth)
 
-            # 5. Trash
+            # 5. Tags section
+            tags = self.db.get_all_tags()
+            if tags:
+                self._add_section_header("Tags", "tag-symbolic")
+                for tag_name, cnt in tags:
+                    self._add_row("tag", tag_name, f"#{tag_name}", "tag-symbolic", cnt)
+
+            # 6. Trash
             self._add_row("trash", "", "Trash", "user-trash-symbolic", counts.get("trash", 0))
 
             self._restore_active_selection()
         finally:
             self._updating = False
+
+    def _add_section_header(self, title: str, icon_name: str = ""):
+        row = Gtk.ListBoxRow()
+        row.set_selectable(False)
+        row.set_activatable(False)
+        row.set_can_focus(False)
+        row.add_css_class("sidebar-section-header")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        box.set_margin_start(10)
+        box.set_margin_end(10)
+        box.set_margin_top(12)
+        box.set_margin_bottom(4)
+
+        if icon_name:
+            img = Gtk.Image.new_from_icon_name(icon_name)
+            img.set_pixel_size(13)
+            img.add_css_class("dim-label")
+            box.append(img)
+
+        lbl = Gtk.Label(label=title)
+        lbl.add_css_class("caption-heading")
+        lbl.add_css_class("dim-label")
+        lbl.set_halign(Gtk.Align.START)
+        box.append(lbl)
+
+        row.set_child(box)
+        self.listbox.append(row)
 
     def _add_row(self, filter_type: str, category_name: str, title: str,
                  icon_name: str, count: int, is_user_category: bool = False, depth: int = 0):
