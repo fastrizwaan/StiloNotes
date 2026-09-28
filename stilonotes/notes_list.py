@@ -438,13 +438,19 @@ class NotesList(Gtk.Box):
 
         self.append(self.stack)
 
+    def _get_spacing(self):
+        col_spacing = 8 if self.view_mode == "grid" else 6
+        row_spacing = 8 if self.view_mode == "grid" else 6
+        return col_spacing, row_spacing
+
     def _create_flowbox(self) -> Gtk.FlowBox:
         flowbox = Gtk.FlowBox()
         flowbox.set_homogeneous(True)
         flowbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
         flowbox.set_activate_on_single_click(True)
-        flowbox.set_column_spacing(12)
-        flowbox.set_row_spacing(12)
+        col_sp, row_sp = self._get_spacing()
+        flowbox.set_column_spacing(col_sp)
+        flowbox.set_row_spacing(row_sp)
         flowbox.set_min_children_per_line(1)
         flowbox.set_max_children_per_line(24)
         flowbox.set_valign(Gtk.Align.START)
@@ -488,6 +494,18 @@ class NotesList(Gtk.Box):
             mode = "list"
         if self.view_mode != mode:
             self.view_mode = mode
+            col_sp, row_sp = self._get_spacing()
+            for fb in [
+                self.fav_flowbox,
+                self.today_flowbox,
+                self.yesterday_flowbox,
+                self.week_flowbox,
+                self.month_flowbox,
+                self.earlier_flowbox,
+                self.search_flowbox
+            ]:
+                fb.set_column_spacing(col_sp)
+                fb.set_row_spacing(row_sp)
             self.set_notes(
                 self.current_notes,
                 is_search=self.is_search,

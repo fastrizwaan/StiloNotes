@@ -51,8 +51,8 @@ class TestNotesListAndCards(unittest.TestCase):
             notes_list.search_flowbox
         ]:
             self.assertTrue(fb.get_homogeneous())
-            self.assertEqual(fb.get_column_spacing(), 12)
-            self.assertEqual(fb.get_row_spacing(), 12)
+            self.assertEqual(fb.get_column_spacing(), 6)
+            self.assertEqual(fb.get_row_spacing(), 6)
 
     def test_populate_list_view_and_grid_view(self):
         from gi.repository import Gdk
