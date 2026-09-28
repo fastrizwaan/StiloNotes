@@ -56,7 +56,7 @@ flowbox.notes-flowbox > flowboxchild:selected {
 /* Card Base Styling */
 .note-grid-card, .note-list-card {
   background-color: alpha(currentColor, 0.05);
-  border: 1px solid alpha(currentColor, 0.08);
+  border: none;
   border-radius: 12px;
   box-shadow: none;
   transition: all 150ms ease-in-out;
@@ -65,13 +65,14 @@ flowbox.notes-flowbox > flowboxchild:selected {
 flowboxchild:hover .note-grid-card,
 flowboxchild:hover .note-list-card {
   background-color: alpha(currentColor, 0.09);
-  border-color: alpha(currentColor, 0.14);
+  border: none;
   box-shadow: none;
 }
 
 flowboxchild:active .note-grid-card,
 flowboxchild:active .note-list-card {
   background-color: alpha(currentColor, 0.13);
+  border: none;
   box-shadow: none;
 }
 
