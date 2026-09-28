@@ -1100,7 +1100,8 @@ class NoteEditor(Gtk.Box):
 
     def _export_note(self, fmt: str, window: Gtk.Window):
         if self.current_note:
-            export_note_dialog(window, self.current_note, fmt)
+            self.flush_save()
+            export_note_dialog(window, self.current_note, fmt, db=self.db)
 
     def grab_focus(self) -> bool:
         if hasattr(self, "webview") and self.webview:

@@ -361,9 +361,7 @@
       pointer-events: auto;
     }
 
-    .stilo-table-wrapper:hover .table-handle,
     .stilo-table-wrapper.table-active .table-handle,
-    .stilo-img-wrapper:hover .image-handle,
     .stilo-img-wrapper.img-active .image-handle {
       display: block;
     }
@@ -587,7 +585,13 @@
       editor.addEventListener('drop', onDrop);
 
       editor.addEventListener('click', updateActiveElement);
-      editor.addEventListener('mouseover', updateActiveElement);
+      editor.addEventListener('pointerdown', (e) => {
+        const imgWrapper = e.target.closest('.stilo-img-wrapper');
+        const table = e.target.closest('table.stilo-table');
+        if (imgWrapper || table) {
+          updateActiveElement(e);
+        }
+      });
       editor.addEventListener('keyup', updateActiveElement);
 
       document.addEventListener('selectionchange', () => {
@@ -636,6 +640,9 @@
           e.stopPropagation();
           const wrap = imgH.closest('.stilo-img-wrapper');
           if (!wrap) return;
+          wrap.classList.add('img-active');
+          lastActiveImage = wrap;
+          document.querySelectorAll('.stilo-table-wrapper, table.stilo-table').forEach(t => t.classList.remove('table-active'));
           isResizingImg = true;
           resizingImgEl = wrap;
           imgStartX = e.clientX;
@@ -655,6 +662,9 @@
           e.stopPropagation();
           const wrap = tblH.closest('.stilo-table-wrapper');
           if (!wrap) return;
+          wrap.classList.add('table-active');
+          lastActiveTable = wrap.querySelector('table');
+          document.querySelectorAll('.stilo-img-wrapper').forEach(w => w.classList.remove('img-active'));
           isResizingTable = true;
           resizingTableEl = wrap;
           tableStartX = e.clientX;
@@ -745,12 +755,14 @@
       document.addEventListener('mouseup', handleResizeEnd);
       document.addEventListener('pointerup', handleResizeEnd);
 
-      document.addEventListener('click', (e) => {
+      const onOutsideClick = (e) => {
         if (!e.target.closest('#floating-toolbar') && !e.target.closest('.stilo-table-wrapper') && !e.target.closest('.stilo-img-wrapper')) {
           document.querySelectorAll('.stilo-table-wrapper, table.stilo-table').forEach(t => t.classList.remove('table-active'));
           document.querySelectorAll('.stilo-img-wrapper').forEach(w => w.classList.remove('img-active'));
         }
-      });
+      };
+      document.addEventListener('click', onOutsideClick);
+      document.addEventListener('pointerdown', onOutsideClick);
     }
 
     function initTableHandles(table) {
@@ -849,6 +861,7 @@
         document.querySelectorAll('.stilo-table-wrapper, table.stilo-table').forEach(t => {
           if (t !== wrap && t !== table) t.classList.remove('table-active');
         });
+        document.querySelectorAll('.stilo-img-wrapper').forEach(w => w.classList.remove('img-active'));
         wrap.classList.add('table-active');
         initTableHandles(table);
       }
@@ -860,6 +873,7 @@
         document.querySelectorAll('.stilo-img-wrapper').forEach(w => {
           if (w !== imgWrapper) w.classList.remove('img-active');
         });
+        document.querySelectorAll('.stilo-table-wrapper, table.stilo-table').forEach(t => t.classList.remove('table-active'));
         imgWrapper.classList.add('img-active');
         initImageHandles(imgWrapper);
       }

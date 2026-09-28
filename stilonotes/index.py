@@ -321,9 +321,9 @@ class IndexView(Adw.BreakpointBin):
             return
         root = self.get_root()
         if len(checked) == 1:
-            export_note_dialog(root, checked[0], on_complete=lambda msg: self.toast_overlay.add_toast(Adw.Toast.new(msg)))
+            export_note_dialog(root, checked[0], on_complete=lambda msg: self.toast_overlay.add_toast(Adw.Toast.new(msg)), db=self.db)
         else:
-            export_notes_dialog(root, checked, on_complete=lambda msg: self.toast_overlay.add_toast(Adw.Toast.new(msg)))
+            export_notes_dialog(root, checked, on_complete=lambda msg: self.toast_overlay.add_toast(Adw.Toast.new(msg)), db=self.db)
 
     def _on_selection_delete(self, _shb):
         checked = self.notes_list.get_checked_notes()
