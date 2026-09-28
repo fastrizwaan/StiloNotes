@@ -96,6 +96,12 @@ class StiloWindow(Adw.ApplicationWindow):
         action_group.add_action(act_theme)
         self.get_application().set_accels_for_action("win.toggle-theme", ["<Control><Shift>d"])
 
+        # Toggle View Mode (List / Grid)
+        act_view_mode = Gio.SimpleAction.new("toggle-view-mode", None)
+        act_view_mode.connect("activate", lambda _a, _p: self.index_view.toggle_view_mode())
+        action_group.add_action(act_view_mode)
+        self.get_application().set_accels_for_action("win.toggle-view-mode", ["<Control>g"])
+
         self.insert_action_group("win", action_group)
 
     def _setup_theme(self):

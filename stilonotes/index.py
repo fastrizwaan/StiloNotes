@@ -32,6 +32,7 @@ class IndexView(Adw.BreakpointBin):
         self.search_query = ""
         self._search_debounce_id = None
 
+        self.notes_list = NotesList(self.db, view_mode=self.config_manager.get_view_mode())
         self._build_ui()
         self._setup_breakpoint()
         self.refresh()
@@ -99,6 +100,12 @@ class IndexView(Adw.BreakpointBin):
         self.search_btn.connect("clicked", lambda _b: self.enter_search())
         self.main_header.pack_end(self.search_btn)
 
+        # View toggle button (grid / list)
+        self.view_toggle_btn = Gtk.Button()
+        self._update_view_toggle_button()
+        self.view_toggle_btn.connect("clicked", lambda _b: self.toggle_view_mode())
+        self.main_header.pack_end(self.view_toggle_btn)
+
         # Selection mode button
         self.select_btn = Gtk.Button()
         self.select_btn.set_icon_name("selection-mode-symbolic")
@@ -145,7 +152,6 @@ class IndexView(Adw.BreakpointBin):
 
         # Notes List inside Toast Overlay
         self.toast_overlay = Adw.ToastOverlay()
-        self.notes_list = NotesList(self.db)
         self.notes_list.connect("note-selected", lambda _nl, note: self.emit("note-opened", note, False))
         self.notes_list.connect("new-note-requested", lambda _nl: self.emit("create-note"))
         self.notes_list.connect("note-pin-toggled", lambda _nl, _id: self.refresh())
@@ -369,3 +375,15 @@ class IndexView(Adw.BreakpointBin):
     def toggle_sidebar(self):
         is_show = self.split_view.get_show_sidebar()
         self.split_view.set_show_sidebar(not is_show)
+
+    def _update_view_toggle_button(self):
+        is_grid = (self.notes_list.view_mode == "grid")
+        self.view_toggle_btn.set_icon_name("view-list-symbolic" if is_grid else "view-grid-symbolic")
+        self.view_toggle_btn.set_tooltip_text("Switch to List View (Ctrl+G)" if is_grid else "Switch to Grid View (Ctrl+G)")
+
+    def toggle_view_mode(self):
+        current = self.notes_list.view_mode
+        new_mode = "grid" if current == "list" else "list"
+        self.config_manager.set_view_mode(new_mode)
+        self.notes_list.set_view_mode(new_mode)
+        self._update_view_toggle_button()

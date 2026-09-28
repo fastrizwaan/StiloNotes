@@ -16,5 +16,10 @@
       <summary>Color scheme</summary>
       <description>Light, Dark, or System.</description>
     </key>
+    <key name="view-mode" type="s">
+      <default>'list'</default>
+      <summary>View mode</summary>
+      <description>Display notes as 'list' or 'grid'.</description>
+    </key>
   </schema>
 </schemalist>

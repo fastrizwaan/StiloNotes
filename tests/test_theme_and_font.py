@@ -38,6 +38,19 @@ class TestThemeAndFont(unittest.TestCase):
         self.config.set_font_size(12)
         self.assertEqual(self.config.get_font_size(), 12)
 
+    def test_view_mode_default_and_persistence(self):
+        self.assertEqual(self.config.get_view_mode(), "list")
+
+        self.config.set_view_mode("grid")
+        self.assertEqual(self.config.get_view_mode(), "grid")
+
+        self.config.set_view_mode("list")
+        self.assertEqual(self.config.get_view_mode(), "list")
+
+        # invalid fallback
+        self.config.set_view_mode("invalid")
+        self.assertEqual(self.config.get_view_mode(), "list")
+
     def test_font_size_selector_stepping(self):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:

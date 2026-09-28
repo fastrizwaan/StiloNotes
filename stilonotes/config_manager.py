@@ -121,3 +121,29 @@ class ConfigManager:
         if self.db:
             self.db.set_setting("font_size", str(size))
 
+    def get_view_mode(self) -> str:
+        """Return 'list' or 'grid'."""
+        if self.settings:
+            try:
+                mode = self.settings.get_string("view-mode")
+                if mode in ("list", "grid"):
+                    return mode
+            except Exception:
+                pass
+        if self.db:
+            mode = self.db.get_setting("view_mode", "list")
+            if mode in ("list", "grid"):
+                return mode
+        return "list"
+
+    def set_view_mode(self, mode: str):
+        if mode not in ("list", "grid"):
+            mode = "list"
+        if self.settings:
+            try:
+                self.settings.set_string("view-mode", mode)
+            except Exception:
+                pass
+        if self.db:
+            self.db.set_setting("view_mode", mode)
+
