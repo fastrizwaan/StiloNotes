@@ -125,7 +125,6 @@ class NoteGridCard(BaseNoteCard):
 
         self.card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.card_box.add_css_class("note-grid-card")
-        self.card_box.add_css_class("card")
         self.card_box.set_hexpand(True)
         self.card_box.set_vexpand(True)
 
@@ -244,7 +243,6 @@ class NoteListRow(BaseNoteCard):
 
         self.card_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.card_box.add_css_class("note-list-card")
-        self.card_box.add_css_class("card")
         self.card_box.set_hexpand(True)
 
         # Checkbox revealer for selection mode
