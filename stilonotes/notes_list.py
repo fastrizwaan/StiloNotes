@@ -1,12 +1,87 @@
 # SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import base64
+import os
+import re
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import List, Optional
-from gi.repository import Adw, Gtk, Gio, GLib, GObject, Pango
+from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
 
 from stilonotes.models import Note
 from stilonotes.markdown_utils import strip_markdown
+
+
+def get_note_image_bytes(note: Note, db=None) -> Optional[bytes]:
+    """Retrieve raw image bytes for preview if note has an image."""
+    # 1. First check database attachments for this note if db is available
+    if db and hasattr(db, "get_note_first_image"):
+        try:
+            data = db.get_note_first_image(note.id)
+            if data:
+                return data
+        except Exception:
+            pass
+
+    # 2. Check for attachment://<id>, data:image, file:// in markdown or html
+    content = ""
+    if note.content_markdown:
+        content += note.content_markdown + "\n"
+    if note.content_html:
+        content += note.content_html
+
+    if not content:
+        return None
+
+    # Check for markdown image ![alt](url)
+    md_match = re.search(r'!\[.*?\]\((.+?)\)', content)
+    url = ""
+    if md_match:
+        url = md_match.group(1).strip().split()[0]
+    else:
+        # Check for HTML img tag
+        html_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE)
+        if html_match:
+            url = html_match.group(1).strip()
+
+    if not url:
+        return None
+
+    # Resolve url
+    if url.startswith("attachment://") or url.startswith("attachment:"):
+        prefix = "attachment://" if url.startswith("attachment://") else "attachment:"
+        att_id = url[len(prefix):].split("/")[0].split("?")[0].split("#")[0]
+        if db and hasattr(db, "get_attachment"):
+            try:
+                att = db.get_attachment(att_id)
+                if att and att.get("data"):
+                    return att["data"]
+                if "." in att_id:
+                    att = db.get_attachment(att_id.rsplit(".", 1)[0])
+                    if att and att.get("data"):
+                        return att["data"]
+            except Exception:
+                pass
+
+    elif url.startswith("data:image/") and ";base64," in url:
+        try:
+            b64_part = url.split(";base64,", 1)[1]
+            return base64.b64decode(b64_part)
+        except Exception:
+            pass
+
+    elif url.startswith("file://") or (url.startswith("/") and os.path.isabs(url)):
+        local_path = url[len("file://"):] if url.startswith("file://") else url
+        local_path = urllib.parse.unquote(local_path)
+        if os.path.isfile(local_path):
+            try:
+                with open(local_path, "rb") as f:
+                    return f.read()
+            except Exception:
+                pass
+
+    return None
 
 
 def _get_note_preview(note: Note) -> str:
@@ -20,6 +95,9 @@ def _get_note_preview(note: Note) -> str:
             text = note.content_markdown.strip()
     if not text:
         text = note.excerpt or ""
+    # Strip markdown and html image tags so they don't leak into excerpt text
+    text = re.sub(r'!\[.*?\]\(.+?\)', '', text)
+    text = re.sub(r'<img[^>]+>', '', text)
     clean = strip_markdown(text).strip()
     return clean if clean else "Type text here..."
 
@@ -36,9 +114,10 @@ class BaseNoteCard(Gtk.FlowBoxChild):
         "toggled": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
     }
 
-    def __init__(self, note: Note, selection_mode: bool = False, show_category_pill: bool = True):
+    def __init__(self, note: Note, db=None, selection_mode: bool = False, show_category_pill: bool = True):
         super().__init__()
         self.note = note
+        self.db = db
         self.show_category_pill = show_category_pill
         self.card_box: Optional[Gtk.Box] = None
         self.revealer: Optional[Gtk.Revealer] = None
@@ -128,6 +207,21 @@ class NoteGridCard(BaseNoteCard):
         self.card_box.set_hexpand(True)
         self.card_box.set_vexpand(True)
 
+        # Thumbnail Image Banner (if note contains an image)
+        img_bytes = get_note_image_bytes(self.note, self.db)
+        if img_bytes:
+            try:
+                b = GLib.Bytes.new(img_bytes)
+                texture = Gdk.Texture.new_from_bytes(b)
+                self.thumb = Gtk.Picture.new_for_paintable(texture)
+                self.thumb.set_can_shrink(True)
+                self.thumb.set_content_fit(Gtk.ContentFit.COVER)
+                self.thumb.set_size_request(-1, 95)
+                self.thumb.add_css_class("note-grid-thumbnail")
+                self.card_box.append(self.thumb)
+            except Exception:
+                self.thumb = None
+
         # Top Row: Checkbox revealer + Dot + Title + (Pin/Todo Icons)
         top_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         top_box.set_hexpand(True)
@@ -202,7 +296,7 @@ class NoteGridCard(BaseNoteCard):
         self.body_lbl.set_wrap(True)
         self.body_lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self.body_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-        self.body_lbl.set_lines(4)
+        self.body_lbl.set_lines(2 if img_bytes else 4)
         self.body_lbl.set_halign(Gtk.Align.START)
         self.body_lbl.set_valign(Gtk.Align.START)
         self.body_lbl.set_xalign(0.0)
@@ -618,9 +712,9 @@ class NotesList(Gtk.Box):
 
     def _create_card(self, note: Note, show_category_pill: bool = True) -> BaseNoteCard:
         if self.view_mode == "grid":
-            card = NoteGridCard(note, selection_mode=self.selection_mode, show_category_pill=show_category_pill)
+            card = NoteGridCard(note, db=self.db, selection_mode=self.selection_mode, show_category_pill=show_category_pill)
         else:
-            card = NoteListRow(note, selection_mode=self.selection_mode, show_category_pill=show_category_pill)
+            card = NoteListRow(note, db=self.db, selection_mode=self.selection_mode, show_category_pill=show_category_pill)
 
         card.connect("pin-toggled", lambda _r, nid: self.emit("note-pin-toggled", nid))
         card.connect("duplicate", lambda _r, nid: self.emit("note-duplicated", nid))

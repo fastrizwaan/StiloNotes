@@ -87,6 +87,13 @@ flowboxchild:active .note-list-card {
   padding: 14px;
 }
 
+picture.note-grid-thumbnail {
+  border-radius: 6px;
+  min-height: 90px;
+  max-height: 95px;
+  margin-bottom: 4px;
+}
+
 .note-grid-title {
   font-weight: 700;
   font-size: 14.5px;

@@ -107,6 +107,51 @@ class TestNotesListAndCards(unittest.TestCase):
         notes_list.clear_all_checkboxes()
         self.assertEqual(len(notes_list.get_checked_notes()), 0)
 
+    def test_image_preview_extraction(self):
+        import base64
+        from stilonotes.notes_list import get_note_image_bytes
+
+        # 1. From base64 data URI
+        raw_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        note_data_uri = Note(
+            title="Image Note",
+            content_markdown=f"Look at this:\n![screenshot](data:image/png;base64,{raw_b64})\nNice!"
+        )
+        img_bytes = get_note_image_bytes(note_data_uri, self.db)
+        self.assertIsNotNone(img_bytes)
+        self.assertEqual(img_bytes, base64.b64decode(raw_b64))
+
+        # 2. From database attachment
+        fake_data = b"FAKE_PNG_BINARY_DATA"
+        att_id = self.db.save_attachment(
+            note_id="test-note-123",
+            filename="sample.png",
+            mime_type="image/png",
+            data=fake_data
+        )
+        note_att = Note(id="test-note-123", title="Attachment Note")
+        img_from_db = get_note_image_bytes(note_att, self.db)
+        self.assertEqual(img_from_db, fake_data)
+
+        # 3. Note without image
+        note_no_img = Note(title="Plain Text", content_markdown="Just some text.")
+        self.assertIsNone(get_note_image_bytes(note_no_img, self.db))
+
+    def test_grid_card_with_image(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        raw_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        note_img = Note(
+            title="Card with Image",
+            content_markdown=f"![screenshot](data:image/png;base64,{raw_b64})\nDescription text"
+        )
+        card = NoteGridCard(note_img, db=self.db)
+        self.assertIsNotNone(card.thumb)
+        self.assertEqual(card.body_lbl.get_lines(), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
+

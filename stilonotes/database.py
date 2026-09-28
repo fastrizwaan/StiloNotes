@@ -636,6 +636,20 @@ Enjoy writing with Stilo Notes!
             cursor.execute("DELETE FROM attachments WHERE id = ?", (attachment_id,))
             conn.commit()
 
+    def get_note_first_image(self, note_id: str) -> Optional[bytes]:
+        """Retrieve binary data for the first image attachment of a note."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+            SELECT data FROM attachments
+            WHERE note_id = ? AND (mime_type LIKE 'image/%' OR filename LIKE '%.png' OR filename LIKE '%.jpg' OR filename LIKE '%.jpeg' OR filename LIKE '%.webp' OR filename LIKE '%.gif')
+            ORDER BY created_at ASC LIMIT 1
+            """, (note_id,))
+            row = cursor.fetchone()
+            if row and row["data"]:
+                return row["data"]
+        return None
+
     def get_categories(self) -> List[Category]:
         """Fetch categories with active note counts in a single optimized query."""
         with self.get_connection() as conn:
