@@ -250,6 +250,74 @@
       font-style: italic;
     }
 
+    /* Subscript and Superscript */
+    sub {
+      font-size: 75%;
+      line-height: 0;
+      position: relative;
+      vertical-align: baseline;
+      bottom: -0.25em;
+    }
+
+    sup {
+      font-size: 75%;
+      line-height: 0;
+      position: relative;
+      vertical-align: baseline;
+      top: -0.5em;
+    }
+
+    /* Headings 5 and 6 */
+    h5 {
+      font-size: 1.1em;
+      font-weight: 600;
+      margin: 14px 0 6px;
+      color: var(--text-color);
+    }
+
+    h6 {
+      font-size: 1.0em;
+      font-weight: 600;
+      margin: 12px 0 4px;
+      color: var(--text-secondary, #666);
+    }
+
+    /* Definition Lists */
+    dl.stilo-dl {
+      margin: 14px 0;
+    }
+
+    dl.stilo-dl dt {
+      font-weight: 600;
+      margin-top: 10px;
+    }
+
+    dl.stilo-dl dd {
+      margin-left: 24px;
+      margin-bottom: 6px;
+    }
+
+    /* Footnotes */
+    .stilo-footnotes {
+      margin-top: 28px;
+      font-size: 0.9em;
+      border-top: 1px solid var(--border-color);
+      padding-top: 14px;
+      opacity: 0.9;
+    }
+
+    .stilo-footnote-ref {
+      font-size: 0.75em;
+      vertical-align: super;
+      font-weight: 600;
+    }
+
+    .stilo-footnote-backref {
+      text-decoration: none;
+      margin-left: 6px;
+      color: var(--accent-color, #7B2CBF);
+    }
+
     /* Code Blocks */
     pre.stilo-code-block {
       background: var(--code-bg);
@@ -883,9 +951,24 @@
     // Dynamic Markdown Parsing on Typing
     let isConvertingMarkdown = false;
 
+    const EMOJI_MAP = {
+      ':joy:': '😂', ':smile:': '😄', ':grinning:': '😀', ':smiley:': '😃',
+      ':laughing:': '😆', ':innocent:': '😇', ':wink:': '😉', ':blush:': '😊',
+      ':heart_eyes:': '😍', ':kissing_heart:': '😘', ':sunglasses:': '😎',
+      ':thinking:': '🤔', ':flushed:': '😳', ':cry:': '😢', ':sob:': '😭',
+      ':fire:': '🔥', ':star:': '⭐', ':sparkles:': '✨', ':tada:': '🎉',
+      ':rocket:': '🚀', ':check:': '✓', ':white_check_mark:': '✅',
+      ':x:': '❌', ':warning:': '⚠️', ':bulb:': '💡', ':heart:': '❤️',
+      ':thumbsup:': '👍', ':+1:': '👍', ':thumbsdown:': '👎', ':-1:': '👎',
+      ':clap:': '👏', ':wave:': '👋', ':pray:': '🙏', ':eyes:': '👀',
+      ':100:': '💯', ':coffee:': '☕', ':beer:': '🍺', ':books:': '📚',
+      ':pencil:': '📝', ':memo:': '📝', ':link:': '🔗', ':lock:': '🔒',
+      ':key:': '🔑', ':bell:': '🔔', ':package:': '📦', ':computer:': '💻'
+    };
+
     function hasMarkdownSyntax(str) {
       if (!str) return false;
-      return /\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)/i.test(str);
+      return /\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\//i.test(str);
     }
 
     function formatMarkdownInText(str) {
@@ -920,16 +1003,34 @@
       // 5. Strikethrough: ~~strike~~
       applyRule(/~~([^~\n]+?)~~/g, '<del>$1</del>');
 
-      // 6. Highlight: ==highlight==
+      // 6. Subscript: ~sub~ (when not ~~)
+      applyRule(/(?<!~)~([^~\s\n]+?)~(?!~)/g, '<sub>$1</sub>');
+
+      // 7. Superscript: ^sup^
+      applyRule(/\^([^\^\s\n]+?)\^/g, '<sup>$1</sup>');
+
+      // 8. Highlight: ==highlight==
       applyRule(/==([^=\n]+?)==/g, '<mark class="stilo-highlight">$1</mark>');
 
-      // 7. Inline code: `code`
+      // 9. Inline code: `code`
       applyRule(/`([^`\n]+)`/g, '<code class="stilo-inline-code">$1</code>');
 
-      // 8. Markdown Link: [text](url)
+      // 10. Markdown Link: [text](url)
       applyRule(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="stilo-link" target="_blank">$1</a>');
 
-      // 9. Tags: #tag (word characters and hyphens)
+      // 11. Autolinks: <https://...> and <email@...>
+      applyRule(/&lt;(https?:\/\/[^&>\s]+)&gt;/gi, '<a href="$1" class="stilo-link" target="_blank">$1</a>');
+      applyRule(/&lt;([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)&gt;/gi, '<a href="mailto:$1" class="stilo-link">$1</a>');
+
+      // 12. Footnote ref: [^1]
+      applyRule(/\[\^([a-zA-Z0-9_\-]+)\]/g, '<sup class="stilo-footnote-ref">[$1]</sup>');
+
+      // 13. Emoji: :joy: -> 😂
+      applyRule(/:([a-zA-Z0-9_\-+]+):/g, (match) => {
+        return EMOJI_MAP[match] || match;
+      });
+
+      // 14. Tags: #tag (word characters and hyphens)
       applyRule(/(^|\s)#([a-zA-Z0-9_\-]+)/g, '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
 
       return { html: s, matched };
@@ -1140,15 +1241,33 @@
               transformCurrentBlockTo('h3', textAfter);
               return;
             }
+            if (textBefore === '####') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockTo('h4', textAfter);
+              return;
+            }
+            if (textBefore === '#####') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockTo('h5', textAfter);
+              return;
+            }
+            if (textBefore === '######') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockTo('h6', textAfter);
+              return;
+            }
 
             // Checklist
-            if (textBefore === '- [ ]' || textBefore === '[]' || textBefore === '-[]') {
+            if (textBefore === '- [ ]' || textBefore === '[]' || textBefore === '-[]' || textBefore === '+ [ ]' || textBefore === '+[]' || textBefore === '* [ ]' || textBefore === '*[]') {
               e.preventDefault();
               node.textContent = textAfter;
               transformCurrentBlockToTask(textAfter, false);
               return;
             }
-            if (textBefore === '- [x]' || textBefore === '[x]' || textBefore === '-[x]') {
+            if (textBefore === '- [x]' || textBefore === '[x]' || textBefore === '-[x]' || textBefore === '+ [x]' || textBefore === '+[x]' || textBefore === '* [x]' || textBefore === '*[x]') {
               e.preventDefault();
               node.textContent = textAfter;
               transformCurrentBlockToTask(textAfter, true);
@@ -1156,7 +1275,7 @@
             }
 
             // Bullet List
-            if (textBefore === '-' || textBefore === '*') {
+            if (textBefore === '-' || textBefore === '*' || textBefore === '+') {
               e.preventDefault();
               node.textContent = textAfter;
               transformCurrentBlockToList('ul', textAfter);

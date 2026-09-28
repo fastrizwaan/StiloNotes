@@ -122,6 +122,119 @@ class TestMarkdown(unittest.TestCase):
         self.assertEqual(stats_empty["chars"], 0)
         self.assertEqual(stats_empty["readTime"], "1 min")
 
+    def test_all_heading_levels(self):
+        md = "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6"
+        html = markdown_to_html(md)
+        self.assertIn("<h1>H1</h1>", html)
+        self.assertIn("<h2>H2</h2>", html)
+        self.assertIn("<h3>H3</h3>", html)
+        self.assertIn("<h4>H4</h4>", html)
+        self.assertIn("<h5>H5</h5>", html)
+        self.assertIn("<h6>H6</h6>", html)
+
+        back = html_to_markdown(html)
+        self.assertIn("# H1", back)
+        self.assertIn("###### H6", back)
+
+    def test_heading_ids(self):
+        md = "### My Great Heading {#custom-id}"
+        html = markdown_to_html(md)
+        self.assertIn('<h3 id="custom-id">My Great Heading</h3>', html)
+
+        back = html_to_markdown(html)
+        self.assertIn("### My Great Heading {#custom-id}", back)
+
+    def test_setext_headings(self):
+        md = "Major Header\n===\n\nMinor Header\n---"
+        html = markdown_to_html(md)
+        self.assertIn("<h1>Major Header</h1>", html)
+        self.assertIn("<h2>Minor Header</h2>", html)
+
+    def test_subscript_and_superscript(self):
+        md = "H~2~O and X^2^ and ~sub~ and ^sup^ and ~~strike~~"
+        html = markdown_to_html(md)
+        self.assertIn("H<sub>2</sub>O", html)
+        self.assertIn("X<sup>2</sup>", html)
+        self.assertIn("<sub>sub</sub>", html)
+        self.assertIn("<sup>sup</sup>", html)
+        self.assertIn("<del>strike</del>", html)
+
+        back = html_to_markdown(html)
+        self.assertIn("H~2~O", back)
+        self.assertIn("X^2^", back)
+        self.assertIn("~~strike~~", back)
+
+    def test_footnotes(self):
+        md = "Here is a statement with a footnote. [^1]\n\n[^1]: This is the footnote text."
+        html = markdown_to_html(md)
+        self.assertIn('class="stilo-footnote-ref"', html)
+        self.assertIn('id="fn-1"', html)
+        self.assertIn("This is the footnote text.", html)
+
+        back = html_to_markdown(html)
+        self.assertIn("[^1]", back)
+        self.assertIn("[^1]: This is the footnote text.", back)
+
+    def test_definition_list(self):
+        md = "Apple\n: A sweet red fruit\n\nBanana\n: A curved yellow fruit"
+        html = markdown_to_html(md)
+        self.assertIn('<dl class="stilo-dl">', html)
+        self.assertIn('<dt>Apple</dt>', html)
+        self.assertIn('<dd>A sweet red fruit</dd>', html)
+
+        back = html_to_markdown(html)
+        self.assertIn("Apple", back)
+        self.assertIn(": A sweet red fruit", back)
+
+    def test_table_alignment(self):
+        md = "| Left | Center | Right |\n| :--- | :---: | ---: |\n| A | B | C |"
+        html = markdown_to_html(md)
+        self.assertIn('style="text-align: center;"', html)
+        self.assertIn('style="text-align: right;"', html)
+
+        back = html_to_markdown(html)
+        self.assertIn(":---:", back)
+        self.assertIn("---:", back)
+
+    def test_emoji_shortcodes(self):
+        md = "That is so funny! :joy: Here is love :heart: and star :star:"
+        html = markdown_to_html(md)
+        self.assertIn("😂", html)
+        self.assertIn("❤️", html)
+        self.assertIn("⭐", html)
+
+    def test_autolinks_and_titles(self):
+        md = "Visit <https://www.markdownguide.org> or write to <test@example.com>\n[Guide](https://example.com \"My Title\")"
+        html = markdown_to_html(md)
+        self.assertIn('href="https://www.markdownguide.org"', html)
+        self.assertIn('href="mailto:test@example.com"', html)
+        self.assertIn('title="My Title"', html)
+
+        back = html_to_markdown(html)
+        self.assertIn('[Guide](https://example.com "My Title")', back)
+
+    def test_nested_blockquotes(self):
+        md = "> Level 1\n>> Level 2"
+        html = markdown_to_html(md)
+        self.assertIn('<blockquote class="stilo-quote"><blockquote class="stilo-quote">', html)
+
+    def test_tilde_code_block(self):
+        md = "~~~python\nprint('hello')\n~~~"
+        html = markdown_to_html(md)
+        self.assertIn('class="stilo-code-block" data-lang="python"', html)
+        self.assertIn("print(&#x27;hello&#x27;)", html)
+        back = html_to_markdown(html)
+        self.assertIn("print('hello')", back)
+
+    def test_plus_lists_and_tasks(self):
+        md = "+ Item One\n+ Item Two\n+ [ ] Task One\n+ [x] Task Two"
+        html = markdown_to_html(md)
+        self.assertIn("<li>Item One</li>", html)
+        self.assertIn("<li>Item Two</li>", html)
+        self.assertIn('class="stilo-task"', html)
+        self.assertIn('class="stilo-task completed"', html)
+
 if __name__ == "__main__":
     unittest.main()
+
 

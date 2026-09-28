@@ -4,32 +4,191 @@
 import html
 import re
 import time
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+# ==============================================================================
+# Comprehensive Standard Markdown Emoji Map
+# ==============================================================================
+EMOJI_MAP: Dict[str, str] = {
+    ":joy:": "😂",
+    ":smile:": "😄",
+    ":grinning:": "😀",
+    ":smiley:": "😃",
+    ":laughing:": "😆",
+    ":innocent:": "😇",
+    ":wink:": "😉",
+    ":blush:": "😊",
+    ":slightly_smiling_face:": "🙂",
+    ":upside_down_face:": "🙃",
+    ":relaxed:": "☺️",
+    ":yum:": "😋",
+    ":relieved:": "😌",
+    ":heart_eyes:": "😍",
+    ":kissing_heart:": "😘",
+    ":kissing:": "😗",
+    ":kissing_smiling_eyes:": "😙",
+    ":kissing_closed_eyes:": "😚",
+    ":stuck_out_tongue_winking_eye:": "😜",
+    ":stuck_out_tongue_closed_eyes:": "😝",
+    ":stuck_out_tongue:": "😛",
+    ":money_mouth_face:": "🤑",
+    ":nerd_face:": "🤓",
+    ":sunglasses:": "😎",
+    ":clown_face:": "🤡",
+    ":cowboy_hat_face:": "🤠",
+    ":hugs:": "🤗",
+    ":smirk:": "😏",
+    ":neutral_face:": "😐",
+    ":expressionless:": "😑",
+    ":unamused:": "😒",
+    ":rolling_eyes:": "🙄",
+    ":thinking:": "🤔",
+    ":lying_face:": "🤥",
+    ":flushed:": "😳",
+    ":disappointed:": "😞",
+    ":worried:": "😟",
+    ":angry:": "😠",
+    ":rage:": "😡",
+    ":pensive:": "😔",
+    ":confused:": "😕",
+    ":slight_frown:": "🙁",
+    ":frowning_face:": "☹️",
+    ":persevere:": "😣",
+    ":confounded:": "😖",
+    ":tired_face:": "😫",
+    ":weary:": "😩",
+    ":triumph:": "😤",
+    ":open_mouth:": "😮",
+    ":scream:": "😱",
+    ":fearful:": "😨",
+    ":cold_sweat:": "😰",
+    ":hushed:": "😯",
+    ":frowning:": "😦",
+    ":anguished:": "😧",
+    ":cry:": "😢",
+    ":disappointed_relieved:": "😥",
+    ":drooling_face:": "🤤",
+    ":sleepy:": "😪",
+    ":sweat:": "😓",
+    ":sob:": "😭",
+    ":dizzy_face:": "😵",
+    ":astonished:": "😲",
+    ":zipper_mouth_face:": "🤐",
+    ":nauseated_face:": "🤢",
+    ":sneezing_face:": "🤧",
+    ":mask:": "😷",
+    ":face_with_thermometer:": "🤒",
+    ":face_with_head_bandage:": "🤕",
+    ":sleeping:": "😴",
+    ":zzz:": "💤",
+    ":poop:": "💩",
+    ":fire:": "🔥",
+    ":star:": "⭐",
+    ":sparkles:": "✨",
+    ":zap:": "⚡",
+    ":boom:": "💥",
+    ":collision:": "💥",
+    ":tada:": "🎉",
+    ":balloon:": "🎈",
+    ":rocket:": "🚀",
+    ":check:": "✓",
+    ":white_check_mark:": "✅",
+    ":heavy_check_mark:": "✔️",
+    ":x:": "❌",
+    ":negative_squared_cross_mark:": "❎",
+    ":warning:": "⚠️",
+    ":bulb:": "💡",
+    ":heart:": "❤️",
+    ":broken_heart:": "💔",
+    ":purple_heart:": "💜",
+    ":blue_heart:": "💙",
+    ":green_heart:": "💚",
+    ":yellow_heart:": "💛",
+    ":black_heart:": "🖤",
+    ":thumbsup:": "👍",
+    ":+1:": "👍",
+    ":thumbsdown:": "👎",
+    ":-1:": "👎",
+    ":clap:": "👏",
+    ":wave:": "👋",
+    ":pray:": "🙏",
+    ":eyes:": "👀",
+    ":100:": "💯",
+    ":coffee:": "☕",
+    ":tea:": "🍵",
+    ":beer:": "🍺",
+    ":pizza:": "🍕",
+    ":apple:": "🍎",
+    ":books:": "📚",
+    ":book:": "📖",
+    ":pencil:": "📝",
+    ":pencil2:": "✏️",
+    ":memo:": "📝",
+    ":pushpin:": "📌",
+    ":paperclip:": "📎",
+    ":clock:": "⏰",
+    ":alarm_clock:": "⏰",
+    ":hourglass:": "⌛",
+    ":calendar:": "📅",
+    ":link:": "🔗",
+    ":lock:": "🔒",
+    ":unlock:": "🔓",
+    ":key:": "🔑",
+    ":bell:": "🔔",
+    ":package:": "📦",
+    ":computer:": "💻",
+    ":phone:": "📱",
+    ":camera:": "📷",
+    ":magnifying_glass:": "🔍",
+    ":wrench:": "🔧",
+    ":hammer:": "🔨",
+    ":gear:": "⚙️",
+    ":bug:": "🐛",
+    ":shield:": "🛡️",
+    ":trophy:": "🏆",
+    ":medal:": "🏅",
+    ":crown:": "👑",
+    ":diamond:": "💎",
+    ":gem:": "💎",
+    ":earth_americas:": "🌎",
+    ":earth_africa:": "🌍",
+    ":earth_asia:": "🌏",
+    ":sun:": "☀️",
+    ":moon:": "🌙",
+    ":cloud:": "☁️",
+    ":rainbow:": "🌈",
+}
 
 # Pre-compiled regular expressions for high performance
 
 # check_has_todo
 RE_TODO_STILO_TASK = re.compile(r'class=["\']stilo-task')
 RE_TODO_STILO_CB = re.compile(r'class=["\']stilo-checkbox')
-RE_TODO_MD = re.compile(r'^[-*]\s+\[[ xX]\]', re.MULTILINE)
+RE_TODO_MD = re.compile(r'^[-*+]\s+\[[ xX]\]', re.MULTILINE)
 
 # strip_markdown
 RE_HTML_TAGS = re.compile(r'<[^>]+>')
 RE_HEADINGS = re.compile(r'#+\s*')
-RE_TASK_BOXES = re.compile(r'[-*]\s+\[[ xX]\]\s*')
+RE_HEADING_ID_TAG = re.compile(r'\s*\{#[^}]+\}')
+RE_TASK_BOXES = re.compile(r'[-*+]\s+\[[ xX]\]\s*')
 RE_LIST_BULLETS = re.compile(r'^[-*+]\s+', re.MULTILINE)
 RE_LIST_NUMBERS = re.compile(r'^\d+\.\s+', re.MULTILINE)
-RE_BLOCKQUOTES = re.compile(r'>\s*')
-RE_DIVIDERS = re.compile(r'(?:---|\*\*\*|___)')
-RE_CODE_FENCES = re.compile(r'```.*?```', re.DOTALL)
+RE_BLOCKQUOTES = re.compile(r'>+\s*')
+RE_DIVIDERS = re.compile(r'(?:---|\*\*\*|___|- - -|\* \* \*|_ _ _)')
+RE_CODE_FENCES = re.compile(r'(?:```|~~~).*?(?:```|~~~)', re.DOTALL)
 RE_INLINE_CODE = re.compile(r'`([^`]+)`')
 RE_IMAGES = re.compile(r'!\[([^\]]*)\]\([^)]+\)')
 RE_LINKS = re.compile(r'\[([^\]]+)\]\([^)]+\)')
+RE_AUTOLINKS = re.compile(r'<([^>]+)>')
 RE_BOLD_ITALIC = re.compile(r'\*{1,3}([^*]+)\*{1,3}')
 RE_UNDERSCORE = re.compile(r'_{1,3}([^_]+)_{1,3}')
 RE_STRIKE = re.compile(r'~~([^~]+)~~')
+RE_SUB = re.compile(r'(?<!~)~([^~\s\n]+)~(?!~)')
+RE_SUP = re.compile(r'\^([^\^\s\n]+)\^')
 RE_HIGHLIGHT = re.compile(r'==([^=]+)==')
-RE_STRAY_SYMBOLS = re.compile(r'[*_~`#]')
+RE_FOOTNOTE_REF = re.compile(r'\[\^[^\]]+\]')
+RE_DEF_COLON = re.compile(r'^:\s+', re.MULTILINE)
+RE_STRAY_SYMBOLS = re.compile(r'[*_~`#^]')
 RE_WHITESPACE = re.compile(r'\s+')
 
 # extract_title_and_excerpt
@@ -39,45 +198,58 @@ RE_P_TAG = re.compile(r'<p[^>]*>')
 RE_BR_TAG = re.compile(r'<br\s*/?>')
 
 # markdown_to_html inline formatting
-RE_MD_BOLD_ITALIC = re.compile(r'\*\*\*([^*]+)\*\*\*')
-RE_MD_BOLD = re.compile(r'\*\*([^*]+)\*\*')
-RE_MD_ITALIC_STAR = re.compile(r'(?<!\*)\*([^*]+)\*(?!\*)')
-RE_MD_ITALIC_UNDER = re.compile(r'(?<!_)_([^_]+)_(?!_)')
+RE_MD_EMOJI = re.compile(r':([a-zA-Z0-9_\-+]+):')
+RE_MD_AUTOLINK_URL = re.compile(r'&lt;(https?://[^&>\s]+)&gt;', re.IGNORECASE)
+RE_MD_AUTOLINK_MAIL = re.compile(r'&lt;([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)&gt;', re.IGNORECASE)
+RE_MD_FOOTNOTE_REF = re.compile(r'\[\^([a-zA-Z0-9_\-]+)\]')
+RE_MD_IMAGE = re.compile(r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+(?:["\']|&quot;)(.*?)(?:["\']|&quot;))?\)')
+RE_MD_LINK = re.compile(r'\[([^\]]+)\]\(([^)\s]+)(?:\s+(?:["\']|&quot;)(.*?)(?:["\']|&quot;))?\)')
+RE_MD_BOLD_ITALIC = re.compile(r'\*\*\*([^*\n]+?)\*\*\*')
+RE_MD_BOLD_ITALIC_UNDER = re.compile(r'___([^_\n]+?)___')
+RE_MD_BOLD = re.compile(r'\*\*([^*\n]+?)\*\*')
+RE_MD_BOLD_UNDER = re.compile(r'__(?!_)([^_\n]+?)__(?!_)')
+RE_MD_ITALIC_STAR = re.compile(r'(?<!\*)\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)')
+RE_MD_ITALIC_UNDER = re.compile(r'(?<!_)_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)')
 RE_MD_UNDERLINE = re.compile(r'&lt;u&gt;(.*?)&lt;/u&gt;', re.IGNORECASE)
 RE_MD_INS = re.compile(r'&lt;ins&gt;(.*?)&lt;/ins&gt;', re.IGNORECASE)
 RE_MD_PLUS_UNDER = re.compile(r'\+\+([^\+\n]+?)\+\+')
-RE_MD_HIGHLIGHT = re.compile(r'==([^=]+)==')
-RE_MD_STRIKE = re.compile(r'~~([^~]+)~~')
-RE_MD_CODE = re.compile(r'`([^`]+)`')
-RE_MD_IMAGE = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
-RE_MD_LINK = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+RE_MD_HIGHLIGHT = re.compile(r'==([^=\n]+?)==')
+RE_MD_STRIKE = re.compile(r'~~([^~\n]+?)~~')
+RE_MD_SUB = re.compile(r'(?<!~)~([^~\s\n]+?)~(?!~)')
+RE_MD_SUP = re.compile(r'\^([^\^\s\n]+?)\^')
+RE_MD_CODE = re.compile(r'`([^`\n]+)`')
 
 # markdown_to_html block formatting
-RE_BLOCK_CODE_FENCE = re.compile(r'^```(\w*)\s*$')
+RE_BLOCK_CODE_FENCE = re.compile(r'^(?:```|~~~)(\w*)\s*$')
 RE_BLOCK_TABLE_ROW = re.compile(r'^\|(.+)\|$')
-RE_BLOCK_TABLE_SEP = re.compile(r'^[-:]+$')
-RE_BLOCK_HR = re.compile(r'^(?:---|\*\*\*|___)\s*$')
-RE_BLOCK_TODO = re.compile(r'^[-*]\s+\[([ xX])\]\s*(.*)')
-RE_BLOCK_UL = re.compile(r'^[*-]\s+')
+RE_BLOCK_TABLE_SEP = re.compile(r'^[-: ]+$')
+RE_BLOCK_HR = re.compile(r'^(?:---|\*\*\*|___|- - -|\* \* \*|_ _ _)\s*$')
+RE_BLOCK_TODO = re.compile(r'^[-*+]\s+\[([ xX])\]\s*(.*)')
+RE_BLOCK_UL = re.compile(r'^[-*+]\s+(.*)')
 RE_BLOCK_OL = re.compile(r'^\d+\.\s+(.*)')
+RE_BLOCK_FOOTNOTE_DEF = re.compile(r'^\[\^([a-zA-Z0-9_\-]+)\]:\s*(.*)')
+RE_BLOCK_DEF_LIST = re.compile(r'^:\s+(.*)')
+RE_HEADING_ID_IN_TEXT = re.compile(r'\s*\{#([a-zA-Z0-9_\-]+)\}\s*$')
 
 # html_to_markdown
 RE_HTM_TASK = re.compile(
     r'<div class="stilo-task[^"]*"[^>]*>\s*<input[^>]*type="checkbox"([^>]*)>\s*<span[^>]*>(.*?)</span>\s*</div>',
     re.DOTALL
 )
-RE_HTM_H1 = re.compile(r'<h1[^>]*>(.*?)</h1>', re.DOTALL)
-RE_HTM_H2 = re.compile(r'<h2[^>]*>(.*?)</h2>', re.DOTALL)
-RE_HTM_H3 = re.compile(r'<h3[^>]*>(.*?)</h3>', re.DOTALL)
-RE_HTM_H4 = re.compile(r'<h4[^>]*>(.*?)</h4>', re.DOTALL)
+RE_HTM_H_ID = re.compile(r'<h([1-6])[^>]*id=["\']([^"\']+)["\'][^>]*>(.*?)</h\1>', re.DOTALL)
+RE_HTM_H_PLAIN = re.compile(r'<h([1-6])[^>]*>(.*?)</h\1>', re.DOTALL)
 RE_HTM_HR = re.compile(r'<hr[^>]*>')
 RE_HTM_CODE_LANG = re.compile(r'<pre[^>]*data-lang=["\'](.*?)["\'][^>]*><code[^>]*>(.*?)</code></pre>', re.DOTALL)
 RE_HTM_CODE_NO_LANG = re.compile(r'<pre[^>]*><code[^>]*>(.*?)</code></pre>', re.DOTALL)
-RE_HTM_QUOTE = re.compile(r'<blockquote[^>]*>(.*?)</blockquote>', re.DOTALL)
+RE_HTM_FOOTNOTE_REF = re.compile(r'<sup[^>]*class=["\'][^"\']*stilo-footnote-ref[^"\']*["\'][^>]*><a[^>]*href=["\']#fn-([^"\']+)["\'][^>]*>.*?</a></sup>', re.DOTALL)
+RE_HTM_FOOTNOTES_SECTION = re.compile(r'<section[^>]*class=["\'][^"\']*stilo-footnotes[^"\']*["\'][^>]*>.*?</section>', re.DOTALL)
+RE_HTM_DL = re.compile(r'<dl[^>]*>(.*?)</dl>', re.DOTALL)
+RE_HTM_DT = re.compile(r'<dt[^>]*>(.*?)</dt>', re.DOTALL)
+RE_HTM_DD = re.compile(r'<dd[^>]*>(.*?)</dd>', re.DOTALL)
 RE_HTM_TABLE = re.compile(r'<table[^>]*>.*?</table>', re.DOTALL)
-RE_HTM_TH = re.compile(r'<th[^>]*>(.*?)</th>', re.DOTALL)
+RE_HTM_TH = re.compile(r'<th([^>]*)>(.*?)</th>', re.DOTALL)
 RE_HTM_TR = re.compile(r'<tr[^>]*>(.*?)</tr>', re.DOTALL)
-RE_HTM_TD = re.compile(r'<td[^>]*>(.*?)</td>', re.DOTALL)
+RE_HTM_TD = re.compile(r'<td([^>]*)>(.*?)</td>', re.DOTALL)
 RE_HTM_LI = re.compile(r'<li[^>]*>(.*?)</li>', re.DOTALL)
 RE_HTM_UL_START = re.compile(r'<ul[^>]*>')
 RE_HTM_OL_START = re.compile(r'<ol[^>]*>')
@@ -86,18 +258,20 @@ RE_HTM_IMG_WRAPPER = re.compile(
     re.DOTALL
 )
 RE_HTM_STANDALONE_IMG = re.compile(r'<img[^>]+>', re.DOTALL)
-RE_HTM_LINK = re.compile(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.DOTALL)
+RE_HTM_LINK = re.compile(r'<a[^>]+href=["\']([^"\']+)["\'](?:[^>]*title=["\']([^"\']+)["\'])?[^>]*>(.*?)</a>', re.DOTALL)
 
 RE_HTM_STRONG_EM = re.compile(r'<strong[^>]*><em>(.*?)</em></strong>', re.DOTALL)
 RE_HTM_STRONG = re.compile(r'<strong[^>]*>(.*?)</strong>', re.DOTALL)
-RE_HTM_B = re.compile(r'<b[^>]*>(.*?)</b>', re.DOTALL)
+RE_HTM_B = re.compile(r'<b\b[^>]*>(.*?)</b>', re.DOTALL)
 RE_HTM_EM = re.compile(r'<em[^>]*>(.*?)</em>', re.DOTALL)
-RE_HTM_I = re.compile(r'<i[^>]*>(.*?)</i>', re.DOTALL)
-RE_HTM_U = re.compile(r'<u[^>]*>(.*?)</u>', re.DOTALL)
-RE_HTM_INS = re.compile(r'<ins[^>]*>(.*?)</ins>', re.DOTALL)
-RE_HTM_DEL = re.compile(r'<del[^>]*>(.*?)</del>', re.DOTALL)
-RE_HTM_MARK = re.compile(r'<mark[^>]*>(.*?)</mark>', re.DOTALL)
-RE_HTM_CODE = re.compile(r'<code[^>]*>(.*?)</code>', re.DOTALL)
+RE_HTM_I = re.compile(r'<i\b[^>]*>(.*?)</i>', re.DOTALL)
+RE_HTM_U = re.compile(r'<u\b[^>]*>(.*?)</u>', re.DOTALL)
+RE_HTM_INS = re.compile(r'<ins\b[^>]*>(.*?)</ins>', re.DOTALL)
+RE_HTM_DEL = re.compile(r'<(?:del|s|strike)\b[^>]*>(.*?)</(?:del|s|strike)>', re.DOTALL)
+RE_HTM_MARK = re.compile(r'<mark\b[^>]*>(.*?)</mark>', re.DOTALL)
+RE_HTM_SUB = re.compile(r'<sub\b[^>]*>(.*?)</sub>', re.DOTALL)
+RE_HTM_SUP = re.compile(r'<sup\b[^>]*>(.*?)</sup>', re.DOTALL)
+RE_HTM_CODE = re.compile(r'<code\b[^>]*>(.*?)</code>', re.DOTALL)
 
 RE_HTM_DIV_BR = re.compile(r'<div[^>]*><br[^>]*></div>')
 RE_HTM_DIV = re.compile(r'<div[^>]*>(.*?)</div>', re.DOTALL)
@@ -105,7 +279,7 @@ RE_HTM_P = re.compile(r'<p[^>]*>(.*?)</p>', re.DOTALL)
 RE_HTM_BR = re.compile(r'<br[^>]*>')
 RE_HTM_MULTI_NEWLINES = re.compile(r'\n{3,}')
 
-MD_SPECIAL_CHARS = set("#*_`[<~=-")
+MD_SPECIAL_CHARS = set("#*_`[<~=-+:^")
 
 
 def format_relative_date(timestamp: float) -> str:
@@ -158,13 +332,13 @@ def strip_markdown(text: str) -> str:
     """Clean plain text extraction from Markdown/HTML."""
     if not text:
         return ""
-    # Fast path: if no markdown or HTML characters exist, just return stripped text
     if not any(c in MD_SPECIAL_CHARS for c in text):
         return text.strip()
 
     s = text.replace('\u200b', '')
     s = RE_HTML_TAGS.sub(' ', s)
     s = RE_HEADINGS.sub('', s)
+    s = RE_HEADING_ID_TAG.sub('', s)
     s = RE_TASK_BOXES.sub('', s)
     s = RE_LIST_BULLETS.sub('', s)
     s = RE_LIST_NUMBERS.sub('', s)
@@ -174,11 +348,16 @@ def strip_markdown(text: str) -> str:
     s = RE_INLINE_CODE.sub(r'\1', s)
     s = RE_IMAGES.sub(r'\1', s)
     s = RE_LINKS.sub(r'\1', s)
+    s = RE_AUTOLINKS.sub(r'\1', s)
     s = RE_BOLD_ITALIC.sub(r'\1', s)
     s = RE_UNDERSCORE.sub(r'\1', s)
     s = RE_STRIKE.sub(r'\1', s)
+    s = RE_SUB.sub(r'\1', s)
+    s = RE_SUP.sub(r'\1', s)
     s = RE_MD_PLUS_UNDER.sub(r'\1', s)
     s = RE_HIGHLIGHT.sub(r'\1', s)
+    s = RE_FOOTNOTE_REF.sub('', s)
+    s = RE_DEF_COLON.sub('', s)
     s = RE_STRAY_SYMBOLS.sub('', s)
     s = html.unescape(s)
     return RE_WHITESPACE.sub(' ', s).strip()
@@ -219,7 +398,7 @@ def compute_note_stats(content_html: str = "", content_markdown: str = "") -> di
     text = ""
     if content_html:
         clean = RE_H1_TAG.sub(r'\1\n', content_html)
-        clean = re.sub(r'</?(?:div|p|br|li|tr|blockquote|h[1-6])[^>]*>', '\n', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'</?(?:div|p|br|li|tr|blockquote|h[1-6]|dl|dt|dd|section)[^>]*>', '\n', clean, flags=re.IGNORECASE)
         clean = RE_HTML_TAGS.sub('', clean)
         text = html.unescape(clean).replace('\u200b', '')
 
@@ -239,6 +418,8 @@ def compute_note_stats(content_html: str = "", content_markdown: str = "") -> di
 def _format_md_image(match: re.Match) -> str:
     alt = match.group(1)
     src = match.group(2)
+    title = match.group(3) if len(match.groups()) >= 3 and match.group(3) else ""
+    title_attr = f' title="{html.escape(title)}"' if title else ""
     width_style = ""
     clean_alt = alt
     if "|" in alt:
@@ -249,40 +430,77 @@ def _format_md_image(match: re.Match) -> str:
         if w_str.isdigit():
             width_style = f' style="width: {w_str}px;"'
             clean_alt = parts[0].strip()
-    return f'<div class="stilo-img-wrapper"{width_style}><img src="{src}" alt="{clean_alt}" class="stilo-img"></div>'
+    return f'<div class="stilo-img-wrapper"{width_style}><img src="{src}" alt="{clean_alt}"{title_attr} class="stilo-img"></div>'
+
+
+def _format_md_link(match: re.Match) -> str:
+    text = match.group(1)
+    url = match.group(2)
+    title = match.group(3) if len(match.groups()) >= 3 and match.group(3) else ""
+    title_attr = f' title="{html.escape(title)}"' if title else ""
+    return f'<a href="{url}"{title_attr} class="stilo-link" target="_blank">{text}</a>'
 
 
 def markdown_to_html(md_text: str) -> str:
-    """Convert Markdown text to Stilo rich HTML."""
+    """Convert Markdown text to Stilo rich HTML with full Basic and Extended syntax support."""
     if not md_text:
         return "<h1>Untitled Note</h1><div><br></div>"
 
     def format_inline(text: str) -> str:
         s = html.escape(text)
+
+        # Autolinks: <https://...> and <email@...>
+        s = RE_MD_AUTOLINK_URL.sub(r'<a href="\1" class="stilo-link" target="_blank">\1</a>', s)
+        s = RE_MD_AUTOLINK_MAIL.sub(r'<a href="mailto:\1" class="stilo-link">\1</a>', s)
+
+        # Footnote references: [^1]
+        s = RE_MD_FOOTNOTE_REF.sub(r'<sup class="stilo-footnote-ref"><a href="#fn-\1" id="fnref-\1">[\1]</a></sup>', s)
+
+        # Images & Links
         s = RE_MD_IMAGE.sub(_format_md_image, s)
+        s = RE_MD_LINK.sub(_format_md_link, s)
+
+        # Code
+        s = RE_MD_CODE.sub(r'<code class="stilo-inline-code">\1</code>', s)
+
+        # Emphasis (Bold, Italic)
         s = RE_MD_BOLD_ITALIC.sub(r'<strong><em>\1</em></strong>', s)
+        s = RE_MD_BOLD_ITALIC_UNDER.sub(r'<strong><em>\1</em></strong>', s)
         s = RE_MD_BOLD.sub(r'<strong>\1</strong>', s)
+        s = RE_MD_BOLD_UNDER.sub(r'<strong>\1</strong>', s)
         s = RE_MD_ITALIC_STAR.sub(r'<em>\1</em>', s)
         s = RE_MD_ITALIC_UNDER.sub(r'<em>\1</em>', s)
+
+        # Underline & Inserted
         s = RE_MD_UNDERLINE.sub(r'<u>\1</u>', s)
         s = RE_MD_INS.sub(r'<u>\1</u>', s)
         s = RE_MD_PLUS_UNDER.sub(r'<u>\1</u>', s)
+
+        # Highlight & Strikethrough
         s = RE_MD_HIGHLIGHT.sub(r'<mark class="stilo-highlight">\1</mark>', s)
         s = RE_MD_STRIKE.sub(r'<del>\1</del>', s)
-        s = RE_MD_CODE.sub(r'<code class="stilo-inline-code">\1</code>', s)
-        s = RE_MD_LINK.sub(r'<a href="\2" class="stilo-link" target="_blank">\1</a>', s)
+
+        # Subscript & Superscript
+        s = RE_MD_SUB.sub(r'<sub>\1</sub>', s)
+        s = RE_MD_SUP.sub(r'<sup>\1</sup>', s)
+
+        # Emoji shortcodes (:joy: -> 😂)
+        s = RE_MD_EMOJI.sub(lambda m: EMOJI_MAP.get(m.group(0), m.group(0)), s)
+
         return s
 
-    lines = md_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    raw_lines = md_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     html_lines = []
 
     in_ul = False
     in_ol = False
     in_code_block = False
     code_lang = ""
-    code_lines = []
+    code_lines: List[str] = []
     in_table = False
-    table_rows = []
+    table_rows: List[str] = []
+    in_def_list = False
+    footnotes: Dict[str, str] = {}
 
     def close_lists():
         nonlocal in_ul, in_ol
@@ -295,6 +513,13 @@ def markdown_to_html(md_text: str) -> str:
             in_ol = False
         return "\n".join(res)
 
+    def close_def_list():
+        nonlocal in_def_list
+        if in_def_list:
+            in_def_list = False
+            return "</dl>"
+        return ""
+
     def close_table():
         nonlocal in_table, table_rows
         if not in_table or not table_rows:
@@ -304,23 +529,61 @@ def markdown_to_html(md_text: str) -> str:
 
         out = ['<table class="stilo-table">']
         is_first = True
+        alignments: List[str] = []
+
+        # Pre-extract column alignments from separator row
+        for r in table_rows:
+            raw_c = [c.strip() for c in r.split('|')[1:-1]]
+            if raw_c and any(RE_BLOCK_TABLE_SEP.match(c) for c in raw_c) and all(RE_BLOCK_TABLE_SEP.match(c) for c in raw_c if c):
+                for c in raw_c:
+                    c_clean = c.strip()
+                    if c_clean.startswith(':') and c_clean.endswith(':'):
+                        alignments.append("center")
+                    elif c_clean.endswith(':'):
+                        alignments.append("right")
+                    elif c_clean.startswith(':'):
+                        alignments.append("left")
+                    else:
+                        alignments.append("left")
+                break
+
         for row in table_rows:
-            cells = [c.strip() for c in row.split('|')[1:-1]]
-            if not cells or all(RE_BLOCK_TABLE_SEP.match(c) for c in cells):
+            raw_cells = [c.strip() for c in row.split('|')[1:-1]]
+            if not raw_cells:
                 continue
+
+            # Skip separator row in output
+            if any(RE_BLOCK_TABLE_SEP.match(c) for c in raw_cells) and all(RE_BLOCK_TABLE_SEP.match(c) for c in raw_cells if c):
+                continue
+
             if is_first:
-                out.append('<thead><tr>' + ''.join(f'<th>{format_inline(c)}</th>' for c in cells) + '</tr></thead><tbody>')
+                ths = []
+                for i, c in enumerate(raw_cells):
+                    align = alignments[i] if i < len(alignments) else "left"
+                    style_attr = f' style="text-align: {align};"' if align != "left" else ""
+                    ths.append(f'<th{style_attr}>{format_inline(c)}</th>')
+                out.append('<thead><tr>' + ''.join(ths) + '</tr></thead><tbody>')
                 is_first = False
             else:
-                out.append('<tr>' + ''.join(f'<td>{format_inline(c)}</td>' for c in cells) + '</tr>')
+                tds = []
+                for i, c in enumerate(raw_cells):
+                    align = alignments[i] if i < len(alignments) else "left"
+                    style_attr = f' style="text-align: {align};"' if align != "left" else ""
+                    tds.append(f'<td{style_attr}>{format_inline(c)}</td>')
+                out.append('<tr>' + ''.join(tds) + '</tr>')
 
         out.append('</tbody></table>')
         in_table = False
         table_rows = []
         return "\n".join(out)
 
-    for line in lines:
-        # Code block fences
+    num_lines = len(raw_lines)
+    i = 0
+
+    while i < num_lines:
+        line = raw_lines[i]
+
+        # 1. Code block fences (``` or ~~~)
         code_fence = RE_BLOCK_CODE_FENCE.match(line)
         if code_fence:
             if in_code_block:
@@ -331,55 +594,113 @@ def markdown_to_html(md_text: str) -> str:
                 code_lines = []
             else:
                 html_lines.append(close_lists())
+                html_lines.append(close_def_list())
                 in_code_block = True
                 code_lang = code_fence.group(1)
                 code_lines = []
+            i += 1
             continue
 
         if in_code_block:
             code_lines.append(line)
+            i += 1
             continue
 
-        # Tables
+        # 2. Tables
         if RE_BLOCK_TABLE_ROW.match(line.strip()):
             html_lines.append(close_lists())
+            html_lines.append(close_def_list())
             in_table = True
             table_rows.append(line.strip())
+            i += 1
             continue
         elif in_table:
             html_lines.append(close_table())
 
-        # Empty line
+        # 3. Footnote definitions: [^1]: text
+        fn_match = RE_BLOCK_FOOTNOTE_DEF.match(line)
+        if fn_match:
+            html_lines.append(close_lists())
+            html_lines.append(close_def_list())
+            fn_id = fn_match.group(1)
+            fn_content = fn_match.group(2)
+            # Check indented continuation lines
+            while i + 1 < num_lines and (raw_lines[i + 1].startswith("    ") or raw_lines[i + 1].startswith("\t")):
+                i += 1
+                fn_content += " " + raw_lines[i].strip()
+            footnotes[fn_id] = fn_content
+            i += 1
+            continue
+
+        # 4. Definition List item: ": definition"
+        def_match = RE_BLOCK_DEF_LIST.match(line)
+        if def_match:
+            def_text = format_inline(def_match.group(1))
+            if not in_def_list:
+                # The preceding line (if non-empty) was the term
+                term_text = ""
+                if html_lines and html_lines[-1].startswith("<div>") and html_lines[-1].endswith("</div>"):
+                    term_div = html_lines.pop()
+                    term_text = term_div[5:-6]
+                in_def_list = True
+                html_lines.append('<dl class="stilo-dl">')
+                if term_text:
+                    html_lines.append(f'<dt>{term_text}</dt>')
+            html_lines.append(f'<dd>{def_text}</dd>')
+            i += 1
+            continue
+        elif in_def_list:
+            html_lines.append(close_def_list())
+
+        # 5. Empty line
         if not line.strip():
             html_lines.append(close_lists())
             html_lines.append("<div><br></div>")
+            i += 1
             continue
 
-        # Headings
-        if line.startswith("# "):
+        # 6. Setext Headings (Heading 1 === or Heading 2 ---)
+        if i + 1 < num_lines and line.strip():
+            next_line = raw_lines[i + 1].strip()
+            if re.match(r'^===+\s*$', next_line):
+                html_lines.append(close_lists())
+                html_lines.append(f"<h1>{format_inline(line.strip())}</h1>")
+                i += 2
+                continue
+            elif re.match(r'^---+\s*$', next_line) and not RE_BLOCK_HR.match(line):
+                html_lines.append(close_lists())
+                html_lines.append(f"<h2>{format_inline(line.strip())}</h2>")
+                i += 2
+                continue
+
+        # 7. Atx Headings (# H1 to ###### H6 with optional {#custom-id})
+        heading_level = 0
+        if line.startswith("#"):
+            stripped_hashes = line.lstrip("#")
+            level = len(line) - len(stripped_hashes)
+            if 1 <= level <= 6 and stripped_hashes.startswith(" "):
+                heading_level = level
+                heading_content = stripped_hashes.strip()
+
+        if heading_level > 0:
             html_lines.append(close_lists())
-            html_lines.append(f"<h1>{format_inline(line[2:])}</h1>")
-            continue
-        elif line.startswith("## "):
-            html_lines.append(close_lists())
-            html_lines.append(f"<h2>{format_inline(line[3:])}</h2>")
-            continue
-        elif line.startswith("### "):
-            html_lines.append(close_lists())
-            html_lines.append(f"<h3>{format_inline(line[4:])}</h3>")
-            continue
-        elif line.startswith("#### "):
-            html_lines.append(close_lists())
-            html_lines.append(f"<h4>{format_inline(line[5:])}</h4>")
+            id_attr = ""
+            id_match = RE_HEADING_ID_IN_TEXT.search(heading_content)
+            if id_match:
+                id_attr = f' id="{id_match.group(1)}"'
+                heading_content = heading_content[:id_match.start()].strip()
+            html_lines.append(f"<h{heading_level}{id_attr}>{format_inline(heading_content)}</h{heading_level}>")
+            i += 1
             continue
 
-        # Horizontal Rule
+        # 8. Horizontal Rule (---, ***, ___, - - -, * * *, _ _ _)
         if RE_BLOCK_HR.match(line):
             html_lines.append(close_lists())
             html_lines.append('<hr class="stilo-hr">')
+            i += 1
             continue
 
-        # Todo checklist: - [ ] or - [x]
+        # 9. Todo Checklist: - [ ] or - [x] (also * and +)
         todo_match = RE_BLOCK_TODO.match(line)
         if todo_match:
             html_lines.append(close_lists())
@@ -393,27 +714,36 @@ def markdown_to_html(md_text: str) -> str:
                 f'<span class="task-text">{item_text}</span>'
                 f'</div>'
             )
+            i += 1
             continue
 
-        # Blockquote
-        if line.startswith("> "):
+        # 10. Blockquote (supports nested blockquotes: > and >> and >>>)
+        if line.startswith(">"):
             html_lines.append(close_lists())
-            html_lines.append(f'<blockquote class="stilo-quote">{format_inline(line[2:])}</blockquote>')
+            q_hashes = len(line) - len(line.lstrip('>'))
+            q_content = line.lstrip('>').strip()
+            q_html = format_inline(q_content)
+            wrapped = f'<blockquote class="stilo-quote">{q_html}</blockquote>'
+            for _ in range(q_hashes - 1):
+                wrapped = f'<blockquote class="stilo-quote">{wrapped}</blockquote>'
+            html_lines.append(wrapped)
+            i += 1
             continue
 
-        # Unordered list: - or *
-        if RE_BLOCK_UL.match(line):
+        # 11. Unordered list: - or * or +
+        ul_match = RE_BLOCK_UL.match(line)
+        if ul_match:
             if in_ol:
                 html_lines.append("</ol>")
                 in_ol = False
             if not in_ul:
                 html_lines.append('<ul class="stilo-list">')
                 in_ul = True
-            content = RE_BLOCK_UL.sub('', line)
-            html_lines.append(f"<li>{format_inline(content)}</li>")
+            html_lines.append(f"<li>{format_inline(ul_match.group(1))}</li>")
+            i += 1
             continue
 
-        # Ordered list: 1.
+        # 12. Ordered list: 1.
         ol_match = RE_BLOCK_OL.match(line)
         if ol_match:
             if in_ul:
@@ -423,18 +753,26 @@ def markdown_to_html(md_text: str) -> str:
                 html_lines.append('<ol class="stilo-numbered-list">')
                 in_ol = True
             html_lines.append(f"<li>{format_inline(ol_match.group(1))}</li>")
+            i += 1
             continue
 
-        # Standalone Image line: ![alt](url)
+        # 13. Standalone Image line: ![alt](url)
         img_match = RE_MD_IMAGE.match(line.strip())
         if img_match:
             html_lines.append(close_lists())
             html_lines.append(_format_md_image(img_match))
+            i += 1
             continue
 
-        # Regular paragraph/div
+        # 14. Regular paragraph/div with trailing line break support
         html_lines.append(close_lists())
-        html_lines.append(f"<div>{format_inline(line)}</div>")
+        line_clean = line
+        line_break = ""
+        if line_clean.endswith("  ") or line_clean.endswith("\\"):
+            line_clean = line_clean[:-2] if line_clean.endswith("  ") else line_clean[:-1]
+            line_break = "<br>"
+        html_lines.append(f"<div>{format_inline(line_clean)}{line_break}</div>")
+        i += 1
 
     if in_code_block:
         escaped_code = html.escape("\n".join(code_lines))
@@ -442,19 +780,51 @@ def markdown_to_html(md_text: str) -> str:
     if in_table:
         html_lines.append(close_table())
     html_lines.append(close_lists())
+    html_lines.append(close_def_list())
+
+    # Append Footnotes section if any were collected
+    if footnotes:
+        fn_items = []
+        for fn_id, fn_text in footnotes.items():
+            formatted_text = format_inline(fn_text)
+            fn_items.append(
+                f'<li id="fn-{fn_id}">{formatted_text} <a href="#fnref-{fn_id}" class="stilo-footnote-backref" title="Jump back to footnote in text">&#8617;</a></li>'
+            )
+        html_lines.append(
+            '<section class="stilo-footnotes">\n'
+            '<hr class="stilo-footnotes-sep">\n'
+            '<ol class="stilo-footnotes-list">\n'
+            + "\n".join(fn_items) +
+            '\n</ol>\n</section>'
+        )
 
     return "\n".join(html_lines)
 
 
 def html_to_markdown(html_content: str) -> str:
-    """Convert Stilo rich HTML back to clean Markdown."""
+    """Convert Stilo rich HTML back to clean Markdown supporting Basic and Extended syntax."""
     if not html_content:
         return ""
 
     s = html_content.replace('\r\n', '\n').replace('\r', '\n')
 
-    # Convert Stilo Tasks
-    def replace_task(m):
+    # 1. Convert Footnotes section and references
+    fn_defs: List[str] = []
+
+    def extract_footnote_defs(sec_match: re.Match) -> str:
+        sec_html = sec_match.group(0)
+        items = re.findall(r'<li[^>]*id=["\']fn-([^"\']+)["\'][^>]*>(.*?)</li>', sec_html, re.DOTALL)
+        for fn_id, raw_content in items:
+            clean_content = re.sub(r'<a[^>]*class=["\'][^"\']*stilo-footnote-backref[^"\']*["\'][^>]*>.*?</a>', '', raw_content, flags=re.DOTALL)
+            clean_content = RE_HTML_TAGS.sub('', clean_content).strip()
+            fn_defs.append(f"[^{fn_id}]: {clean_content}")
+        return ""
+
+    s = RE_HTM_FOOTNOTES_SECTION.sub(extract_footnote_defs, s)
+    s = RE_HTM_FOOTNOTE_REF.sub(r'[^\1]', s)
+
+    # 2. Convert Tasks
+    def replace_task(m: re.Match) -> str:
         checked = 'checked' in m.group(1)
         text = RE_HTML_TAGS.sub('', m.group(2)).strip()
         mark = 'x' if checked else ' '
@@ -462,17 +832,41 @@ def html_to_markdown(html_content: str) -> str:
 
     s = RE_HTM_TASK.sub(replace_task, s)
 
-    # Convert Headings
-    s = RE_HTM_H1.sub(r'# \1\n\n', s)
-    s = RE_HTM_H2.sub(r'## \1\n\n', s)
-    s = RE_HTM_H3.sub(r'### \1\n\n', s)
-    s = RE_HTM_H4.sub(r'#### \1\n\n', s)
+    # 3. Convert Definition Lists
+    def replace_dl(m: re.Match) -> str:
+        dl_html = m.group(1)
+        out = []
+        parts = re.findall(r'<(dt|dd)[^>]*>(.*?)</\1>', dl_html, re.DOTALL)
+        for tag, content in parts:
+            clean_txt = RE_HTML_TAGS.sub('', content).strip()
+            if tag == 'dt':
+                out.append(f"\n{clean_txt}")
+            else:
+                out.append(f": {clean_txt}")
+        return "\n".join(out) + "\n\n"
 
-    # Convert Horizontal Rules
+    s = RE_HTM_DL.sub(replace_dl, s)
+
+    # 4. Convert Headings (1-6, with and without custom ID)
+    def replace_heading_id(m: re.Match) -> str:
+        lvl = int(m.group(1))
+        h_id = m.group(2)
+        txt = RE_HTML_TAGS.sub('', m.group(3)).strip()
+        return f"{'#' * lvl} {txt} {{#{h_id}}}\n\n"
+
+    def replace_heading_plain(m: re.Match) -> str:
+        lvl = int(m.group(1))
+        txt = RE_HTML_TAGS.sub('', m.group(2)).strip()
+        return f"{'#' * lvl} {txt}\n\n"
+
+    s = RE_HTM_H_ID.sub(replace_heading_id, s)
+    s = RE_HTM_H_PLAIN.sub(replace_heading_plain, s)
+
+    # 5. Convert Horizontal Rules
     s = RE_HTM_HR.sub('\n---\n\n', s)
 
-    # Convert Code Blocks
-    def replace_code_block(m):
+    # 6. Convert Code Blocks
+    def replace_code_block(m: re.Match) -> str:
         lang = m.group(1) or ""
         code = html.unescape(m.group(2))
         return f"\n```{lang}\n{code}\n```\n\n"
@@ -480,55 +874,80 @@ def html_to_markdown(html_content: str) -> str:
     s = RE_HTM_CODE_LANG.sub(replace_code_block, s)
     s = RE_HTM_CODE_NO_LANG.sub(lambda m: f"\n```\n{html.unescape(m.group(1))}\n```\n\n", s)
 
-    # Convert Blockquotes
-    s = RE_HTM_QUOTE.sub(lambda m: f"> {RE_HTML_TAGS.sub('', m.group(1)).strip()}\n\n", s)
+    # 7. Convert Blockquotes (recursively handles nesting)
+    while '<blockquote' in s:
+        s = re.sub(r'<blockquote[^>]*>(.*?)</blockquote>', lambda m: "\n" + "\n".join(f"> {line}" for line in m.group(1).strip().splitlines()) + "\n", s, flags=re.DOTALL)
 
-    # Convert Tables
-    def replace_table(m):
+    # 8. Convert Tables with Alignment
+    def replace_table(m: re.Match) -> str:
         table_html = m.group(0)
-        headers = RE_HTM_TH.findall(table_html)
-        rows = RE_HTM_TR.findall(table_html)
+        th_matches = RE_HTM_TH.findall(table_html)
+        tr_matches = RE_HTM_TR.findall(table_html)
 
         md_table = []
-        if headers:
-            clean_headers = [RE_HTML_TAGS.sub('', h).strip() for h in headers]
-            md_table.append("| " + " | ".join(clean_headers) + " |")
-            md_table.append("| " + " | ".join([":---" for _ in clean_headers]) + " |")
+        align_seps = []
 
-        for r in rows:
-            cells = RE_HTM_TD.findall(r)
-            if cells:
-                clean_cells = [RE_HTML_TAGS.sub('', c).strip() for c in cells]
+        if th_matches:
+            clean_headers = []
+            for attrs, h_content in th_matches:
+                clean_headers.append(RE_HTML_TAGS.sub('', h_content).strip())
+                # Detect alignment
+                if 'text-align: center' in attrs or 'text-align:center' in attrs or 'align-center' in attrs:
+                    align_seps.append(":---:")
+                elif 'text-align: right' in attrs or 'text-align:right' in attrs or 'align-right' in attrs:
+                    align_seps.append("---:")
+                else:
+                    align_seps.append(":---")
+
+            # Fallback: if th lacked alignment, check first data row's td attributes
+            if tr_matches and not any(a != ':---' for a in align_seps):
+                first_tds = RE_HTM_TD.findall(tr_matches[0])
+                if first_tds and len(first_tds) == len(align_seps):
+                    for idx, (td_attrs, _) in enumerate(first_tds):
+                        if 'text-align: center' in td_attrs or 'text-align:center' in td_attrs or 'align-center' in td_attrs:
+                            align_seps[idx] = ":---:"
+                        elif 'text-align: right' in td_attrs or 'text-align:right' in td_attrs or 'align-right' in td_attrs:
+                            align_seps[idx] = "---:"
+
+            md_table.append("| " + " | ".join(clean_headers) + " |")
+            md_table.append("| " + " | ".join(align_seps) + " |")
+
+        for r in tr_matches:
+            td_matches = RE_HTM_TD.findall(r)
+            if td_matches:
+                clean_cells = [RE_HTML_TAGS.sub('', content).strip() for _, content in td_matches]
                 md_table.append("| " + " | ".join(clean_cells) + " |")
 
         return "\n" + "\n".join(md_table) + "\n\n"
 
     s = RE_HTM_TABLE.sub(replace_table, s)
 
-    # Convert Lists
+    # 9. Convert Lists
     s = RE_HTM_LI.sub(r'- \1\n', s)
     s = RE_HTM_UL_START.sub('\n', s)
     s = s.replace('</ul>', '\n')
     s = RE_HTM_OL_START.sub('\n', s)
     s = s.replace('</ol>', '\n')
 
-    # Convert Images
+    # 10. Convert Images
     def _convert_img_wrapper_to_md(m: re.Match) -> str:
         wrapper_html = m.group(0)
         w_match = re.search(r'width:\s*(\d+)px', wrapper_html)
         width = w_match.group(1) if w_match else ""
         src_match = re.search(r'src=["\']([^"\']+)["\']', wrapper_html)
         alt_match = re.search(r'alt=["\']([^"\']*)["\']', wrapper_html)
+        title_match = re.search(r'title=["\']([^"\']*)["\']', wrapper_html)
         src = src_match.group(1) if src_match else ""
         alt = alt_match.group(1) if alt_match else ""
+        title = f' "{title_match.group(1)}"' if title_match else ""
         if not src:
             return ""
         if width:
-            return f"![{alt}|{width}]({src})\n"
+            return f"![{alt}|{width}]({src}{title})\n"
         elif alt:
-            return f"![{alt}]({src})\n"
+            return f"![{alt}]({src}{title})\n"
         else:
-            return f"![]({src})\n"
+            return f"![]({src}{title})\n"
 
     def _convert_standalone_img_to_md(m: re.Match) -> str:
         img_html = m.group(0)
@@ -536,24 +955,32 @@ def html_to_markdown(html_content: str) -> str:
         width = w_match.group(1) if w_match else ""
         src_match = re.search(r'src=["\']([^"\']+)["\']', img_html)
         alt_match = re.search(r'alt=["\']([^"\']*)["\']', img_html)
+        title_match = re.search(r'title=["\']([^"\']*)["\']', img_html)
         src = src_match.group(1) if src_match else ""
         alt = alt_match.group(1) if alt_match else ""
+        title = f' "{title_match.group(1)}"' if title_match else ""
         if not src:
             return ""
         if width:
-            return f"![{alt}|{width}]({src})\n"
+            return f"![{alt}|{width}]({src}{title})\n"
         elif alt:
-            return f"![{alt}]({src})\n"
+            return f"![{alt}]({src}{title})\n"
         else:
-            return f"![]({src})\n"
+            return f"![]({src}{title})\n"
 
     s = RE_HTM_IMG_WRAPPER.sub(_convert_img_wrapper_to_md, s)
     s = RE_HTM_STANDALONE_IMG.sub(_convert_standalone_img_to_md, s)
 
-    # Convert Links
-    s = RE_HTM_LINK.sub(lambda m: f"[{RE_HTML_TAGS.sub('', m.group(2)).strip()}]({m.group(1)})", s)
+    # 11. Convert Links
+    def _convert_link_to_md(m: re.Match) -> str:
+        url = m.group(1)
+        title = f' "{m.group(2)}"' if m.group(2) else ""
+        text = RE_HTML_TAGS.sub('', m.group(3)).strip()
+        return f"[{text}]({url}{title})"
 
-    # Inline formatting
+    s = RE_HTM_LINK.sub(_convert_link_to_md, s)
+
+    # 12. Inline Formatting
     s = RE_HTM_STRONG_EM.sub(r'***\1***', s)
     s = RE_HTM_STRONG.sub(r'**\1**', s)
     s = RE_HTM_B.sub(r'**\1**', s)
@@ -563,20 +990,26 @@ def html_to_markdown(html_content: str) -> str:
     s = RE_HTM_INS.sub(r'@@STILO_U_START@@\1@@STILO_U_END@@', s)
     s = RE_HTM_DEL.sub(r'~~\1~~', s)
     s = RE_HTM_MARK.sub(r'==\1==', s)
+    s = RE_HTM_SUB.sub(r'~\1~', s)
+    s = RE_HTM_SUP.sub(r'^\1^', s)
     s = RE_HTM_CODE.sub(r'`\1`', s)
 
-    # Convert paragraphs and divs
+    # 13. Convert Paragraphs and Divs
     s = RE_HTM_DIV_BR.sub('\n\n', s)
     s = RE_HTM_DIV.sub(r'\1\n', s)
     s = RE_HTM_P.sub(r'\1\n\n', s)
     s = RE_HTM_BR.sub('\n', s)
 
-    # Strip remaining tags and unescape
+    # 14. Strip Remaining Tags and Unescape
     s = RE_HTML_TAGS.sub('', s)
     s = html.unescape(s)
     s = s.replace('@@STILO_U_START@@', '<u>').replace('@@STILO_U_END@@', '</u>')
     s = s.replace('\u200b', '')
 
-    # Collapse blank lines
+    # 15. Append Footnotes definitions at end
+    if fn_defs:
+        s += "\n\n" + "\n".join(fn_defs)
+
+    # 16. Collapse Blank Lines
     s = RE_HTM_MULTI_NEWLINES.sub('\n\n', s)
     return s.strip()

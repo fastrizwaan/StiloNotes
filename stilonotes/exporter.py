@@ -285,6 +285,18 @@ th {{
 .stilo-checkbox {{
   margin-right: 8px;
 }}
+h5 {{ font-size: 1.1em; font-weight: 600; margin: 14px 0 6px; }}
+h6 {{ font-size: 1.0em; font-weight: 600; margin: 12px 0 4px; color: #666; }}
+sub {{ font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; bottom: -0.25em; }}
+sup {{ font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; top: -0.5em; }}
+mark {{ background-color: #fef08a; padding: 1px 3px; border-radius: 3px; }}
+del {{ text-decoration: line-through; opacity: 0.75; }}
+dl {{ margin: 14px 0; }}
+dt {{ font-weight: 600; margin-top: 10px; }}
+dd {{ margin-left: 24px; margin-bottom: 6px; }}
+.stilo-footnotes {{ margin-top: 28px; font-size: 0.9em; border-top: 1px solid #ddd; padding-top: 14px; }}
+.stilo-footnote-ref {{ font-size: 0.75em; vertical-align: super; font-weight: 600; }}
+.stilo-footnote-backref {{ text-decoration: none; margin-left: 6px; }}
 </style>
 </head>
 <body>
