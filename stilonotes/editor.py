@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Optional
 
 import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
 gi.require_version('WebKit', '6.0')
 from gi.repository import Adw, Gtk, WebKit, Gio, GLib, GObject, Gdk, Pango
 
@@ -93,21 +95,34 @@ class FormattingBar(Gtk.Box):
         sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         self.append(sep)
 
-        hbar = Adw.HeaderBar()
-        hbar.set_show_start_title_buttons(False)
-        hbar.set_show_end_title_buttons(False)
-        hbar.set_show_back_button(False)
-        hbar.add_css_class("formatting")
-        self.append(hbar)
+        bar_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        bar_box.add_css_class("formatting-bar")
+        self.append(bar_box)
 
-        parent_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
-        parent_box.set_halign(Gtk.Align.CENTER)
-        hbar.set_title_widget(parent_box)
+        # Flowbox for toolbar buttons so that narrowing the window wraps nicely
+        flowbox = Gtk.FlowBox()
+        flowbox.set_valign(Gtk.Align.CENTER)
+        flowbox.set_halign(Gtk.Align.CENTER)
+        flowbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        flowbox.set_activate_on_single_click(False)
+        flowbox.set_can_focus(False)
+        flowbox.set_max_children_per_line(30)
+        flowbox.set_min_children_per_line(1)
+        flowbox.set_row_spacing(4)
+        flowbox.set_column_spacing(2)
+        flowbox.set_hexpand(True)
+        flowbox.add_css_class("formatting-flowbox")
+        bar_box.append(flowbox)
+
+        def _setup_flow_child(w):
+            child = w.get_parent()
+            if isinstance(child, Gtk.FlowBoxChild):
+                child.set_can_focus(False)
+                child.set_focusable(False)
 
         # 0. Undo & Redo
-        self._add_btn(parent_box, "edit-undo-symbolic", "Undo (Ctrl+Z)", "undo")
-        self._add_btn(parent_box, "edit-redo-symbolic", "Redo (Ctrl+Y)", "redo")
-        self._add_sep(parent_box)
+        self._add_btn(flowbox, "edit-undo-symbolic", "Undo (Ctrl+Z)", "undo")
+        self._add_btn(flowbox, "edit-redo-symbolic", "Redo (Ctrl+Y)", "redo")
 
         # 1. Heading menu button
         heading_menu = Gtk.MenuButton()
@@ -130,20 +145,19 @@ class FormattingBar(Gtk.Box):
             h_pop_box.append(b)
         self.h_pop.set_child(h_pop_box)
         heading_menu.set_popover(self.h_pop)
-        parent_box.append(heading_menu)
-
-        self._add_sep(parent_box)
+        flowbox.append(heading_menu)
+        _setup_flow_child(heading_menu)
 
         # 2. Text styling
         for icon, tip, cmd in [
-            ("format-text-bold-symbolic",          "Bold",          "bold"),
-            ("format-text-italic-symbolic",        "Italic",        "italic"),
-            ("format-text-strikethrough-symbolic", "Strikethrough", "strike"),
-            ("format-text-underline-symbolic",     "Underline",     "underline"),
+            ("format-text-bold-symbolic",          "Bold",             "bold"),
+            ("format-text-italic-symbolic",        "Italic",           "italic"),
+            ("format-text-strikethrough-symbolic", "Strikethrough",    "strike"),
+            ("format-text-underline-symbolic",     "Underline",        "underline"),
+            ("marker-symbolic",                    "Highlight",        "highlight"),
+            ("eraser-symbolic",                    "Clear Formatting", "clear-format"),
         ]:
-            self._add_btn(parent_box, icon, tip, cmd)
-
-        self._add_sep(parent_box)
+            self._add_btn(flowbox, icon, tip, cmd)
 
         # 3. Lists
         for icon, tip, cmd in [
@@ -151,9 +165,7 @@ class FormattingBar(Gtk.Box):
             ("view-list-ordered-symbolic", "Numbered List", "number"),
             ("checkbox-checked-symbolic",  "Checklist",     "todo"),
         ]:
-            self._add_btn(parent_box, icon, tip, cmd)
-
-        self._add_sep(parent_box)
+            self._add_btn(flowbox, icon, tip, cmd)
 
         # 4. Blocks & Markdown Elements
         for icon, tip, cmd in [
@@ -162,9 +174,7 @@ class FormattingBar(Gtk.Box):
             ("insert-link-symbolic",     "Insert Link",     "link"),
             ("view-continuous-symbolic", "Horizontal Rule", "divider"),
         ]:
-            self._add_btn(parent_box, icon, tip, cmd)
-
-        self._add_sep(parent_box)
+            self._add_btn(flowbox, icon, tip, cmd)
 
         # 5. Insert Table menu button with popover
         table_menu = Gtk.MenuButton()
@@ -265,7 +275,8 @@ class FormattingBar(Gtk.Box):
 
         self.table_pop.set_child(pop_box)
         table_menu.set_popover(self.table_pop)
-        parent_box.append(table_menu)
+        flowbox.append(table_menu)
+        _setup_flow_child(table_menu)
 
         # 6. Insert Image button
         img_btn = Gtk.Button()
@@ -274,19 +285,22 @@ class FormattingBar(Gtk.Box):
         img_btn.set_focus_on_click(False)
         img_btn.add_css_class("flat")
         img_btn.connect("clicked", lambda _b: self._on_image_clicked())
-        parent_box.append(img_btn)
+        flowbox.append(img_btn)
+        _setup_flow_child(img_btn)
 
-        # 7. Pin ToggleButton packed at the end of the headerbar
+        # 7. Pin ToggleButton packed at the end of bar_box
         self.pin_btn = Gtk.ToggleButton()
         self.pin_btn.set_icon_name("view-pin-symbolic")
         self.pin_btn.set_tooltip_text("Unpin Toolbar (Auto-hide)" if self._is_pinned else "Pin Toolbar (Always visible)")
         self.pin_btn.set_active(self._is_pinned)
         self.pin_btn.set_focus_on_click(False)
         self.pin_btn.add_css_class("flat")
+        self.pin_btn.set_valign(Gtk.Align.CENTER)
+        self.pin_btn.set_halign(Gtk.Align.END)
         if self._is_pinned:
             self.pin_btn.add_css_class("stilo-pin-active")
         self.pin_btn.connect("toggled", self._on_pin_toggled)
-        hbar.pack_end(self.pin_btn)
+        bar_box.append(self.pin_btn)
 
     def _on_image_clicked(self):
         if self._pick_image:
@@ -314,6 +328,10 @@ class FormattingBar(Gtk.Box):
         btn.add_css_class("flat")
         btn.connect("clicked", lambda _b, c=cmd: self._exec(c))
         box.append(btn)
+        child = btn.get_parent()
+        if isinstance(child, Gtk.FlowBoxChild):
+            child.set_can_focus(False)
+            child.set_focusable(False)
         return btn
 
     def _add_sep(self, box):
@@ -744,6 +762,8 @@ class NoteEditor(Gtk.Box):
 
         act("undo", lambda: self._exec_js_format("undo"))
         act("redo", lambda: self._exec_js_format("redo"))
+        act("highlight",    lambda: self._exec_js_format("highlight"))
+        act("clear-format", lambda: self._exec_js_format("clear-format"))
         act("increase-font-size", lambda: self.font_size_selector.increase())
         act("decrease-font-size", lambda: self.font_size_selector.decrease())
         act("reset-font-size",    lambda: self.font_size_selector.reset())
@@ -765,6 +785,8 @@ class NoteEditor(Gtk.Box):
         if app:
             app.set_accels_for_action("editor.undo", ["<Control>z"])
             app.set_accels_for_action("editor.redo", ["<Control>y", "<Control><Shift>z"])
+            app.set_accels_for_action("editor.highlight", ["<Control><Shift>h"])
+            app.set_accels_for_action("editor.clear-format", ["<Control>backslash", "<Control>m"])
             app.set_accels_for_action("editor.increase-font-size", ["<Control>plus", "<Control>equal"])
             app.set_accels_for_action("editor.decrease-font-size", ["<Control>minus", "<Control>underscore"])
             app.set_accels_for_action("editor.reset-font-size", ["<Control>0"])

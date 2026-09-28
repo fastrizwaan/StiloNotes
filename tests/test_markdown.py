@@ -234,6 +234,14 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn('class="stilo-task"', html)
         self.assertIn('class="stilo-task completed"', html)
 
+    def test_fenced_bash_code_block(self):
+        md = '```bash\necho "hello world"\npwd\nls\n```'
+        html = markdown_to_html(md)
+        self.assertIn('class="stilo-code-block" data-lang="bash"', html)
+        self.assertIn('echo &quot;hello world&quot;\npwd\nls', html)
+        back = html_to_markdown(html)
+        self.assertIn('```bash\necho "hello world"\npwd\nls\n```', back)
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -35,6 +35,8 @@ install_data(
 install_data(
   'icons/hicolor/symbolic/apps/io.github.fastrizwaan.StiloNotes-symbolic.svg',
   'icons/hicolor/symbolic/apps/eraser3-symbolic.svg',
+  'icons/hicolor/symbolic/apps/eraser-symbolic.svg',
+  'icons/hicolor/symbolic/apps/marker-symbolic.svg',
   'icons/hicolor/symbolic/apps/heading-symbolic.svg',
   'icons/hicolor/symbolic/apps/view-list-bullet-symbolic.svg',
   'icons/hicolor/symbolic/apps/view-list-ordered-symbolic.svg',

@@ -342,6 +342,18 @@
       font-size: 13.5px;
     }
 
+    mark.stilo-highlight, .stilo-highlight {
+      background-color: rgba(255, 230, 0, 0.45);
+      color: inherit;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    body.dark mark.stilo-highlight, body.dark .stilo-highlight {
+      background-color: rgba(255, 215, 0, 0.35);
+      color: #fff;
+    }
+
     /* Tables */
     .stilo-table-wrapper {
       position: relative;
@@ -966,9 +978,19 @@
       ':key:': '🔑', ':bell:': '🔔', ':package:': '📦', ':computer:': '💻'
     };
 
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function hasMarkdownSyntax(str) {
       if (!str) return false;
-      return /\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\//i.test(str);
+      return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/)/m.test(str);
     }
 
     function formatMarkdownInText(str) {
@@ -1036,12 +1058,211 @@
       return { html: s, matched };
     }
 
+    function parseMarkdownToHtml(mdText) {
+      if (!mdText) return '';
+      let text = mdText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      // 1. Extract fenced code blocks and replace with placeholders
+      const codeBlocks = [];
+      const codeRegex = /(?:^|\n)(```|~~~)([a-zA-Z0-9_\-\.\+]*)\n([\s\S]*?)(?:\n\1(?:\n|$)|$)/g;
+      text = text.replace(codeRegex, (match, fence, lang, code) => {
+        const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : '';
+        const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : '';
+        const escaped = escapeHtml(code.replace(/\n$/, ''));
+        const html = `<pre class="stilo-code-block"${langAttr}><code${langClass}>${escaped}\n</code></pre><div><br></div>`;
+        const placeholder = `__STILO_CODE_BLOCK_${codeBlocks.length}__`;
+        codeBlocks.push(html);
+        return (match.startsWith('\n') ? '\n' : '') + placeholder + (match.endsWith('\n') ? '\n' : '');
+      });
+
+      const rawLines = text.split('\n');
+      const out = [];
+      let inTable = false;
+      let tableRows = [];
+      let inList = false;
+      let listType = null;
+
+      function closeList() {
+        if (inList) {
+          out.push(`</${listType}>`);
+          inList = false;
+          listType = null;
+        }
+      }
+
+      function closeTable() {
+        if (inTable && tableRows.length > 0) {
+          const rows = [];
+          for (let r of tableRows) {
+            let trimmed = r.trim();
+            if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+            if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
+            rows.push(trimmed.split('|').map(c => c.trim()));
+          }
+          if (rows.length >= 2 && rows[1].every(c => /^:?-+:?$/.test(c))) {
+            const headers = rows[0];
+            const alignments = rows[1].map(c => {
+              if (c.startsWith(':') && c.endsWith(':')) return 'center';
+              if (c.endsWith(':')) return 'right';
+              return 'left';
+            });
+            const dataRows = rows.slice(2);
+            let tblHtml = '<div class="stilo-table-wrapper" contenteditable="false"><table class="stilo-table" contenteditable="true"><thead><tr>';
+            for (let i = 0; i < headers.length; i++) {
+              const align = alignments[i] || 'left';
+              const style = align !== 'left' ? ` style="text-align: ${align};"` : '';
+              tblHtml += `<th${style}>${formatMarkdownInText(headers[i]).html || '<br>'}</th>`;
+            }
+            tblHtml += '</tr></thead><tbody>';
+            for (let row of dataRows) {
+              tblHtml += '<tr>';
+              for (let i = 0; i < headers.length; i++) {
+                const cellVal = i < row.length ? row[i] : '';
+                const align = alignments[i] || 'left';
+                const style = align !== 'left' ? ` style="text-align: ${align};"` : '';
+                tblHtml += `<td${style}>${formatMarkdownInText(cellVal).html || '<br>'}</td>`;
+              }
+              tblHtml += '</tr>';
+            }
+            tblHtml += '</tbody></table></div><div><br></div>';
+            out.push(tblHtml);
+          } else {
+            for (let r of tableRows) {
+              out.push(`<div>${formatMarkdownInText(r).html}</div>`);
+            }
+          }
+          inTable = false;
+          tableRows = [];
+        }
+      }
+
+      for (let i = 0; i < rawLines.length; i++) {
+        let line = rawLines[i];
+
+        const cbMatch = line.trim().match(/^__STILO_CODE_BLOCK_(\d+)__$/);
+        if (cbMatch) {
+          closeList();
+          closeTable();
+          const idx = parseInt(cbMatch[1], 10);
+          if (codeBlocks[idx]) {
+            out.push(codeBlocks[idx]);
+          }
+          continue;
+        }
+
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2) {
+          closeList();
+          inTable = true;
+          tableRows.push(trimmed);
+          continue;
+        } else if (inTable) {
+          closeTable();
+        }
+
+        if (/^(?:---|\*\*\*|___)$/.test(trimmed)) {
+          closeList();
+          out.push('<hr class="stilo-hr"><div><br></div>');
+          continue;
+        }
+
+        const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (hMatch) {
+          closeList();
+          const level = hMatch[1].length;
+          const content = formatMarkdownInText(hMatch[2]).html;
+          out.push(`<h${level}>${content}</h${level}>`);
+          continue;
+        }
+
+        const qMatch = line.match(/^>\s?(.*)$/);
+        if (qMatch) {
+          closeList();
+          const content = formatMarkdownInText(qMatch[1]).html;
+          out.push(`<blockquote class="stilo-quote">${content || '<br>'}</blockquote>`);
+          continue;
+        }
+
+        const taskMatch = line.match(/^[-*+]\s+\[([ xX])\]\s*(.*)$/);
+        if (taskMatch) {
+          closeList();
+          const checked = taskMatch[1].toLowerCase() === 'x';
+          const content = formatMarkdownInText(taskMatch[2]).html;
+          out.push(`<div class="stilo-task${checked ? ' completed' : ''}"><input type="checkbox" class="stilo-checkbox"${checked ? ' checked' : ''}><span class="task-text">${content || '<br>'}</span></div>`);
+          continue;
+        }
+
+        const ulMatch = line.match(/^[-*+]\s+(.*)$/);
+        if (ulMatch) {
+          if (!inList || listType !== 'ul') {
+            closeList();
+            inList = true;
+            listType = 'ul';
+            out.push('<ul>');
+          }
+          const content = formatMarkdownInText(ulMatch[1]).html;
+          out.push(`<li>${content || '<br>'}</li>`);
+          continue;
+        }
+
+        const olMatch = line.match(/^\d+\.\s+(.*)$/);
+        if (olMatch) {
+          if (!inList || listType !== 'ol') {
+            closeList();
+            inList = true;
+            listType = 'ol';
+            out.push('<ol>');
+          }
+          const content = formatMarkdownInText(olMatch[1]).html;
+          out.push(`<li>${content || '<br>'}</li>`);
+          continue;
+        }
+
+        if (trimmed === '') {
+          closeList();
+          out.push('<div><br></div>');
+          continue;
+        }
+
+        closeList();
+        const content = formatMarkdownInText(line).html;
+        out.push(`<div>${content}</div>`);
+      }
+
+      closeList();
+      closeTable();
+
+      return out.join('');
+    }
+
     function convertMarkdownInBlock(block) {
       if (!block || isConvertingMarkdown) return;
       if (block.tagName === 'PRE' || block.classList.contains('stilo-code-block')) return;
 
       const rawText = block.textContent;
       if (!hasMarkdownSyntax(rawText)) return;
+
+      const rawTrimmed = rawText.trim();
+      const codeBlockMatch = rawTrimmed.match(/^(?:```|~~~)([a-zA-Z0-9_\-\.\+]*)\r?\n([\s\S]*?)\r?\n(?:```|~~~)$/);
+      if (codeBlockMatch) {
+        const lang = codeBlockMatch[1] || '';
+        const code = codeBlockMatch[2] || '';
+        const pre = document.createElement('pre');
+        pre.className = 'stilo-code-block';
+        if (lang) pre.setAttribute('data-lang', lang);
+        const codeEl = document.createElement('code');
+        if (lang) codeEl.className = `language-${lang}`;
+        codeEl.textContent = code ? code + '\n' : '\n';
+        pre.appendChild(codeEl);
+        const nextDiv = document.createElement('div');
+        nextDiv.innerHTML = '<br>';
+        block.parentNode.replaceChild(pre, block);
+        pre.parentNode.insertBefore(nextDiv, pre.nextSibling);
+        setCursorAtStart(nextDiv);
+        notifyChange();
+        return;
+      }
 
       // Process only text nodes
       const textNodes = [];
@@ -1138,6 +1359,22 @@
         }
       }
 
+      // Clear Formatting shortcut: Ctrl+\ or Ctrl+M
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === '\\' || e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        e.stopPropagation();
+        doClearFormatting();
+        return;
+      }
+
+      // Highlight shortcut: Ctrl+Shift+H
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        e.stopPropagation();
+        doApplyHighlight();
+        return;
+      }
+
       // 1. Tab key
       if (e.key === 'Tab') {
         const cell = getClosestElement('td, th');
@@ -1163,9 +1400,84 @@
 
       // 2. Enter key
       if (e.key === 'Enter') {
+        const pre = getClosestElement('pre.stilo-code-block');
+        if (pre) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            const codeEl = pre.querySelector('code') || pre;
+            const preRange = range.cloneRange();
+            preRange.selectNodeContents(codeEl);
+            preRange.setEnd(range.startContainer, range.startOffset);
+            const textBefore = preRange.toString();
+            const lines = textBefore.split('\n');
+            const currentLine = lines[lines.length - 1].trim();
+
+            // Closing fence trigger: ``` or ~~~
+            if (currentLine === '```' || currentLine === '~~~') {
+              e.preventDefault();
+              const idx = textBefore.lastIndexOf(currentLine);
+              const afterRange = range.cloneRange();
+              afterRange.selectNodeContents(codeEl);
+              afterRange.setStart(range.startContainer, range.startOffset);
+              const textAfter = afterRange.toString();
+
+              let newCode = (textBefore.slice(0, idx) + textAfter).replace(/\n+$/, '');
+              codeEl.textContent = newCode ? newCode + '\n' : '';
+              if (!codeEl.textContent) codeEl.innerHTML = '<br>';
+
+              let nextDiv = pre.nextElementSibling;
+              if (!nextDiv || nextDiv.tagName === 'PRE') {
+                nextDiv = document.createElement('div');
+                nextDiv.innerHTML = '<br>';
+                pre.parentNode.insertBefore(nextDiv, pre.nextSibling);
+              }
+              setCursorAtStart(nextDiv);
+              saveUndoState();
+              notifyChange();
+              return;
+            }
+          }
+          // Normal Enter inside code block: insert newline
+          e.preventDefault();
+          document.execCommand('insertText', false, '\n');
+          notifyChange();
+          return;
+        }
+
         const block = getClosestBlockElement();
         if (block) {
           const txt = block.textContent.trim();
+
+          // Fenced Code Block trigger: ```lang or ~~~lang
+          const codeMatch = txt.match(/^(?:```|~~~)([a-zA-Z0-9_\-\.\+]*)$/);
+          if (codeMatch) {
+            e.preventDefault();
+            const lang = codeMatch[1] || '';
+            const newPre = document.createElement('pre');
+            newPre.className = 'stilo-code-block';
+            if (lang) {
+              newPre.setAttribute('data-lang', lang);
+            }
+            const newCode = document.createElement('code');
+            if (lang) {
+              newCode.className = `language-${lang}`;
+            }
+            newCode.innerHTML = '<br>';
+            newPre.appendChild(newCode);
+
+            const nextDiv = document.createElement('div');
+            nextDiv.innerHTML = '<br>';
+
+            block.parentNode.replaceChild(newPre, block);
+            newPre.parentNode.insertBefore(nextDiv, newPre.nextSibling);
+
+            setCursorAtStart(newCode);
+            saveUndoState();
+            notifyChange();
+            return;
+          }
+
           // Divider trigger: "---" or "***"
           if (txt === '---' || txt === '***') {
             e.preventDefault();
@@ -1297,6 +1609,14 @@
               transformCurrentBlockToQuote(textAfter);
               return;
             }
+
+            // Code block trigger on Space: ``` or ~~~
+            if (textBefore === '```' || textBefore === '~~~') {
+              e.preventDefault();
+              node.textContent = textAfter;
+              transformCurrentBlockToCode(textAfter);
+              return;
+            }
           }
         }
       }
@@ -1399,6 +1719,26 @@
       notifyChange();
     }
 
+    function transformCurrentBlockToCode(content = '', lang = '') {
+      const block = getClosestBlockElement();
+      if (!block) return;
+      const pre = document.createElement('pre');
+      pre.className = 'stilo-code-block';
+      if (lang) pre.setAttribute('data-lang', lang);
+      const code = document.createElement('code');
+      if (lang) code.className = `language-${lang}`;
+      code.textContent = content ? content + '\n' : '';
+      if (!content) code.innerHTML = '<br>';
+      pre.appendChild(code);
+      const nextDiv = document.createElement('div');
+      nextDiv.innerHTML = '<br>';
+      block.parentNode.replaceChild(pre, block);
+      pre.parentNode.insertBefore(nextDiv, pre.nextSibling);
+      setCursorAtStart(code);
+      saveUndoState();
+      notifyChange();
+    }
+
     // ==========================================
     // Toolbar Actions
     // ==========================================
@@ -1425,13 +1765,148 @@
       notifyChange();
     }
 
-    function applyHighlight() {
+    function doApplyHighlight() {
       closeAllPopups();
+      saveUndoState();
+      editor.focus();
       const sel = window.getSelection();
-      if (sel.rangeCount && !sel.isCollapsed) {
+      if (!sel || sel.rangeCount === 0) return;
+
+      // 1. If cursor or selection is already inside a mark, toggle it off by unwrapping
+      const existingMark = getClosestElement('mark');
+      if (existingMark && editor.contains(existingMark)) {
+        const parent = existingMark.parentNode;
+        while (existingMark.firstChild) {
+          parent.insertBefore(existingMark.firstChild, existingMark);
+        }
+        parent.removeChild(existingMark);
+        parent.normalize();
+        notifyChange();
+        return;
+      }
+
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) {
+        // Text is selected: wrap with <mark class="stilo-highlight">
         const text = sel.toString();
-        const html = `<mark class="stilo-highlight">${text}</mark>`;
-        document.execCommand('insertHTML', false, html);
+        if (text) {
+          const markHtml = `<mark class="stilo-highlight">${escapeHtml(text)}</mark>`;
+          document.execCommand('insertHTML', false, markHtml);
+          notifyChange();
+        }
+      } else {
+        // Collapsed cursor: expand to current word under cursor
+        const node = range.startContainer;
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent;
+          const offset = range.startOffset;
+          let start = offset;
+          while (start > 0 && /\S/.test(text[start - 1])) start--;
+          let end = offset;
+          while (end < text.length && /\S/.test(text[end])) end++;
+
+          if (end > start) {
+            range.setStart(node, start);
+            range.setEnd(node, end);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            const word = text.slice(start, end);
+            const markHtml = `<mark class="stilo-highlight">${escapeHtml(word)}</mark>`;
+            document.execCommand('insertHTML', false, markHtml);
+            notifyChange();
+            return;
+          }
+        }
+        // If not on a word, insert empty mark and place cursor inside
+        const mark = document.createElement('mark');
+        mark.className = 'stilo-highlight';
+        mark.innerHTML = '&#8203;';
+        range.insertNode(mark);
+        setCursorAtStart(mark);
+        notifyChange();
+      }
+    }
+
+    function doClearFormatting() {
+      closeAllPopups();
+      saveUndoState();
+      editor.focus();
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const range = sel.getRangeAt(0);
+      const formattingSelector = 'strong, b, em, i, u, ins, del, s, strike, mark, sub, sup, code, a, font, span[style], span.stilo-tag, span.stilo-footnote-ref';
+
+      if (!range.collapsed) {
+        // 1. Text is selected: clear character and inline formatting in selection
+        try {
+          document.execCommand('removeFormat', false, null);
+
+          const container = range.commonAncestorContainer;
+          const root = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+          if (root && editor.contains(root)) {
+            const nodes = root.querySelectorAll(formattingSelector);
+            for (const node of nodes) {
+              if (sel.containsNode(node, true)) {
+                const parent = node.parentNode;
+                if (parent) {
+                  while (node.firstChild) {
+                    parent.insertBefore(node.firstChild, node);
+                  }
+                  parent.removeChild(node);
+                }
+              }
+            }
+            root.normalize();
+          }
+        } catch (e) {
+          console.error('Error clearing selection format:', e);
+        }
+        notifyChange();
+        return;
+      }
+
+      // 2. Cursor is blinking (no selection): clear formatting of the current line/block
+      const block = getClosestBlockElement();
+      if (block && editor.contains(block)) {
+        let targetDiv = block;
+        const tag = block.tagName;
+        const isTask = block.classList.contains('stilo-task');
+
+        if (tag === 'H1' || tag === 'H2' || tag === 'H3' || tag === 'H4' || tag === 'H5' || tag === 'H6' || tag === 'BLOCKQUOTE' || tag === 'PRE' || isTask) {
+          let text = '';
+          if (isTask) {
+            const taskText = block.querySelector('.task-text');
+            text = taskText ? taskText.textContent : block.textContent;
+          } else {
+            text = block.textContent;
+          }
+          targetDiv = document.createElement('div');
+          targetDiv.textContent = text || '';
+          if (!targetDiv.textContent) targetDiv.innerHTML = '<br>';
+          block.parentNode.replaceChild(targetDiv, block);
+        } else {
+          // Normal block (div, p, li, td, th)
+          const nodes = block.querySelectorAll(formattingSelector);
+          for (const node of nodes) {
+            const parent = node.parentNode;
+            if (parent) {
+              while (node.firstChild) {
+                parent.insertBefore(node.firstChild, node);
+              }
+              parent.removeChild(node);
+            }
+          }
+          block.removeAttribute('style');
+          if (!block.matches('td, th, li')) {
+            block.className = '';
+          }
+          block.normalize();
+          targetDiv = block;
+        }
+
+        setCursorAtEnd(targetDiv);
         notifyChange();
       }
     }
@@ -1706,8 +2181,15 @@
 
     function insertCodeBlock() {
       closeAllPopups();
-      const codeHtml = `<pre class="stilo-code-block"><code>// Code here...\n</code></pre><div><br></div>`;
-      document.execCommand('insertHTML', false, codeHtml);
+      saveUndoState();
+      const sel = window.getSelection();
+      let text = '';
+      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        text = sel.toString();
+      }
+      const escaped = text ? escapeHtml(text) : '// Code here...\n';
+      const codeHtml = `<pre class="stilo-code-block"><code>${escaped}</code></pre><div><br></div>`;
+      insertHtmlSafely(codeHtml);
       notifyChange();
     }
 
@@ -1850,16 +2332,40 @@
         }
       }
 
+      // Check if cursor is inside a code block: paste verbatim plain text
+      const insidePre = getClosestElement('pre.stilo-code-block');
+      if (insidePre) {
+        const text = clipboardData.getData('text/plain');
+        if (text) {
+          e.preventDefault();
+          saveUndoState();
+          document.execCommand('insertText', false, text);
+          notifyChange();
+        }
+        return;
+      }
+
       // 2. Check for markdown syntax in plain text
       const text = clipboardData.getData('text/plain');
       if (text && hasMarkdownSyntax(text)) {
-        const res = formatMarkdownInText(text);
-        if (res.matched) {
+        const isBlockMarkdown = text.includes('\n') || /^(?:```|~~~|#{1,6}\s|>|[-*+]\s|\d+\.\s|[-*+]\s*\[[ xX]\]|\|)/m.test(text.trim());
+        if (isBlockMarkdown) {
           e.preventDefault();
-          const formatted = res.html.replace(/\n/g, '<br>');
-          document.execCommand('insertHTML', false, formatted);
+          saveUndoState();
+          const parsedHtml = parseMarkdownToHtml(text);
+          insertHtmlSafely(parsedHtml);
+          initAllHandles();
           notifyChange();
           return;
+        } else {
+          const res = formatMarkdownInText(text);
+          if (res.matched) {
+            e.preventDefault();
+            saveUndoState();
+            document.execCommand('insertHTML', false, res.html);
+            notifyChange();
+            return;
+          }
         }
       }
 
@@ -1867,6 +2373,7 @@
       const html = clipboardData.getData('text/html');
       if (html) {
         e.preventDefault();
+        saveUndoState();
         const clean = sanitizeHtml(html);
         document.execCommand('insertHTML', false, clean);
         notifyChange();
@@ -2154,7 +2661,8 @@
       else if (command === 'italic') applyFormat('italic');
       else if (command === 'underline') applyFormat('underline');
       else if (command === 'strike') applyFormat('strikeThrough');
-      else if (command === 'highlight') applyHighlight();
+      else if (command === 'highlight') doApplyHighlight();
+      else if (command === 'clear-format' || command === 'clearFormat' || command === 'removeFormat') doClearFormatting();
       else if (command === 'quote') insertQuote();
       else if (command === 'code') insertCodeBlock();
       else if (command === 'table') doInsertCustomTable(3, 3, true);
@@ -2167,6 +2675,9 @@
       else if (command === 'link') promptLink();
       else if (command === 'image') triggerImagePicker();
     };
+
+    window.clearFormatting = doClearFormatting;
+    window.applyHighlight = doApplyHighlight;
   </script>
 </body>
 </html>

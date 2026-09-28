@@ -868,11 +868,11 @@ def html_to_markdown(html_content: str) -> str:
     # 6. Convert Code Blocks
     def replace_code_block(m: re.Match) -> str:
         lang = m.group(1) or ""
-        code = html.unescape(m.group(2))
+        code = html.unescape(m.group(2)).rstrip('\n')
         return f"\n```{lang}\n{code}\n```\n\n"
 
     s = RE_HTM_CODE_LANG.sub(replace_code_block, s)
-    s = RE_HTM_CODE_NO_LANG.sub(lambda m: f"\n```\n{html.unescape(m.group(1))}\n```\n\n", s)
+    s = RE_HTM_CODE_NO_LANG.sub(lambda m: f"\n```\n{html.unescape(m.group(1)).rstrip(chr(10))}\n```\n\n", s)
 
     # 7. Convert Blockquotes (recursively handles nesting)
     while '<blockquote' in s:
