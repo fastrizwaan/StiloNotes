@@ -447,6 +447,54 @@ def strip_markdown(text: str) -> str:
     return RE_WHITESPACE.sub(' ', s).strip()
 
 
+def extract_table_data(content: str) -> Optional[List[List[str]]]:
+    """Extract rows from the first table in markdown or HTML content."""
+    if not content:
+        return None
+
+    # 1. Try markdown table
+    lines = content.splitlines()
+    table_lines = []
+    in_table = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2:
+            table_lines.append(stripped)
+            in_table = True
+        elif in_table:
+            break
+
+    if len(table_lines) >= 2:
+        parsed_rows = []
+        for tl in table_lines:
+            cells = [c.strip() for c in tl.strip("|").split("|")]
+            # Skip separator row like | --- | :--- |
+            if all(re.match(r'^:?-+:?$', c) for c in cells if c):
+                continue
+            if any(cells):
+                parsed_rows.append(cells)
+
+        if parsed_rows:
+            return parsed_rows
+
+    # 2. Try HTML table
+    table_match = re.search(r'<table[^>]*>(.*?)</table>', content, flags=re.DOTALL | re.IGNORECASE)
+    if table_match:
+        html_table = table_match.group(1)
+        tr_matches = re.findall(r'<tr[^>]*>(.*?)</tr>', html_table, flags=re.DOTALL | re.IGNORECASE)
+        parsed_rows = []
+        for tr in tr_matches:
+            cells = re.findall(r'<(?:th|td)[^>]*>(.*?)</(?:th|td)>', tr, flags=re.DOTALL | re.IGNORECASE)
+            clean_cells = [strip_markdown(c).strip() for c in cells]
+            if any(clean_cells):
+                parsed_rows.append(clean_cells)
+        if parsed_rows:
+            return parsed_rows
+
+    return None
+
+
 def extract_title_and_excerpt(markdown_text: str = "", html_text: str = "") -> Tuple[str, str]:
     """Extract first non-empty line as title, and subsequent text as excerpt."""
     title = "Untitled Note"
@@ -454,14 +502,35 @@ def extract_title_and_excerpt(markdown_text: str = "", html_text: str = "") -> T
 
     lines = []
     if markdown_text:
-        lines = [line.strip() for line in markdown_text.splitlines() if line.strip()]
+        # Strip images before taking title and excerpt lines so image markup doesn't become text
+        clean_md = re.sub(r'!\[.*?\]\([^)]+\)', '', markdown_text)
+        clean_md = re.sub(r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*>.*?</div>', '', clean_md, flags=re.DOTALL | re.IGNORECASE)
+        clean_md = re.sub(r'<img[^>]*>', '', clean_md, flags=re.DOTALL | re.IGNORECASE)
+        clean_lines = []
+        for l in clean_md.splitlines():
+            st = l.strip()
+            # Skip table separator lines
+            cells = [c.strip() for c in st.strip("|").split("|")]
+            if all(re.match(r'^:?-+:?$', c) for c in cells if c):
+                continue
+            if st:
+                clean_lines.append(st)
+        lines = clean_lines
+        if not lines:
+            # Fall back to original lines if note contains only images
+            lines = [line.strip() for line in markdown_text.splitlines() if line.strip()]
     elif html_text:
         clean = RE_H1_TAG.sub(r'\1\n', html_text)
         clean = RE_DIV_TAG.sub('\n', clean)
         clean = RE_P_TAG.sub('\n', clean)
         clean = RE_BR_TAG.sub('\n', clean)
+        clean = re.sub(r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*>.*?</div>', '', clean, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r'<img[^>]*>', '', clean, flags=re.DOTALL | re.IGNORECASE)
         clean = RE_HTML_TAGS.sub(' ', clean)
         lines = [line.strip() for line in html.unescape(clean).splitlines() if line.strip()]
+        if not lines:
+            clean_fallback = RE_HTML_TAGS.sub(' ', html_text)
+            lines = [line.strip() for line in html.unescape(clean_fallback).splitlines() if line.strip()]
 
     if lines:
         title = strip_markdown(lines[0]) or "Untitled Note"

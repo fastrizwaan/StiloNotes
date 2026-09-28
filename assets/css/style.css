@@ -97,6 +97,47 @@ picture.note-grid-thumbnail {
   margin-bottom: 3px;
 }
 
+/* Table Preview in Grid Card */
+.note-grid-table-preview {
+  border-radius: 6px;
+  min-width: 216px;
+  max-width: 216px;
+  min-height: 80px;
+  max-height: 80px;
+  margin-top: 3px;
+  margin-bottom: 3px;
+  background-color: alpha(currentColor, 0.03);
+  border: 1px solid alpha(currentColor, 0.12);
+  overflow: hidden;
+}
+
+.note-grid-table-header {
+  background-color: alpha(currentColor, 0.08);
+  border-bottom: 1px solid alpha(currentColor, 0.14);
+  padding: 3px 5px;
+}
+
+.note-grid-table-header label {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--window-fg-color);
+}
+
+.note-grid-table-cell {
+  padding: 2.5px 5px;
+  border-bottom: 1px solid alpha(currentColor, 0.06);
+}
+
+.note-grid-table-cell label {
+  font-size: 10.5px;
+  color: var(--secondary-color);
+  opacity: 0.85;
+}
+
+.table-col-sep {
+  border-right: 1px solid alpha(currentColor, 0.08);
+}
+
 .note-grid-title {
   font-weight: 700;
   font-size: 14.5px;

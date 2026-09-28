@@ -10,45 +10,17 @@ from typing import List, Optional
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
 
 from stilonotes.models import Note
-from stilonotes.markdown_utils import strip_markdown
+from stilonotes.markdown_utils import strip_markdown, extract_table_data
 
 
-def get_note_image_bytes(note: Note, db=None) -> Optional[bytes]:
-    """Retrieve raw image bytes for preview if note has an image."""
-    # 1. First check database attachments for this note if db is available
-    if db and hasattr(db, "get_note_first_image"):
-        try:
-            data = db.get_note_first_image(note.id)
-            if data:
-                return data
-        except Exception:
-            pass
+_TEXTURE_CACHE: dict = {}
 
-    # 2. Check for attachment://<id>, data:image, file:// in markdown or html
-    content = ""
-    if note.content_markdown:
-        content += note.content_markdown + "\n"
-    if note.content_html:
-        content += note.content_html
 
-    if not content:
-        return None
-
-    # Check for markdown image ![alt](url)
-    md_match = re.search(r'!\[.*?\]\((.+?)\)', content)
-    url = ""
-    if md_match:
-        url = md_match.group(1).strip().split()[0]
-    else:
-        # Check for HTML img tag
-        html_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE)
-        if html_match:
-            url = html_match.group(1).strip()
-
+def _resolve_image_bytes(url: str, db=None) -> Optional[bytes]:
+    """Resolve an image URL (attachment://, data:image, file://) to raw bytes."""
     if not url:
         return None
 
-    # Resolve url
     if url.startswith("attachment://") or url.startswith("attachment:"):
         prefix = "attachment://" if url.startswith("attachment://") else "attachment:"
         att_id = url[len(prefix):].split("/")[0].split("?")[0].split("#")[0]
@@ -84,8 +56,56 @@ def get_note_image_bytes(note: Note, db=None) -> Optional[bytes]:
     return None
 
 
+def get_note_image_bytes(note: Note, db=None) -> Optional[bytes]:
+    """Retrieve raw image bytes for preview if note has an image.
+
+    If a note has multiple images, only the top-most Primary Image is returned.
+    Subsequent images are ignored in card preview.
+    """
+    # 1. Check in-memory content on the note object if present
+    content = ""
+    if note.content_markdown:
+        content = note.content_markdown
+    elif note.content_html:
+        content = note.content_html
+
+    if content:
+        # Collect all images in document order (top to bottom)
+        matches = []
+        for m in re.finditer(r'!\[.*?\]\((.+?)\)', content):
+            raw_url = m.group(1).strip().split()[0]
+            if raw_url:
+                matches.append((m.start(), raw_url))
+        for m in re.finditer(r'<img\s+[^>]*?src=["\']([^"\']+)["\']', content, re.IGNORECASE):
+            raw_url = m.group(1).strip()
+            if raw_url:
+                matches.append((m.start(), raw_url))
+
+        if matches:
+            matches.sort(key=lambda x: x[0])
+            for _, url in matches:
+                data = _resolve_image_bytes(url, db)
+                if data:
+                    return data
+
+    # 2. Check database for primary image (if content was not in memory or didn't resolve)
+    if db and hasattr(db, "get_note_first_image"):
+        try:
+            data = db.get_note_first_image(note.id)
+            if data:
+                return data
+        except Exception:
+            pass
+
+    return None
+
+
 def _create_thumbnail_texture(img_bytes: bytes) -> Optional[Gdk.Texture]:
     """Create a bounded Gdk.Texture from image bytes, scaled and center-cropped to 216x80."""
+    cache_key = (len(img_bytes), hash(img_bytes[:128]), hash(img_bytes[-128:]))
+    if cache_key in _TEXTURE_CACHE:
+        return _TEXTURE_CACHE[cache_key]
+
     try:
         import gi
         gi.require_version('GdkPixbuf', '2.0')
@@ -115,10 +135,112 @@ def _create_thumbnail_texture(img_bytes: bytes) -> Optional[Gdk.Texture]:
                     pix_scaled.copy_area(src_x, src_y, target_w, target_h, pix_cropped, 0, 0)
                     success, buf = pix_cropped.save_to_bufferv("png", [], [])
                     if success:
-                        return Gdk.Texture.new_from_bytes(GLib.Bytes.new(buf))
+                        tex = Gdk.Texture.new_from_bytes(GLib.Bytes.new(buf))
+                        if len(_TEXTURE_CACHE) > 200:
+                            keys_to_remove = list(_TEXTURE_CACHE.keys())[:50]
+                            for k in keys_to_remove:
+                                _TEXTURE_CACHE.pop(k, None)
+                        _TEXTURE_CACHE[cache_key] = tex
+                        return tex
     except Exception:
         pass
     return None
+
+
+_TABLE_CACHE: dict = {}
+
+
+def get_note_table_data(note: Note, db=None) -> Optional[List[List[str]]]:
+    """Retrieve structured table rows for preview if note has a table."""
+    cache_key = (note.id, note.updated_at)
+    if cache_key in _TABLE_CACHE:
+        return _TABLE_CACHE[cache_key]
+
+    # 1. Check in-memory content
+    content = ""
+    if note.content_markdown:
+        content = note.content_markdown
+    elif note.content_html:
+        content = note.content_html
+
+    if content and ("|" in content or "<table" in content.lower()):
+        data = extract_table_data(content)
+        if data:
+            if len(_TABLE_CACHE) > 200:
+                for k in list(_TABLE_CACHE.keys())[:50]:
+                    _TABLE_CACHE.pop(k, None)
+            _TABLE_CACHE[cache_key] = data
+            return data
+
+    # 2. Check database
+    if db and hasattr(db, "get_note_first_table"):
+        try:
+            data = db.get_note_first_table(note.id)
+            if len(_TABLE_CACHE) > 200:
+                for k in list(_TABLE_CACHE.keys())[:50]:
+                    _TABLE_CACHE.pop(k, None)
+            _TABLE_CACHE[cache_key] = data
+            return data
+        except Exception:
+            pass
+
+    _TABLE_CACHE[cache_key] = None
+    return None
+
+
+def _create_table_preview_widget(table_rows: List[List[str]]) -> Optional[Gtk.Widget]:
+    """Create a partial table preview widget (216x80) matching the image banner dimensions."""
+    if not table_rows or not table_rows[0]:
+        return None
+
+    outer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    outer_box.set_size_request(216, 80)
+    outer_box.set_hexpand(False)
+    outer_box.set_vexpand(False)
+    outer_box.set_halign(Gtk.Align.CENTER)
+    outer_box.set_valign(Gtk.Align.CENTER)
+    outer_box.set_overflow(Gtk.Overflow.HIDDEN)
+    outer_box.add_css_class("note-grid-table-preview")
+
+    grid = Gtk.Grid()
+    grid.set_column_homogeneous(True)
+    grid.set_hexpand(True)
+    grid.set_vexpand(False)
+    grid.set_row_spacing(0)
+    grid.set_column_spacing(0)
+
+    # Show up to 4 columns and up to 3 rows (header + 2 rows) within the 80px banner
+    num_cols = min(len(table_rows[0]), 4)
+    display_rows = table_rows[:3]
+
+    for r_idx, row in enumerate(display_rows):
+        is_header = (r_idx == 0)
+        for c_idx in range(num_cols):
+            cell_text = row[c_idx] if c_idx < len(row) else ""
+            lbl = Gtk.Label(label=cell_text)
+            lbl.set_halign(Gtk.Align.START)
+            lbl.set_xalign(0.0)
+            lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            lbl.set_lines(1)
+            lbl.set_single_line_mode(True)
+            lbl.set_hexpand(True)
+
+            cell_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            cell_box.set_hexpand(True)
+            cell_box.append(lbl)
+
+            if is_header:
+                cell_box.add_css_class("note-grid-table-header")
+            else:
+                cell_box.add_css_class("note-grid-table-cell")
+
+            if c_idx < num_cols - 1:
+                cell_box.add_css_class("table-col-sep")
+
+            grid.attach(cell_box, c_idx, r_idx, 1, 1)
+
+    outer_box.append(grid)
+    return outer_box
 
 
 def _get_note_preview(note: Note) -> str:
@@ -133,8 +255,19 @@ def _get_note_preview(note: Note) -> str:
     if not text:
         text = note.excerpt or ""
     # Strip markdown and html image tags so they don't leak into excerpt text
-    text = re.sub(r'!\[.*?\]\(.+?\)', '', text)
-    text = re.sub(r'<img[^>]+>', '', text)
+    text = re.sub(r'!\[.*?\]\([^)]+\)', '', text)
+    text = re.sub(r'<div[^>]*class=["\'][^"\']*stilo-img-wrapper[^"\']*["\'][^>]*>.*?</div>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<img[^>]*>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    # Strip HTML and markdown tables so table markup does not leak into body excerpt text
+    text = re.sub(r'<table[^>]*>.*?</table>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    clean_lines = []
+    for l in text.splitlines():
+        st = l.strip()
+        if st.startswith("|") and st.endswith("|"):
+            continue
+        clean_lines.append(l)
+    text = "\n".join(clean_lines)
+
     clean = strip_markdown(text).strip()
     return clean if clean else "Type text here..."
 
@@ -319,9 +452,12 @@ class NoteGridCard(BaseNoteCard):
             self.date_lbl.set_ellipsize(Pango.EllipsizeMode.END)
             self.card_box.append(self.date_lbl)
 
-        # 3. Thumbnail Image Banner (BELOW TITLE AND DATE!)
+        # 3. Banner preview: Primary Image or Table Preview
+        # Rule: if image + table, then image; if table only, then table preview (partial like image)
         img_bytes = get_note_image_bytes(self.note, self.db)
         self.thumb = None
+        self.table_preview = None
+
         if img_bytes:
             texture = _create_thumbnail_texture(img_bytes)
             if texture:
@@ -340,20 +476,32 @@ class NoteGridCard(BaseNoteCard):
                 self.thumb.add_css_class("note-grid-thumbnail")
                 img_container.append(self.thumb)
                 self.card_box.append(img_container)
+        else:
+            table_data = get_note_table_data(self.note, self.db)
+            if table_data:
+                table_widget = _create_table_preview_widget(table_data)
+                if table_widget:
+                    self.table_preview = table_widget
+                    self.card_box.append(self.table_preview)
 
         # 4. Body excerpt preview (multi-line)
         preview_text = _get_note_preview(self.note)
+        has_media = bool(self.thumb or self.table_preview)
+        if has_media and preview_text == "Type text here...":
+            preview_text = ""
+
         self.body_lbl = Gtk.Label(label=preview_text)
         self.body_lbl.add_css_class("note-grid-body")
         self.body_lbl.set_wrap(True)
         self.body_lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self.body_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-        self.body_lbl.set_lines(2 if self.thumb else 5)
+        self.body_lbl.set_lines(2 if has_media else 5)
         self.body_lbl.set_halign(Gtk.Align.START)
         self.body_lbl.set_valign(Gtk.Align.START)
         self.body_lbl.set_xalign(0.0)
         self.body_lbl.set_yalign(0.0)
         self.body_lbl.set_vexpand(True)
+        self.body_lbl.set_visible(bool(preview_text))
         self.card_box.append(self.body_lbl)
 
         # 5. Bottom Row: Category pill (anchored to bottom)

@@ -174,7 +174,204 @@ class TestNotesListAndCards(unittest.TestCase):
         self.assertIsNotNone(card.thumb)
         self.assertEqual(card.body_lbl.get_lines(), 2)
 
+    def test_multiple_images_primary_only(self):
+        """Verify that when a note has multiple images, only the top-most primary image is shown."""
+        import base64
+        from stilonotes.notes_list import get_note_image_bytes
+
+        # Two distinct 1x1 png base64 images
+        b64_img1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        b64_img2 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+
+        img1_bytes = base64.b64decode(b64_img1)
+        img2_bytes = base64.b64decode(b64_img2)
+        self.assertNotEqual(img1_bytes, img2_bytes)
+
+        # Note with 2 images: img1 at the top, img2 at the bottom
+        note_multi = Note(
+            title="Multi Image Note",
+            content_markdown=(
+                f"# Title\n\n"
+                f"![Top Primary Image](data:image/png;base64,{b64_img1})\n\n"
+                f"Some text in between.\n\n"
+                f"![Bottom Secondary Image](data:image/png;base64,{b64_img2})\n"
+            )
+        )
+
+        # get_note_image_bytes must return img1 (top-most), ignoring img2
+        extracted = get_note_image_bytes(note_multi, self.db)
+        self.assertEqual(extracted, img1_bytes)
+
+    def test_multiple_images_attachment_document_order(self):
+        """Verify that document order (top-most in note content) takes precedence over database creation timestamp."""
+        from stilonotes.notes_list import get_note_image_bytes
+
+        note_id = "test-doc-order-note"
+        # Save attachment B first in database
+        att_b_data = b"BINARY_IMAGE_B_CREATED_FIRST"
+        self.db.save_attachment(
+            note_id=note_id,
+            attachment_id="att-b-old",
+            filename="older.png",
+            mime_type="image/png",
+            data=att_b_data
+        )
+
+        # Save attachment A second in database
+        att_a_data = b"BINARY_IMAGE_A_CREATED_SECOND"
+        self.db.save_attachment(
+            note_id=note_id,
+            attachment_id="att-a-new",
+            filename="newer.png",
+            mime_type="image/png",
+            data=att_a_data
+        )
+
+        # But in note text, att-a-new is at the TOP, and att-b-old is at the BOTTOM
+        note = self.db.save_note(
+            note_id=note_id,
+            title="Precedence Note",
+            content_markdown=(
+                f"# My Note\n\n"
+                f"![Primary Top](attachment://att-a-new)\n\n"
+                f"Paragraph text.\n\n"
+                f"![Secondary Bottom](attachment://att-b-old)\n"
+            )
+        )
+
+        # Even with metadata-only note, get_note_image_bytes resolves top-most image att-a-new
+        light_note = Note(id=note_id, title="Precedence Note")
+        extracted = get_note_image_bytes(light_note, self.db)
+        self.assertEqual(extracted, att_a_data)
+
+    def test_broken_top_image_falls_back_to_second_image(self):
+        """If the top-most image cannot be resolved, it falls back to the next valid image."""
+        import base64
+        from stilonotes.notes_list import get_note_image_bytes
+
+        valid_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        valid_bytes = base64.b64decode(valid_b64)
+
+        note = Note(
+            title="Broken First Image",
+            content_markdown=(
+                f"![Nonexistent Attachment](attachment://missing-uuid-12345)\n"
+                f"![Valid Second Image](data:image/png;base64,{valid_b64})\n"
+                f"![Third Image](data:image/png;base64,AAAA)\n"
+            )
+        )
+
+        extracted = get_note_image_bytes(note, self.db)
+        self.assertEqual(extracted, valid_bytes)
+
+    def test_preview_excerpt_does_not_leak_image_markup(self):
+        """Card preview body excerpt should not contain image markup or alt tags."""
+        from stilonotes.notes_list import _get_note_preview
+
+        note = Note(
+            title="Image Excerpt Note",
+            content_markdown=(
+                f"# Image Excerpt Note\n\n"
+                f"![Header Banner](attachment://banner.png)\n\n"
+                f"![Secondary Photo](attachment://photo.png)\n\n"
+                f"This is the actual written text that should appear in preview."
+            )
+        )
+
+        preview = _get_note_preview(note)
+        self.assertIn("This is the actual written text", preview)
+        self.assertNotIn("Header Banner", preview)
+        self.assertNotIn("Secondary Photo", preview)
+        self.assertNotIn("attachment://", preview)
+
+    def test_extract_table_data(self):
+        """Verify extraction of table headers and rows from markdown and HTML."""
+        from stilonotes.markdown_utils import extract_table_data
+
+        # 1. Markdown table
+        md = (
+            "# My Table Note\n\n"
+            "| Item | Qty | Price |\n"
+            "| :--- | :---: | ---: |\n"
+            "| Apples | 10 | $5 |\n"
+            "| Bananas | 5 | $3 |\n"
+        )
+        table = extract_table_data(md)
+        self.assertIsNotNone(table)
+        self.assertEqual(len(table), 3)  # Header + 2 data rows
+        self.assertEqual(table[0], ["Item", "Qty", "Price"])
+        self.assertEqual(table[1], ["Apples", "10", "$5"])
+        self.assertEqual(table[2], ["Bananas", "5", "$3"])
+
+        # 2. HTML table
+        html = (
+            "<table class=\"stilo-table\">"
+            "<thead><tr><th>Task</th><th>Done</th></tr></thead>"
+            "<tbody><tr><td>Fix bug</td><td>Yes</td></tr></tbody>"
+            "</table>"
+        )
+        table_html = extract_table_data(html)
+        self.assertIsNotNone(table_html)
+        self.assertEqual(len(table_html), 2)
+        self.assertEqual(table_html[0], ["Task", "Done"])
+        self.assertEqual(table_html[1], ["Fix bug", "Yes"])
+
+        # 3. No table
+        self.assertIsNone(extract_table_data("Just plain markdown text without tables."))
+
+    def test_grid_card_table_only_and_image_precedence(self):
+        """Verify table preview shows when note has table only, and image shows when image + table."""
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.notes_list import NoteGridCard
+
+        # 1. Note with TABLE ONLY: table preview should be created, thumb is None
+        note_table_only = Note(
+            title="Table Only Note",
+            content_markdown=(
+                "# Budget\n\n"
+                "| Category | Amount |\n"
+                "| --- | --- |\n"
+                "| Hardware | $1200 |\n"
+                "| Software | $300 |\n"
+            )
+        )
+        card_table = NoteGridCard(note_table_only, db=self.db)
+        self.assertIsNone(card_table.thumb)
+        self.assertIsNotNone(card_table.table_preview)
+        self.assertTrue(card_table.table_preview.has_css_class("note-grid-table-preview"))
+
+        # 2. Note with IMAGE + TABLE: image preview must take precedence, table preview is None!
+        raw_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        note_img_and_table = Note(
+            title="Image + Table Note",
+            content_markdown=(
+                f"![Hero Image](data:image/png;base64,{raw_b64})\n\n"
+                "| Header 1 | Header 2 |\n"
+                "| --- | --- |\n"
+                "| Val 1 | Val 2 |\n"
+            )
+        )
+        card_both = NoteGridCard(note_img_and_table, db=self.db)
+        # Image takes precedence
+        self.assertIsNotNone(card_both.thumb)
+        self.assertIsNone(card_both.table_preview)
+
+        # 3. Note with NEITHER image nor table: both thumb and table_preview are None
+        note_plain = Note(
+            title="Plain Note",
+            content_markdown="Just simple text."
+        )
+        card_plain = NoteGridCard(note_plain, db=self.db)
+        self.assertIsNone(card_plain.thumb)
+        self.assertIsNone(card_plain.table_preview)
+        self.assertEqual(card_plain.body_lbl.get_lines(), 5)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
 

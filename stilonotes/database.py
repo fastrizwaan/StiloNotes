@@ -1,11 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import base64
 import json
 import os
+import re
 import sqlite3
 import threading
 import time
+import urllib.parse
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,6 +20,7 @@ from stilonotes.markdown_utils import (
     extract_title_and_excerpt,
     extract_tags,
     extract_categories,
+    extract_table_data,
     check_has_todo,
     markdown_to_html,
     html_to_markdown,
@@ -636,10 +640,71 @@ Enjoy writing with Stilo Notes!
             cursor.execute("DELETE FROM attachments WHERE id = ?", (attachment_id,))
             conn.commit()
 
+    def _resolve_attachment_uri_to_bytes(self, cursor, url: str) -> Optional[bytes]:
+        """Resolve an image URI to binary data within an existing DB cursor."""
+        if not url:
+            return None
+        if url.startswith("attachment://") or url.startswith("attachment:"):
+            prefix = "attachment://" if url.startswith("attachment://") else "attachment:"
+            att_id = url[len(prefix):].split("/")[0].split("?")[0].split("#")[0]
+            cursor.execute("SELECT data FROM attachments WHERE id = ? AND data IS NOT NULL", (att_id,))
+            r = cursor.fetchone()
+            if r and r["data"]:
+                return r["data"]
+            if "." in att_id:
+                base_id = att_id.rsplit(".", 1)[0]
+                cursor.execute("SELECT data FROM attachments WHERE id = ? AND data IS NOT NULL", (base_id,))
+                r = cursor.fetchone()
+                if r and r["data"]:
+                    return r["data"]
+        elif url.startswith("data:image/") and ";base64," in url:
+            try:
+                b64_part = url.split(";base64,", 1)[1]
+                return base64.b64decode(b64_part)
+            except Exception:
+                pass
+        elif url.startswith("file://") or (url.startswith("/") and os.path.isabs(url)):
+            local_path = url[len("file://"):] if url.startswith("file://") else url
+            local_path = urllib.parse.unquote(local_path)
+            if os.path.isfile(local_path):
+                try:
+                    with open(local_path, "rb") as f:
+                        return f.read()
+                except Exception:
+                    pass
+        return None
+
     def get_note_first_image(self, note_id: str) -> Optional[bytes]:
-        """Retrieve binary data for the first image attachment of a note."""
+        """Retrieve binary data for the top-most primary image of a note.
+        
+        If a note has multiple images, only the top-most (first in document order)
+        image is returned; subsequent images are ignored.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            # 1. First check the note's content to find the top-most image in document order
+            cursor.execute("SELECT content_markdown, content_html FROM notes WHERE id = ?", (note_id,))
+            row = cursor.fetchone()
+            if row:
+                content = row["content_markdown"] or row["content_html"] or ""
+                if content:
+                    matches = []
+                    for m in re.finditer(r'!\[.*?\]\((.+?)\)', content):
+                        raw_url = m.group(1).strip().split()[0]
+                        if raw_url:
+                            matches.append((m.start(), raw_url))
+                    for m in re.finditer(r'<img\s+[^>]*?src=["\']([^"\']+)["\']', content, re.IGNORECASE):
+                        raw_url = m.group(1).strip()
+                        if raw_url:
+                            matches.append((m.start(), raw_url))
+
+                    matches.sort(key=lambda x: x[0])
+                    for _, url in matches:
+                        data = self._resolve_attachment_uri_to_bytes(cursor, url)
+                        if data:
+                            return data
+
+            # 2. Fall back to attachments table if note content had no explicit resolved images
             cursor.execute("""
             SELECT data FROM attachments
             WHERE note_id = ? AND (mime_type LIKE 'image/%' OR filename LIKE '%.png' OR filename LIKE '%.jpg' OR filename LIKE '%.jpeg' OR filename LIKE '%.webp' OR filename LIKE '%.gif')
@@ -648,6 +713,18 @@ Enjoy writing with Stilo Notes!
             row = cursor.fetchone()
             if row and row["data"]:
                 return row["data"]
+        return None
+
+    def get_note_first_table(self, note_id: str) -> Optional[List[List[str]]]:
+        """Retrieve structured table rows for the first table of a note if present."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT content_markdown, content_html FROM notes WHERE id = ?", (note_id,))
+            row = cursor.fetchone()
+            if row:
+                content = row["content_markdown"] or row["content_html"] or ""
+                if content and ("|" in content or "<table" in content.lower()):
+                    return extract_table_data(content)
         return None
 
     def get_categories(self) -> List[Category]:
