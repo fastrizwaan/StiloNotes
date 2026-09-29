@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_ID = "io.github.fastrizwaan.StiloNotes"
 APP_NAME = "Stilo Notes"
-VERSION = "0.2"
+VERSION = "0.3"
 PROFILE = ""
 IS_DEVEL = False
 PKGDATADIR = "/usr/share/stilonotes"

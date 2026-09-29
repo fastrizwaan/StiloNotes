@@ -30,6 +30,21 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3" date="2026-09-29">
+      <description>
+        <p>New features and improvements in Stilo Notes 0.3:</p>
+        <ul>
+          <li>Interactive Grid and List view toggle with category sections and responsive FlowBox layout</li>
+          <li>Note card visual previews including primary image thumbnails and partial table previews</li>
+          <li>Refined card styling: flat appearance, borderless design, and consistent card heights</li>
+          <li>Expanded Markdown support: highlight (==text==), strikethrough, subscript, superscript, emojis, symbols, and task checklists</li>
+          <li>Responsive FlowBox formatting toolbar with highlight, erase, table, code block, and link tools</li>
+          <li>Note tags (#tag) and category support with auto-completion and symbol mapping</li>
+          <li>Base64 embedded image export and clean document export capabilities</li>
+          <li>Improved table insertion, row/column controls, and interactive image resize handles</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2" date="2026-09-27">
       <description>
         <p>Initial release of Stilo Notes featuring WebKit dynamic Markdown rendering and GNOME Libadwaita design.</p>
