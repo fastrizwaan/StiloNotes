@@ -223,6 +223,7 @@ def _create_table_preview_widget(table_rows: List[List[str]]) -> Optional[Gtk.Wi
             lbl.set_ellipsize(Pango.EllipsizeMode.END)
             lbl.set_lines(1)
             lbl.set_single_line_mode(True)
+            lbl.set_max_width_chars(8)
             lbl.set_hexpand(True)
 
             cell_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -368,7 +369,7 @@ class NoteGridCard(BaseNoteCard):
     __gtype_name__ = "NoteGridCard"
 
     def _build_ui(self, selection_mode: bool):
-        self.set_size_request(220, 220)
+        self.set_size_request(200, 180)
         self.set_hexpand(True)
         self.set_halign(Gtk.Align.FILL)
         self.set_overflow(Gtk.Overflow.HIDDEN)
@@ -408,12 +409,13 @@ class NoteGridCard(BaseNoteCard):
         clean_title = strip_markdown(raw_title) or "Untitled Note"
         self.title_lbl = Gtk.Label(label=clean_title)
         self.title_lbl.add_css_class("note-grid-title")
-        self.title_lbl.set_halign(Gtk.Align.START)
-        self.title_lbl.set_xalign(0.0)
+        self.title_lbl.set_halign(Gtk.Align.FILL)
         self.title_lbl.set_hexpand(True)
+        self.title_lbl.set_xalign(0.0)
         self.title_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.title_lbl.set_lines(1)
         self.title_lbl.set_single_line_mode(True)
+        self.title_lbl.set_max_width_chars(35)
         top_box.append(self.title_lbl)
 
         if self.note.is_pinned:
@@ -440,11 +442,13 @@ class NoteGridCard(BaseNoteCard):
         if date_str:
             self.date_lbl = Gtk.Label(label=date_str)
             self.date_lbl.add_css_class("note-grid-date")
-            self.date_lbl.set_halign(Gtk.Align.START)
+            self.date_lbl.set_halign(Gtk.Align.FILL)
+            self.date_lbl.set_hexpand(True)
             self.date_lbl.set_xalign(0.0)
             self.date_lbl.set_lines(1)
             self.date_lbl.set_single_line_mode(True)
             self.date_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            self.date_lbl.set_max_width_chars(35)
             self.card_box.append(self.date_lbl)
 
         # 3. Banner preview: Primary Image or Table Preview
@@ -458,7 +462,7 @@ class NoteGridCard(BaseNoteCard):
             texture = _create_thumbnail_texture(img_bytes)
             if texture:
                 img_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                img_container.set_size_request(-1, 80)
+                img_container.set_size_request(100, 75)
                 img_container.set_hexpand(True)
                 img_container.set_vexpand(False)
                 img_container.set_halign(Gtk.Align.FILL)
@@ -468,7 +472,7 @@ class NoteGridCard(BaseNoteCard):
                 self.thumb = Gtk.Picture.new_for_paintable(texture)
                 self.thumb.set_can_shrink(True)
                 self.thumb.set_content_fit(Gtk.ContentFit.COVER)
-                self.thumb.set_size_request(-1, 80)
+                self.thumb.set_size_request(100, 75)
                 self.thumb.set_hexpand(True)
                 self.thumb.set_halign(Gtk.Align.FILL)
                 self.thumb.add_css_class("note-grid-thumbnail")
@@ -506,11 +510,13 @@ class NoteGridCard(BaseNoteCard):
         self.body_lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self.body_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.body_lbl.set_lines(2 if has_media else 5)
-        self.body_lbl.set_halign(Gtk.Align.START)
+        self.body_lbl.set_halign(Gtk.Align.FILL)
+        self.body_lbl.set_hexpand(True)
         self.body_lbl.set_valign(Gtk.Align.START)
         self.body_lbl.set_xalign(0.0)
         self.body_lbl.set_yalign(0.0)
         self.body_lbl.set_vexpand(True)
+        self.body_lbl.set_max_width_chars(30)
         self.body_lbl.set_visible(bool(preview_text))
         self.card_box.append(self.body_lbl)
 
@@ -526,6 +532,7 @@ class NoteGridCard(BaseNoteCard):
             pill.set_ellipsize(Pango.EllipsizeMode.END)
             pill.set_lines(1)
             pill.set_single_line_mode(True)
+            pill.set_max_width_chars(15)
             footer_box.append(pill)
 
         self.card_box.append(footer_box)
@@ -545,7 +552,7 @@ class NoteListRow(BaseNoteCard):
     __gtype_name__ = "NoteListRow"
 
     def _build_ui(self, selection_mode: bool):
-        self.set_size_request(340, 72)
+        self.set_size_request(300, 68)
         self.set_hexpand(True)
         self.set_halign(Gtk.Align.FILL)
 
@@ -576,12 +583,13 @@ class NoteListRow(BaseNoteCard):
         clean_title = strip_markdown(raw_title) or "Untitled Note"
         self.title_lbl = Gtk.Label(label=clean_title)
         self.title_lbl.add_css_class("title")
-        self.title_lbl.set_halign(Gtk.Align.START)
+        self.title_lbl.set_halign(Gtk.Align.FILL)
         self.title_lbl.set_xalign(0.0)
         self.title_lbl.set_hexpand(True)
         self.title_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.title_lbl.set_lines(1)
         self.title_lbl.set_single_line_mode(True)
+        self.title_lbl.set_max_width_chars(25)
         title_box.append(self.title_lbl)
 
         if self.note.is_pinned:
@@ -600,12 +608,13 @@ class NoteListRow(BaseNoteCard):
         clean_excerpt = strip_markdown(raw_excerpt) or "No additional text"
         self.excerpt_lbl = Gtk.Label(label=clean_excerpt)
         self.excerpt_lbl.add_css_class("subtitle")
-        self.excerpt_lbl.set_halign(Gtk.Align.START)
+        self.excerpt_lbl.set_halign(Gtk.Align.FILL)
         self.excerpt_lbl.set_xalign(0.0)
         self.excerpt_lbl.set_hexpand(True)
         self.excerpt_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.excerpt_lbl.set_lines(1)
         self.excerpt_lbl.set_single_line_mode(True)
+        self.excerpt_lbl.set_max_width_chars(20)
         subtitle_box.append(self.excerpt_lbl)
 
         if self.note.category and self.show_category_pill:
@@ -614,6 +623,8 @@ class NoteListRow(BaseNoteCard):
             self.cat_pill.set_halign(Gtk.Align.END)
             self.cat_pill.set_ellipsize(Pango.EllipsizeMode.END)
             self.cat_pill.set_lines(1)
+            self.cat_pill.set_single_line_mode(True)
+            self.cat_pill.set_max_width_chars(15)
             subtitle_box.append(self.cat_pill)
 
         text_vbox.append(subtitle_box)
@@ -678,8 +689,8 @@ class NotesList(Gtk.Box):
         self.scrolled.set_hexpand(True)
 
         self.clamp = Adw.Clamp()
-        self.clamp.set_maximum_size(2400)
-        self.clamp.set_tightening_threshold(1600)
+        self.clamp.set_maximum_size(1800)
+        self.clamp.set_tightening_threshold(1200)
 
         # Sections Container
         self.sections_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
@@ -771,7 +782,7 @@ class NotesList(Gtk.Box):
         flowbox.set_column_spacing(col_sp)
         flowbox.set_row_spacing(row_sp)
         flowbox.set_min_children_per_line(1)
-        flowbox.set_max_children_per_line(24)
+        flowbox.set_max_children_per_line(8 if self.view_mode == "grid" else 3)
         flowbox.set_valign(Gtk.Align.START)
         flowbox.set_halign(Gtk.Align.FILL)
         flowbox.set_hexpand(True)
@@ -814,9 +825,11 @@ class NotesList(Gtk.Box):
         if self.view_mode != mode:
             self.view_mode = mode
             col_sp, row_sp = self._get_spacing()
+            max_children = 8 if mode == "grid" else 3
             for fb in self._get_all_flowboxes():
                 fb.set_column_spacing(col_sp)
                 fb.set_row_spacing(row_sp)
+                fb.set_max_children_per_line(max_children)
             self.set_notes(
                 self.current_notes,
                 is_search=self.is_search,

@@ -84,12 +84,12 @@ flowboxchild:active .note-list-card {
 
 /* Note Grid Card Specifics */
 .note-grid-card {
-  padding: 12px;
+  padding: 10px 12px;
 }
 
 picture.note-grid-thumbnail {
   border-radius: 6px;
-  min-height: 80px;
+  min-height: 70px;
   margin-top: 3px;
   margin-bottom: 3px;
 }
@@ -97,7 +97,7 @@ picture.note-grid-thumbnail {
 /* Table Preview in Grid Card */
 .note-grid-table-preview {
   border-radius: 6px;
-  min-height: 80px;
+  min-height: 70px;
   margin-top: 3px;
   margin-bottom: 3px;
   background-color: alpha(currentColor, 0.03);
@@ -170,7 +170,7 @@ picture.note-grid-thumbnail {
 
 /* Note List Row Specifics */
 .note-list-card {
-  padding: 10px 14px;
+  padding: 8px 12px;
 }
 
 .note-list-card .title,

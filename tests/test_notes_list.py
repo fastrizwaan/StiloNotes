@@ -83,6 +83,27 @@ class TestNotesListAndCards(unittest.TestCase):
         for card in notes_list._all_cards:
             self.assertIsInstance(card, NoteListRow)
 
+    def test_card_size_and_label_constraints(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        note = Note(
+            title="A very long title that would normally expand the card " * 5,
+            content_markdown="A very long text body that goes on and on " * 20,
+            excerpt="A very long excerpt line " * 10,
+            category="Personal"
+        )
+        grid_card = NoteGridCard(note, db=self.db)
+        self.assertEqual(grid_card.get_size_request(), (200, 180))
+        self.assertEqual(grid_card.title_lbl.get_max_width_chars(), 35)
+        self.assertEqual(grid_card.body_lbl.get_max_width_chars(), 42)
+
+        list_row = NoteListRow(note, db=self.db)
+        self.assertEqual(list_row.get_size_request(), (300, 68))
+        self.assertEqual(list_row.title_lbl.get_max_width_chars(), 45)
+        self.assertEqual(list_row.excerpt_lbl.get_max_width_chars(), 65)
+
     def test_selection_mode_and_checking(self):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:
