@@ -147,9 +147,9 @@
     h1, h2, h3, h4 {
       color: var(--heading-color);
       font-weight: 700;
-      line-height: 1;
-      margin-top: 1em;
-      margin-bottom: 0.4em;
+      line-height: 1.25;
+      margin-top: 0.35em;
+      margin-bottom: 0.2em;
     }
 
     h1 {
@@ -163,14 +163,20 @@
     h2 {
       font-size: 1.65rem;
       letter-spacing: -0.015em;
+      margin-top: 0.35em;
+      margin-bottom: 0.2em;
     }
 
     h3 {
       font-size: 1.32rem;
+      margin-top: 0.3em;
+      margin-bottom: 0.2em;
     }
 
     h4 {
       font-size: 1.12rem;
+      margin-top: 0.25em;
+      margin-bottom: 0.15em;
     }
 
     p, div {
@@ -275,16 +281,18 @@
 
     /* Headings 5 and 6 */
     h5 {
-      font-size: 1.1em;
+      font-size: 1.05em;
       font-weight: 600;
-      margin: 14px 0 6px;
+      margin-top: 0.25em;
+      margin-bottom: 0.15em;
       color: var(--text-color);
     }
 
     h6 {
       font-size: 1.0em;
       font-weight: 600;
-      margin: 12px 0 4px;
+      margin-top: 0.2em;
+      margin-bottom: 0.1em;
       color: var(--text-secondary, #666);
     }
 
@@ -351,13 +359,26 @@
     mark.stilo-highlight, .stilo-highlight {
       background-color: rgba(255, 230, 0, 0.45);
       color: inherit;
+      font-size: inherit;
+      font-family: inherit;
+      font-weight: inherit;
+      line-height: inherit;
       padding: 1px 4px;
       border-radius: 3px;
     }
 
     body.dark mark.stilo-highlight, body.dark .stilo-highlight {
       background-color: rgba(255, 215, 0, 0.35);
-      color: #fff;
+      color: inherit;
+    }
+
+    /* Ensure highlights inside headings retain the heading typography */
+    h1 mark, h2 mark, h3 mark, h4 mark, h5 mark, h6 mark,
+    h1 .stilo-highlight, h2 .stilo-highlight, h3 .stilo-highlight, h4 .stilo-highlight, h5 .stilo-highlight, h6 .stilo-highlight,
+    h1 mark *, h2 mark *, h3 mark *, h4 mark *, h5 mark *, h6 mark * {
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      line-height: inherit !important;
     }
 
     /* Tables */
@@ -2225,6 +2246,7 @@
     // ==========================================
 
     function transformCurrentBlockTo(tagName, content) {
+      hideAutocomplete();
       const block = getClosestBlockElement();
       if (!block) return;
       const el = document.createElement(tagName);
@@ -2337,13 +2359,36 @@
         return;
       }
 
+      function wrapRangeWithMark(targetRange) {
+        const mark = document.createElement('mark');
+        mark.className = 'stilo-highlight';
+        try {
+          targetRange.surroundContents(mark);
+        } catch (_) {
+          const frag = targetRange.extractContents();
+          mark.appendChild(frag);
+          targetRange.insertNode(mark);
+        }
+        mark.removeAttribute('style');
+        mark.querySelectorAll('*').forEach(el => {
+          el.style.fontSize = '';
+          el.style.fontWeight = '';
+          el.style.lineHeight = '';
+          if (!el.getAttribute('style')) el.removeAttribute('style');
+        });
+        return mark;
+      }
+
       const range = sel.getRangeAt(0);
       if (!range.collapsed) {
         // Text is selected: wrap with <mark class="stilo-highlight">
         const text = sel.toString();
         if (text) {
-          const markHtml = `<mark class="stilo-highlight">${escapeHtml(text)}</mark>`;
-          document.execCommand('insertHTML', false, markHtml);
+          const mark = wrapRangeWithMark(range);
+          const newRange = document.createRange();
+          newRange.selectNodeContents(mark);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
           notifyChange();
         }
       } else {
@@ -2360,11 +2405,12 @@
           if (end > start) {
             range.setStart(node, start);
             range.setEnd(node, end);
+            const mark = wrapRangeWithMark(range);
+            const newRange = document.createRange();
+            newRange.setStartAfter(mark);
+            newRange.collapse(true);
             sel.removeAllRanges();
-            sel.addRange(range);
-            const word = text.slice(start, end);
-            const markHtml = `<mark class="stilo-highlight">${escapeHtml(word)}</mark>`;
-            document.execCommand('insertHTML', false, markHtml);
+            sel.addRange(newRange);
             notifyChange();
             return;
           }
