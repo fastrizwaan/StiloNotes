@@ -135,21 +135,27 @@
       outline: none;
       min-height: 70vh;
       word-break: break-word;
+      caret-color: var(--text-color);
+    }
+
+    #editor > *:first-child {
+      margin-top: 0 !important;
+      padding-top: 0;
     }
 
     /* Headings */
     h1, h2, h3, h4 {
       color: var(--heading-color);
       font-weight: 700;
-      line-height: 1.3;
-      margin-top: 1.3em;
-      margin-bottom: 0.45em;
+      line-height: 1;
+      margin-top: 1em;
+      margin-bottom: 0.4em;
     }
 
     h1 {
       font-size: 2.15rem;
       letter-spacing: -0.02em;
-      margin-top: 0.4em;
+      margin-top: 0;
       border-bottom: 1px solid var(--border-color);
       padding-bottom: 0.35em;
     }
@@ -781,6 +787,7 @@
             selectUntitledTitle();
             return;
           }
+          setCursorAtEnd(h1);
         }
       } catch (e) {
         console.error("focusEditor error:", e);
@@ -1138,10 +1145,6 @@
       });
       editor.addEventListener('keyup', (e) => {
         updateActiveElement(e);
-        if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key) && acState.active) {
-          return;
-        }
-        checkAutocompleteTrigger();
       });
       document.addEventListener('click', (e) => {
         if (!e.target.closest('#stilo-autocomplete-popover')) {
@@ -1167,7 +1170,7 @@
           updateActiveElement(e);
         }
       });
-      editor.addEventListener('keyup', updateActiveElement);
+
 
       document.addEventListener('selectionchange', () => {
         const sel = window.getSelection();
@@ -1272,7 +1275,6 @@
         }
       };
 
-      document.addEventListener('mousedown', handleResizeStart, true);
       document.addEventListener('pointerdown', handleResizeStart, true);
 
       const handleResizeMove = (e) => {
@@ -1308,7 +1310,6 @@
         }
       };
 
-      document.addEventListener('mousemove', handleResizeMove);
       document.addEventListener('pointermove', handleResizeMove);
 
       const handleResizeEnd = () => {
@@ -1325,9 +1326,6 @@
         }
       };
 
-      window.addEventListener('mouseup', handleResizeEnd);
-      window.addEventListener('pointerup', handleResizeEnd);
-      document.addEventListener('mouseup', handleResizeEnd);
       document.addEventListener('pointerup', handleResizeEnd);
 
       const onOutsideClick = (e) => {
@@ -2148,13 +2146,18 @@
       }
     }
 
+    let markdownConvertTimer = null;
+
     function onEditorInput(e) {
       if (isUpdatingFromPython || isUndoRedoAction || isConvertingMarkdown) return;
 
-      const block = getClosestBlockElement();
-      if (block && hasMarkdownSyntax(block.textContent, false)) {
-        convertMarkdownInBlock(block, false);
-      }
+      clearTimeout(markdownConvertTimer);
+      markdownConvertTimer = setTimeout(() => {
+        const block = getClosestBlockElement();
+        if (block && hasMarkdownSyntax(block.textContent, false)) {
+          convertMarkdownInBlock(block, false);
+        }
+      }, 150);
 
       // Record undo state for typing bursts
       if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak' || e.data === ' ' || e.data === '\n') {
@@ -2482,9 +2485,6 @@
     }
 
     document.addEventListener('selectionchange', saveCurrentRange);
-    editor.addEventListener('keyup', saveCurrentRange);
-    editor.addEventListener('mouseup', saveCurrentRange);
-    editor.addEventListener('pointerup', saveCurrentRange);
 
     function insertHtmlSafely(htmlString) {
       editor.focus();
@@ -2982,7 +2982,7 @@
       while (node && node !== editor) {
         if (node.nodeType === 1) {
           const tag = node.tagName.toLowerCase();
-          if (['div', 'p', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'li', 'td', 'th'].includes(tag)) {
+          if (['div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'td', 'th'].includes(tag)) {
             return node;
           }
         }
@@ -3100,7 +3100,7 @@
 
     function notifyChangeDebounced() {
       clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(notifyChange, 100);
+      saveTimeout = setTimeout(notifyChange, 300);
     }
 
     function notifyChange() {
