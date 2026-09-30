@@ -436,6 +436,23 @@ Enjoy writing with Stilo Notes!
                     now
                 ))
 
+            # Prune attachments no longer referenced in note content
+            if new_html is not None or new_md is not None:
+                referenced_att_ids = set()
+                for c in (new_html or "", new_md or ""):
+                    for m in re.finditer(r'attachment://([a-zA-Z0-9_\-\.\+]+)', c):
+                        referenced_att_ids.add(m.group(1).split('/')[0].split('?')[0])
+                    for m in re.finditer(r'attachment:([a-zA-Z0-9_\-\.\+]+)', c):
+                        referenced_att_ids.add(m.group(1).split('/')[0].split('?')[0])
+                if referenced_att_ids:
+                    placeholders = ','.join('?' for _ in referenced_att_ids)
+                    cursor.execute(
+                        f"DELETE FROM attachments WHERE note_id = ? AND id NOT IN ({placeholders})",
+                        [note_id] + list(referenced_att_ids)
+                    )
+                else:
+                    cursor.execute("DELETE FROM attachments WHERE note_id = ?", (note_id,))
+
             conn.commit()
             return Note(
                 id=note_id,
@@ -704,16 +721,7 @@ Enjoy writing with Stilo Notes!
                         if data:
                             return data
 
-            # 2. Fall back to attachments table if note content had no explicit resolved images
-            cursor.execute("""
-            SELECT data FROM attachments
-            WHERE note_id = ? AND (mime_type LIKE 'image/%' OR filename LIKE '%.png' OR filename LIKE '%.jpg' OR filename LIKE '%.jpeg' OR filename LIKE '%.webp' OR filename LIKE '%.gif')
-            ORDER BY created_at ASC LIMIT 1
-            """, (note_id,))
-            row = cursor.fetchone()
-            if row and row["data"]:
-                return row["data"]
-        return None
+            return None
 
     def get_note_first_table(self, note_id: str) -> Optional[List[List[str]]]:
         """Retrieve structured table rows for the first table of a note if present."""

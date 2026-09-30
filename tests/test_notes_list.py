@@ -150,9 +150,23 @@ class TestNotesListAndCards(unittest.TestCase):
             mime_type="image/png",
             data=fake_data
         )
+        self.db.save_note(
+            "test-note-123",
+            title="Attachment Note",
+            content_markdown=f"![sample](attachment://{att_id})"
+        )
         note_att = Note(id="test-note-123", title="Attachment Note")
         img_from_db = get_note_image_bytes(note_att, self.db)
         self.assertEqual(img_from_db, fake_data)
+
+        # 2b. Deleting image from note content removes the preview
+        self.db.save_note(
+            "test-note-123",
+            title="Attachment Note",
+            content_markdown="Text after deleting image."
+        )
+        img_after_delete = get_note_image_bytes(note_att, self.db)
+        self.assertIsNone(img_after_delete)
 
         # 3. Note without image
         note_no_img = Note(title="Plain Text", content_markdown="Just some text.")
