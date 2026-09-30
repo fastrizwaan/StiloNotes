@@ -1173,6 +1173,18 @@
         }
       });
       editor.addEventListener('click', onEditorClick);
+      const container = document.getElementById('editor-container');
+      if (container) {
+        container.addEventListener('click', (e) => {
+          if (e.target === container || e.target === editor) {
+            ensureBlocksHaveTrailingLine();
+            const last = editor.lastElementChild;
+            if (last) {
+              setCursorAtEnd(last);
+            }
+          }
+        });
+      }
       editor.addEventListener('paste', onPaste);
       editor.addEventListener('drop', onDrop);
       editor.addEventListener('blur', () => {
@@ -1422,6 +1434,23 @@
       }
     }
 
+    function ensureBlocksHaveTrailingLine() {
+      if (!editor) return;
+      const blocks = editor.querySelectorAll('.stilo-table-wrapper, table.stilo-table, .stilo-img-wrapper, pre.stilo-code-block');
+      blocks.forEach(b => {
+        const target = b.closest('.stilo-table-wrapper') || b.closest('.stilo-img-wrapper') || b;
+        const next = target.nextElementSibling;
+        if (!next || next.classList.contains('stilo-table-wrapper') ||
+            next.classList.contains('stilo-img-wrapper') ||
+            next.classList.contains('stilo-code-block') ||
+            next.tagName === 'TABLE' || next.tagName === 'PRE') {
+          const div = document.createElement('div');
+          div.innerHTML = '<br>';
+          target.parentNode.insertBefore(div, target.nextSibling);
+        }
+      });
+    }
+
     function initAllHandles() {
       // Auto-wrap any standalone <img> into .stilo-img-wrapper
       editor.querySelectorAll('img').forEach(img => {
@@ -1440,6 +1469,7 @@
 
       editor.querySelectorAll('table.stilo-table').forEach(initTableHandles);
       editor.querySelectorAll('.stilo-img-wrapper').forEach(initImageHandles);
+      ensureBlocksHaveTrailingLine();
     }
 
     function updateActiveElement(e) {
@@ -1610,8 +1640,20 @@
       let tableRows = [];
       let inList = false;
       let listType = null;
+      let inQuote = false;
+      let quoteLines = [];
+
+      function closeQuote() {
+        if (inQuote && quoteLines.length > 0) {
+          const inner = quoteLines.map(l => `<div>${l || '<br>'}</div>`).join('');
+          out.push(`<blockquote class="stilo-quote">${inner}</blockquote>`);
+          inQuote = false;
+          quoteLines = [];
+        }
+      }
 
       function closeList() {
+        closeQuote();
         if (inList) {
           out.push(`</${listType}>`);
           inList = false;
@@ -1620,6 +1662,7 @@
       }
 
       function closeTable() {
+        closeQuote();
         if (inTable && tableRows.length > 0) {
           const rows = [];
           for (let r of tableRows) {
@@ -1708,9 +1751,16 @@
         const qMatch = line.match(/^>\s?(.*)$/);
         if (qMatch) {
           closeList();
+          closeTable();
+          if (!inQuote) {
+            inQuote = true;
+            quoteLines = [];
+          }
           const content = formatMarkdownInText(qMatch[1], true).html;
-          out.push(`<blockquote class="stilo-quote">${content || '<br>'}</blockquote>`);
+          quoteLines.push(content);
           continue;
+        } else if (inQuote) {
+          closeQuote();
         }
 
         const taskMatch = line.match(/^[-*+]\s+\[([ xX])\]\s*(.*)$/);
@@ -1761,6 +1811,7 @@
 
       closeList();
       closeTable();
+      closeQuote();
 
       return out.join('');
     }
@@ -1920,6 +1971,47 @@
         return;
       }
 
+      // ArrowDown: navigate out of code blocks and tables to the line below
+      if (e.key === 'ArrowDown') {
+        const pre = getClosestElement('pre.stilo-code-block');
+        if (pre) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            const codeEl = pre.querySelector('code') || pre;
+            const preRange = range.cloneRange();
+            preRange.selectNodeContents(codeEl);
+            preRange.setStart(range.endContainer, range.endOffset);
+            const textAfter = preRange.toString();
+            if (!textAfter.includes('\n')) {
+              ensureBlocksHaveTrailingLine();
+              const next = pre.nextElementSibling;
+              if (next) {
+                e.preventDefault();
+                setCursorAtStart(next);
+                return;
+              }
+            }
+          }
+        }
+
+        const cell = getClosestElement('td, th');
+        if (cell) {
+          const row = cell.parentElement;
+          const table = row ? row.closest('table') : null;
+          const wrapper = table ? table.closest('.stilo-table-wrapper') || table : null;
+          if (row && table && wrapper && !row.nextElementSibling) {
+            ensureBlocksHaveTrailingLine();
+            const next = wrapper.nextElementSibling;
+            if (next) {
+              e.preventDefault();
+              setCursorAtStart(next);
+              return;
+            }
+          }
+        }
+      }
+
       // 1. Tab key
       if (e.key === 'Tab') {
         const cell = getClosestElement('td, th');
@@ -1948,44 +2040,155 @@
         const pre = getClosestElement('pre.stilo-code-block');
         if (pre) {
           const sel = window.getSelection();
-          if (sel && sel.rangeCount > 0) {
-            const range = sel.getRangeAt(0);
-            const codeEl = pre.querySelector('code') || pre;
+          if (!sel || sel.rangeCount === 0) return;
+          const range = sel.getRangeAt(0);
+          const codeEl = pre.querySelector('code') || pre;
+          const preRange = range.cloneRange();
+          preRange.selectNodeContents(codeEl);
+          preRange.setEnd(range.startContainer, range.startOffset);
+          const textBefore = preRange.toString();
+          const lines = textBefore.split('\n');
+          const currentLine = lines[lines.length - 1].trim();
+
+          // Closing fence trigger: ``` or ~~~
+          if (currentLine === '```' || currentLine === '~~~') {
+            e.preventDefault();
+            const idx = textBefore.lastIndexOf(currentLine);
+            const afterRange = range.cloneRange();
+            afterRange.selectNodeContents(codeEl);
+            afterRange.setStart(range.startContainer, range.startOffset);
+            const textAfter = afterRange.toString();
+
+            let newCode = (textBefore.slice(0, idx) + textAfter).replace(/\n+$/, '');
+            codeEl.textContent = newCode ? newCode + '\n' : '';
+            if (!codeEl.textContent) codeEl.innerHTML = '<br>';
+
+            let nextDiv = pre.nextElementSibling;
+            if (!nextDiv || nextDiv.tagName === 'PRE') {
+              nextDiv = document.createElement('div');
+              nextDiv.innerHTML = '<br>';
+              pre.parentNode.insertBefore(nextDiv, pre.nextSibling);
+            }
+            setCursorAtStart(nextDiv);
+            saveUndoState();
+            notifyChange();
+            return;
+          }
+
+          // Normal Enter inside code block: continue inside the SAME code block
+          e.preventDefault();
+          range.deleteContents();
+          const textNode = range.startContainer;
+
+          if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+            const offset = range.startOffset;
+            const text = textNode.textContent;
+            const isAtEnd = (offset === text.length);
+
+            if (isAtEnd && (!textNode.nextSibling || (textNode.nextSibling.nodeType === Node.TEXT_NODE && !textNode.nextSibling.textContent))) {
+              textNode.textContent = text + '\n\n';
+              const newRange = document.createRange();
+              newRange.setStart(textNode, offset + 1);
+              newRange.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+            } else {
+              textNode.textContent = text.slice(0, offset) + '\n' + text.slice(offset);
+              const newRange = document.createRange();
+              newRange.setStart(textNode, offset + 1);
+              newRange.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+            }
+          } else {
+            const newlineNode = document.createTextNode('\n\n');
+            codeEl.appendChild(newlineNode);
+            const newRange = document.createRange();
+            newRange.setStart(newlineNode, 1);
+            newRange.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
+
+          saveUndoState();
+          notifyChange();
+          return;
+        }
+
+        const quote = getClosestElement('blockquote.stilo-quote');
+        if (quote) {
+          e.preventDefault();
+          const sel = window.getSelection();
+          if (!sel || !sel.rangeCount) return;
+          const range = sel.getRangeAt(0);
+
+          let currentDiv = null;
+          let curr = range.startContainer;
+          while (curr && curr !== quote) {
+            if (curr.nodeType === 1 && (curr.tagName === 'DIV' || curr.tagName === 'P')) {
+              currentDiv = curr;
+              break;
+            }
+            curr = curr.parentNode;
+          }
+
+          let isLineEmpty = false;
+          if (currentDiv) {
+            isLineEmpty = (!currentDiv.textContent.trim() || currentDiv.innerHTML === '<br>');
+          } else {
             const preRange = range.cloneRange();
-            preRange.selectNodeContents(codeEl);
+            preRange.selectNodeContents(quote);
             preRange.setEnd(range.startContainer, range.startOffset);
             const textBefore = preRange.toString();
             const lines = textBefore.split('\n');
-            const currentLine = lines[lines.length - 1].trim();
-
-            // Closing fence trigger: ``` or ~~~
-            if (currentLine === '```' || currentLine === '~~~') {
-              e.preventDefault();
-              const idx = textBefore.lastIndexOf(currentLine);
-              const afterRange = range.cloneRange();
-              afterRange.selectNodeContents(codeEl);
-              afterRange.setStart(range.startContainer, range.startOffset);
-              const textAfter = afterRange.toString();
-
-              let newCode = (textBefore.slice(0, idx) + textAfter).replace(/\n+$/, '');
-              codeEl.textContent = newCode ? newCode + '\n' : '';
-              if (!codeEl.textContent) codeEl.innerHTML = '<br>';
-
-              let nextDiv = pre.nextElementSibling;
-              if (!nextDiv || nextDiv.tagName === 'PRE') {
-                nextDiv = document.createElement('div');
-                nextDiv.innerHTML = '<br>';
-                pre.parentNode.insertBefore(nextDiv, pre.nextSibling);
-              }
-              setCursorAtStart(nextDiv);
-              saveUndoState();
-              notifyChange();
-              return;
-            }
+            const lastLine = lines[lines.length - 1];
+            isLineEmpty = (quote.textContent.trim() === '' || quote.textContent.trim() === 'Quote text...' || !lastLine.trim());
           }
-          // Normal Enter inside code block: insert newline
-          e.preventDefault();
-          document.execCommand('insertText', false, '\n');
+
+          if (isLineEmpty) {
+            // Second Enter on empty line: exit the blockquote!
+            if (currentDiv) {
+              currentDiv.remove();
+            }
+            while (quote.lastChild && (quote.lastChild.nodeName === 'BR' || (!quote.lastChild.textContent.trim() && quote.lastChild.nodeType === 3))) {
+              quote.removeChild(quote.lastChild);
+            }
+
+            if (!quote.textContent.trim() && !quote.querySelector('img, table')) {
+              const nextDiv = document.createElement('div');
+              nextDiv.innerHTML = '<br>';
+              quote.parentNode.replaceChild(nextDiv, quote);
+              setCursorAtStart(nextDiv);
+            } else {
+              const nextDiv = document.createElement('div');
+              nextDiv.innerHTML = '<br>';
+              quote.parentNode.insertBefore(nextDiv, quote.nextSibling);
+              setCursorAtStart(nextDiv);
+            }
+            saveUndoState();
+            notifyChange();
+            return;
+          }
+
+          // First Enter on line with content: continue inside the SAME blockquote on a new line!
+          if (currentDiv) {
+            const newDiv = document.createElement('div');
+            newDiv.innerHTML = '<br>';
+            currentDiv.parentNode.insertBefore(newDiv, currentDiv.nextSibling);
+            setCursorAtStart(newDiv);
+          } else {
+            const existingHtml = quote.innerHTML;
+            quote.innerHTML = '';
+            const div1 = document.createElement('div');
+            div1.innerHTML = existingHtml || '<br>';
+            const div2 = document.createElement('div');
+            div2.innerHTML = '<br>';
+            quote.appendChild(div1);
+            quote.appendChild(div2);
+            setCursorAtStart(div2);
+          }
+
+          saveUndoState();
           notifyChange();
           return;
         }
@@ -2064,6 +2267,7 @@
               return;
             }
           }
+
 
           convertMarkdownInBlock(block, true);
         }
@@ -2511,10 +2715,47 @@
 
     function insertTodoItem() {
       closeAllPopups();
+      saveUndoState();
+      editor.focus();
       const sel = window.getSelection();
-      const text = sel.isCollapsed ? '' : sel.toString();
-      const taskHtml = `<div class="stilo-task"><input type="checkbox" class="stilo-checkbox"><span class="task-text">${text || '<br>'}</span></div><div><br></div>`;
-      document.execCommand('insertHTML', false, taskHtml);
+      if (!sel || sel.rangeCount === 0) return;
+
+      const range = sel.getRangeAt(0);
+      const text = sel.isCollapsed ? '' : sel.toString().trim();
+
+      const block = getClosestBlockElement();
+      const isBlockEmpty = block && (!block.textContent.trim() || block.innerHTML === '<br>');
+
+      if (sel.isCollapsed && block && block !== editor && !block.closest('.stilo-task') && !['H1', 'TABLE'].includes(block.tagName) && !isBlockEmpty) {
+        // Convert existing line into a checklist task
+        const existingHtml = block.innerHTML;
+        const task = document.createElement('div');
+        task.className = 'stilo-task';
+        task.innerHTML = `<input type="checkbox" class="stilo-checkbox"><span class="task-text">${existingHtml || '<br>'}</span>`;
+        block.parentNode.replaceChild(task, block);
+        const span = task.querySelector('.task-text');
+        setCursorAtEnd(span);
+        notifyChange();
+        return;
+      }
+
+      const task = document.createElement('div');
+      task.className = 'stilo-task';
+      task.innerHTML = `<input type="checkbox" class="stilo-checkbox"><span class="task-text">${text ? escapeHtml(text) : '<br>'}</span>`;
+
+      if (isBlockEmpty && block && block !== editor) {
+        block.parentNode.replaceChild(task, block);
+      } else {
+        range.deleteContents();
+        range.insertNode(task);
+      }
+
+      const span = task.querySelector('.task-text');
+      if (text) {
+        setCursorAtEnd(span);
+      } else {
+        setCursorAtStart(span);
+      }
       notifyChange();
     }
 
@@ -2777,21 +3018,89 @@
     function insertCodeBlock() {
       closeAllPopups();
       saveUndoState();
+      editor.focus();
       const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const range = sel.getRangeAt(0);
       let text = '';
-      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+      if (!sel.isCollapsed) {
         text = sel.toString();
       }
-      const escaped = text ? escapeHtml(text) : '// Code here...\n';
-      const codeHtml = `<pre class="stilo-code-block"><code>${escaped}</code></pre><div><br></div>`;
-      insertHtmlSafely(codeHtml);
+      const placeholder = text ? escapeHtml(text) : '// Code here...';
+
+      const block = getClosestBlockElement();
+      const isBlockEmpty = block && (!block.textContent.trim() || block.innerHTML === '<br>');
+
+      const pre = document.createElement('pre');
+      pre.className = 'stilo-code-block';
+      const code = document.createElement('code');
+      code.innerHTML = placeholder;
+      pre.appendChild(code);
+
+      if (isBlockEmpty && block && block !== editor) {
+        block.parentNode.replaceChild(pre, block);
+      } else {
+        range.deleteContents();
+        range.insertNode(pre);
+      }
+
+      let nextDiv = pre.nextElementSibling;
+      if (!nextDiv) {
+        nextDiv = document.createElement('div');
+        nextDiv.innerHTML = '<br>';
+        pre.parentNode.insertBefore(nextDiv, pre.nextSibling);
+      }
+
+      // Select the code text inside so the user can immediately type over it
+      const codeRange = document.createRange();
+      codeRange.selectNodeContents(code);
+      sel.removeAllRanges();
+      sel.addRange(codeRange);
+
       notifyChange();
     }
 
     function insertQuote() {
       closeAllPopups();
-      const quoteHtml = `<blockquote class="stilo-quote">Quote text...</blockquote><div><br></div>`;
-      document.execCommand('insertHTML', false, quoteHtml);
+      saveUndoState();
+      editor.focus();
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const range = sel.getRangeAt(0);
+      const text = sel.isCollapsed ? '' : sel.toString().trim();
+      const placeholder = text ? escapeHtml(text) : 'Quote text...';
+
+      const block = getClosestBlockElement();
+      const isBlockEmpty = block && (!block.textContent.trim() || block.innerHTML === '<br>');
+
+      const quote = document.createElement('blockquote');
+      quote.className = 'stilo-quote';
+      const div = document.createElement('div');
+      div.innerHTML = placeholder;
+      quote.appendChild(div);
+
+      if (isBlockEmpty && block && block !== editor) {
+        block.parentNode.replaceChild(quote, block);
+      } else {
+        range.deleteContents();
+        range.insertNode(quote);
+      }
+
+      let quoteNext = quote.nextElementSibling;
+      if (!quoteNext) {
+        quoteNext = document.createElement('div');
+        quoteNext.innerHTML = '<br>';
+        quote.parentNode.insertBefore(quoteNext, quote.nextSibling);
+      }
+
+      // Select the text inside the quote so the user can immediately type over it
+      const quoteRange = document.createRange();
+      quoteRange.selectNodeContents(div);
+      sel.removeAllRanges();
+      sel.addRange(quoteRange);
+
       notifyChange();
     }
 

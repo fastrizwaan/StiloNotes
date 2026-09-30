@@ -886,17 +886,27 @@ def markdown_to_html(md_text: str) -> str:
             i += 1
             continue
 
-        # 10. Blockquote (supports nested blockquotes: > and >> and >>>)
+        # 10. Blockquote (supports multi-line blockquotes and nesting: > and >> and >>>)
         if line.startswith(">"):
             html_lines.append(close_lists())
-            q_hashes = len(line) - len(line.lstrip('>'))
-            q_content = line.lstrip('>').strip()
-            q_html = format_inline(q_content)
-            wrapped = f'<blockquote class="stilo-quote">{q_html}</blockquote>'
-            for _ in range(q_hashes - 1):
-                wrapped = f'<blockquote class="stilo-quote">{wrapped}</blockquote>'
-            html_lines.append(wrapped)
-            i += 1
+            q_lines = []
+            while i < num_lines and raw_lines[i].startswith(">"):
+                cur_line = raw_lines[i]
+                q_hashes = len(cur_line) - len(cur_line.lstrip('>'))
+                q_content = cur_line.lstrip('>').strip()
+                q_html = format_inline(q_content)
+                q_lines.append((q_hashes, q_html))
+                i += 1
+
+            if all(h == 1 for h, _ in q_lines):
+                inner = "".join(f"<div>{html_part or '<br>'}</div>" for _, html_part in q_lines)
+                html_lines.append(f'<blockquote class="stilo-quote">{inner}</blockquote>')
+            else:
+                for q_hashes, q_html in q_lines:
+                    wrapped = f'<blockquote class="stilo-quote">{q_html or "<br>"}</blockquote>'
+                    for _ in range(q_hashes - 1):
+                        wrapped = f'<blockquote class="stilo-quote">{wrapped}</blockquote>'
+                    html_lines.append(wrapped)
             continue
 
         # 11. Unordered list: - or * or +
@@ -1044,8 +1054,18 @@ def html_to_markdown(html_content: str) -> str:
     s = RE_HTM_CODE_NO_LANG.sub(lambda m: f"\n```\n{html.unescape(m.group(1)).rstrip(chr(10))}\n```\n\n", s)
 
     # 7. Convert Blockquotes (recursively handles nesting)
+    def _convert_blockquote_to_md(m: re.Match) -> str:
+        inner = m.group(1)
+        inner = re.sub(r'<br\s*/?>', '\n', inner)
+        inner = re.sub(r'</?(?:div|p)[^>]*>', '\n', inner)
+        clean_lines = [RE_HTML_TAGS.sub('', line).strip() for line in inner.splitlines()]
+        clean_lines = [line for line in clean_lines if line]
+        if not clean_lines:
+            return "\n> \n\n"
+        return "\n" + "\n".join(f"> {line}" for line in clean_lines) + "\n\n"
+
     while '<blockquote' in s:
-        s = re.sub(r'<blockquote[^>]*>(.*?)</blockquote>', lambda m: "\n" + "\n".join(f"> {line}" for line in m.group(1).strip().splitlines()) + "\n", s, flags=re.DOTALL)
+        s = re.sub(r'<blockquote[^>]*>(.*?)</blockquote>', _convert_blockquote_to_md, s, flags=re.DOTALL)
 
     # 8. Convert Tables with Alignment
     def replace_table(m: re.Match) -> str:
