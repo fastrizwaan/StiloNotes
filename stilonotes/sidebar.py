@@ -12,13 +12,16 @@ from stilonotes.theme_selector import ThemeSelector
 def _build_category_tree(categories):
     """
     Given a flat list of Category objects whose names may contain '/' separators,
-    return an ordered list of (full_name, depth, display_name) tuples that
-    represents a breadth-first tree walk.
+    return an ordered list of (full_name, depth, display_name, has_children) tuples that
+    represents a depth-first tree walk.
     """
     # Build a prefix-tree from names
     tree = {}  # node: {child_name: subtree}
     for cat in categories:
-        parts = cat.name.split("/")
+        name = getattr(cat, "name", str(cat)).strip().strip("/")
+        if not name:
+            continue
+        parts = [p.strip() for p in name.split("/") if p.strip()]
         node = tree
         for part in parts:
             if part not in node:
@@ -30,7 +33,8 @@ def _build_category_tree(categories):
     def walk(node, prefix, depth):
         for key in sorted(node.keys()):
             full = f"{prefix}/{key}" if prefix else key
-            result.append((full, depth, key))
+            has_children = len(node[key]) > 0
+            result.append((full, depth, key, has_children))
             walk(node[key], full, depth + 1)
 
     walk(tree, "", 0)
@@ -52,10 +56,35 @@ class Sidebar(Adw.Bin):
         self.active_filter_type = "all"
         self.active_category_name = ""
         self._updating = False
+        self._toggling_category = False
+        self._collapsed_categories = set(self.config_manager.get_collapsed_categories())
+        self._category_rows = {}
 
         self.set_size_request(240, -1)
         self._build_ui()
         self.refresh()
+
+    def _is_category_visible(self, category_name: str) -> bool:
+        """A category is visible if none of its ancestor categories are collapsed."""
+        parts = category_name.split("/")
+        for i in range(1, len(parts)):
+            ancestor = "/".join(parts[:i])
+            if ancestor in self._collapsed_categories:
+                return False
+        return True
+
+    def _ensure_ancestors_expanded(self, category_name: str) -> bool:
+        """Ensure all ancestor categories of category_name are expanded."""
+        parts = category_name.split("/")
+        changed = False
+        for i in range(1, len(parts)):
+            ancestor = "/".join(parts[:i])
+            if ancestor in self._collapsed_categories:
+                self._collapsed_categories.remove(ancestor)
+                changed = True
+        if changed:
+            self.config_manager.set_collapsed_categories(self._collapsed_categories)
+        return changed
 
     def _build_ui(self):
         self.toolbar_view = Adw.ToolbarView()
@@ -130,6 +159,7 @@ class Sidebar(Adw.Bin):
         self._updating = True
         try:
             self.listbox.remove_all()
+            self._category_rows.clear()
 
             counts = self.db.get_counts()
 
@@ -148,13 +178,21 @@ class Sidebar(Adw.Bin):
             categories = self.db.get_categories()
             tree_items = _build_category_tree(categories)
             if tree_items:
+                if self.active_filter_type == "category" and self.active_category_name:
+                    self._ensure_ancestors_expanded(self.active_category_name)
+
                 self._add_section_header("Categories", "folder-symbolic")
-                for full_name, depth, display_name in tree_items:
-                    # Pick icon based on depth
+                for full_name, depth, display_name, has_children in tree_items:
                     icon = "folder-symbolic" if depth == 0 else "folder-open-symbolic"
-                    self._add_row("category", full_name, display_name, icon,
-                                  counts.get(f"cat:{full_name}", 0),
-                                  is_user_category=True, depth=depth)
+                    is_expanded = full_name not in self._collapsed_categories
+                    self._add_row(
+                        "category", full_name, display_name, icon,
+                        counts.get(f"cat:{full_name}", 0),
+                        is_user_category=True,
+                        depth=depth,
+                        has_children=has_children,
+                        is_expanded=is_expanded
+                    )
 
             # 5. Tags section
             tags = self.db.get_all_tags()
@@ -198,18 +236,53 @@ class Sidebar(Adw.Bin):
         row.set_child(box)
         self.listbox.append(row)
 
-    def _add_row(self, filter_type: str, category_name: str, title: str,
-                 icon_name: str, count: int, is_user_category: bool = False, depth: int = 0):
+    def _add_row(
+        self, filter_type: str, category_name: str, title: str,
+        icon_name: str, count: int, is_user_category: bool = False, depth: int = 0,
+        has_children: bool = False, is_expanded: bool = True
+    ):
         row = Gtk.ListBoxRow()
         row._filter_type = filter_type
         row._category_name = category_name
+        row._has_children = has_children
+        row._depth = depth
 
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         # Indent nested categories
         box.set_margin_start(10 + depth * 16)
         box.set_margin_end(10)
-        box.set_margin_top(8)
-        box.set_margin_bottom(8)
+        box.set_margin_top(6)
+        box.set_margin_bottom(6)
+
+        if is_user_category:
+            self._category_rows[category_name] = row
+            is_visible = self._is_category_visible(category_name)
+            row.set_visible(is_visible)
+
+            if has_children:
+                arrow_btn = Gtk.Button()
+                arrow_btn.set_has_frame(False)
+                arrow_btn.add_css_class("flat")
+                arrow_btn.add_css_class("category-expander")
+                arrow_btn.set_valign(Gtk.Align.CENTER)
+                arrow_btn.set_halign(Gtk.Align.CENTER)
+                arrow_btn.set_can_focus(False)
+                arrow_btn.set_tooltip_text("Collapse" if is_expanded else "Expand")
+
+                arrow_img = Gtk.Image.new_from_icon_name(
+                    "pan-down-symbolic" if is_expanded else "pan-end-symbolic"
+                )
+                arrow_img.set_pixel_size(12)
+                arrow_btn.set_child(arrow_img)
+                arrow_btn.connect("clicked", lambda _b, cat=category_name: self._on_toggle_category(cat))
+
+                row._arrow_btn = arrow_btn
+                row._arrow_img = arrow_img
+                box.append(arrow_btn)
+            else:
+                spacer = Gtk.Box()
+                spacer.set_size_request(18, -1)
+                box.append(spacer)
 
         img = Gtk.Image.new_from_icon_name(icon_name)
         img.set_pixel_size(16)
@@ -274,6 +347,41 @@ class Sidebar(Adw.Bin):
         gesture.connect("pressed", on_right_click)
         row.add_controller(gesture)
 
+    def _on_toggle_category(self, cat_name: str):
+        self._toggling_category = True
+        try:
+            if cat_name in self._collapsed_categories:
+                self._collapsed_categories.remove(cat_name)
+            else:
+                self._collapsed_categories.add(cat_name)
+                # If currently selected category was inside this newly collapsed category,
+                # move selection to the parent category so it remains visible
+                if (self.active_filter_type == "category" and
+                        self.active_category_name.startswith(cat_name + "/")):
+                    self.active_category_name = cat_name
+                    self.emit("filter-changed", "category", cat_name)
+
+            self.config_manager.set_collapsed_categories(self._collapsed_categories)
+            self._update_category_tree_ui()
+        finally:
+            GLib.idle_add(self._clear_toggling_flag)
+
+    def _clear_toggling_flag(self):
+        self._toggling_category = False
+        return GLib.SOURCE_REMOVE
+
+    def _update_category_tree_ui(self):
+        for name, row in self._category_rows.items():
+            row.set_visible(self._is_category_visible(name))
+
+            if hasattr(row, "_arrow_img") and hasattr(row, "_arrow_btn"):
+                is_collapsed = name in self._collapsed_categories
+                icon_name = "pan-end-symbolic" if is_collapsed else "pan-down-symbolic"
+                row._arrow_img.set_from_icon_name(icon_name)
+                row._arrow_btn.set_tooltip_text("Expand" if is_collapsed else "Collapse")
+
+        self._restore_active_selection()
+
     def _restore_active_selection(self):
         for i in range(300):
             row = self.listbox.get_row_at_index(i)
@@ -285,7 +393,7 @@ class Sidebar(Adw.Bin):
                 break
 
     def _on_row_activated(self, _lb, row):
-        if self._updating or not row or not hasattr(row, "_filter_type"):
+        if self._updating or self._toggling_category or not row or not hasattr(row, "_filter_type"):
             return
         if (self.active_filter_type == row._filter_type and
                 self.active_category_name == row._category_name):
@@ -317,6 +425,11 @@ class Sidebar(Adw.Bin):
                 name = entry.get_text().strip().strip("/")
                 if name:
                     self._create_category_with_parents(name)
+                    # Expand ancestor categories so new category is visible
+                    parts = name.split("/")
+                    for i in range(1, len(parts)):
+                        self._collapsed_categories.discard("/".join(parts[:i]))
+                    self.config_manager.set_collapsed_categories(self._collapsed_categories)
                     self.refresh()
 
         dialog.connect("response", on_response)
@@ -344,6 +457,11 @@ class Sidebar(Adw.Bin):
                 if sub:
                     full = f"{parent_name}/{sub}"
                     self._create_category_with_parents(full)
+                    # Expand parent and its ancestors so new subcategory is visible
+                    parts = full.split("/")
+                    for i in range(1, len(parts)):
+                        self._collapsed_categories.discard("/".join(parts[:i]))
+                    self.config_manager.set_collapsed_categories(self._collapsed_categories)
                     self.refresh()
 
         dialog.connect("response", on_response)
@@ -383,6 +501,19 @@ class Sidebar(Adw.Bin):
                         self.active_category_name = new_name
                     elif self.active_category_name.startswith(old_name + "/"):
                         self.active_category_name = new_name + self.active_category_name[len(old_name):]
+
+                    # Update collapsed categories
+                    new_collapsed = set()
+                    for cat in self._collapsed_categories:
+                        if cat == old_name:
+                            new_collapsed.add(new_name)
+                        elif cat.startswith(old_name + "/"):
+                            new_collapsed.add(new_name + cat[len(old_name):])
+                        else:
+                            new_collapsed.add(cat)
+                    self._collapsed_categories = new_collapsed
+                    self.config_manager.set_collapsed_categories(self._collapsed_categories)
+
                     self.refresh()
 
         dialog.connect("response", on_response)
@@ -408,6 +539,14 @@ class Sidebar(Adw.Bin):
                 if self.active_category_name == name or self.active_category_name.startswith(name + "/"):
                     self.active_filter_type = "all"
                     self.active_category_name = ""
+
+                # Clean up collapsed categories
+                self._collapsed_categories = {
+                    cat for cat in self._collapsed_categories
+                    if cat != name and not cat.startswith(name + "/")
+                }
+                self.config_manager.set_collapsed_categories(self._collapsed_categories)
+
                 self.refresh()
 
         dialog.connect("response", on_response)

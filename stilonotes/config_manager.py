@@ -147,3 +147,20 @@ class ConfigManager:
         if self.db:
             self.db.set_setting("view_mode", mode)
 
+    def get_collapsed_categories(self) -> set:
+        """Return set of collapsed category full names."""
+        if self.db:
+            raw = self.db.get_setting("collapsed_categories", "")
+            if raw:
+                try:
+                    import json
+                    return set(json.loads(raw))
+                except Exception:
+                    pass
+        return set()
+
+    def set_collapsed_categories(self, collapsed: set):
+        if self.db:
+            import json
+            self.db.set_setting("collapsed_categories", json.dumps(sorted(list(collapsed))))
+
