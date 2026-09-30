@@ -1073,13 +1073,31 @@ def html_to_markdown(html_content: str) -> str:
         th_matches = RE_HTM_TH.findall(table_html)
         tr_matches = RE_HTM_TR.findall(table_html)
 
+        def _clean_cell(raw_text: str) -> str:
+            c = RE_HTM_STRONG_EM.sub(r'***\1***', raw_text)
+            c = RE_HTM_STRONG.sub(r'**\1**', c)
+            c = RE_HTM_B.sub(r'**\1**', c)
+            c = RE_HTM_EM.sub(r'*\1*', c)
+            c = RE_HTM_I.sub(r'*\1*', c)
+            c = RE_HTM_U.sub(r'<u>\1</u>', c)
+            c = RE_HTM_INS.sub(r'<u>\1</u>', c)
+            c = RE_HTM_DEL.sub(r'~~\1~~', c)
+            c = RE_HTM_MARK.sub(r'==\1==', c)
+            c = RE_HTM_SUB.sub(r'~\1~', c)
+            c = RE_HTM_SUP.sub(r'^\1^', c)
+            c = RE_HTM_CODE.sub(r'`\1`', c)
+            c = RE_HTML_TAGS.sub('', c)
+            c = html.unescape(c)
+            c = c.replace('\u200b', '').replace('\n', ' ').replace('\r', ' ')
+            return c.strip()
+
         md_table = []
         align_seps = []
 
         if th_matches:
             clean_headers = []
             for attrs, h_content in th_matches:
-                clean_headers.append(RE_HTML_TAGS.sub('', h_content).strip())
+                clean_headers.append(_clean_cell(h_content))
                 # Detect alignment
                 if 'text-align: center' in attrs or 'text-align:center' in attrs or 'align-center' in attrs:
                     align_seps.append(":---:")
@@ -1104,7 +1122,7 @@ def html_to_markdown(html_content: str) -> str:
         for r in tr_matches:
             td_matches = RE_HTM_TD.findall(r)
             if td_matches:
-                clean_cells = [RE_HTML_TAGS.sub('', content).strip() for _, content in td_matches]
+                clean_cells = [_clean_cell(content) for _, content in td_matches]
                 md_table.append("| " + " | ".join(clean_cells) + " |")
 
         return "\n" + "\n".join(md_table) + "\n\n"

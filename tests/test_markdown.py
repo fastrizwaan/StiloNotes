@@ -198,6 +198,16 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn(":---:", back)
         self.assertIn("---:", back)
 
+    def test_table_cell_formatting(self):
+        md = "| Col 1 | Col 2 |\n| :--- | :--- |\n| ==Highlight== | **Bold** |"
+        html = markdown_to_html(md)
+        self.assertIn('<mark class="stilo-highlight">Highlight</mark>', html)
+        self.assertIn('<strong>Bold</strong>', html)
+
+        back = html_to_markdown(html)
+        self.assertIn("==Highlight==", back)
+        self.assertIn("**Bold**", back)
+
     def test_emoji_shortcodes(self):
         md = "That is so funny! :joy: Here is love :heart: and star :star:"
         html = markdown_to_html(md)

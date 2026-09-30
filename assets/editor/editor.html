@@ -664,6 +664,159 @@
     let imgStartX = 0;
     let imgStartWidth = 0;
 
+    let lastEditorRange = null;
+
+    function getValidCellNodes(cell) {
+      if (!cell) return [];
+      return Array.from(cell.childNodes).filter(n => {
+        return !(n.nodeType === 1 && n.classList.contains('col-resize-handle'));
+      });
+    }
+
+    function setRangeBoundaryInsideCell(range, cell, isStart) {
+      if (!range || !cell) return;
+      const validNodes = getValidCellNodes(cell);
+      if (validNodes.length === 0) {
+        if (isStart) range.setStart(cell, 0);
+        else range.setEnd(cell, 0);
+        return;
+      }
+      if (isStart) {
+        const first = validNodes[0];
+        range.setStart(first, 0);
+      } else {
+        const last = validNodes[validNodes.length - 1];
+        const len = (last.nodeType === Node.TEXT_NODE ? last.textContent.length : last.childNodes.length);
+        range.setEnd(last, len);
+      }
+    }
+
+    function selectCellContent(cell) {
+      if (!cell) return null;
+      const table = cell.closest('table.stilo-table');
+      if (table && document.activeElement !== table && typeof table.focus === 'function') {
+        table.focus();
+      }
+      const range = document.createRange();
+      setRangeBoundaryInsideCell(range, cell, true);
+      setRangeBoundaryInsideCell(range, cell, false);
+
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      lastEditorRange = range.cloneRange();
+      return range;
+    }
+
+    function normalizeTableRange(range) {
+      if (!range) return range;
+      try {
+        let sc = range.startContainer;
+        let ec = range.endContainer;
+        let so = range.startOffset;
+        let eo = range.endOffset;
+
+        // If either boundary is a TR
+        if (sc.nodeName === 'TR' || ec.nodeName === 'TR') {
+          const tr = sc.nodeName === 'TR' ? sc : ec;
+          const cells = Array.from(tr.children).filter(c => c.matches('td, th'));
+          if (cells.length > 0) {
+            const startIdx = sc.nodeName === 'TR' ? Math.min(so, cells.length - 1) : 0;
+            const endIdx = ec.nodeName === 'TR' ? Math.max(0, Math.min(eo - 1, cells.length - 1)) : cells.length - 1;
+            const firstCell = cells[startIdx];
+            const lastCell = cells[endIdx];
+
+            if (firstCell && lastCell) {
+              const normRange = document.createRange();
+              setRangeBoundaryInsideCell(normRange, firstCell, true);
+              setRangeBoundaryInsideCell(normRange, lastCell, false);
+              return normRange;
+            }
+          }
+        }
+
+        // If either boundary is TBODY, THEAD, or TABLE
+        if (['TABLE', 'TBODY', 'THEAD'].includes(sc.nodeName) || ['TABLE', 'TBODY', 'THEAD'].includes(ec.nodeName)) {
+          const table = (sc.closest ? sc.closest('table.stilo-table') : sc.parentElement?.closest('table.stilo-table'));
+          if (table) {
+            const cells = Array.from(table.querySelectorAll('td, th'));
+            if (cells.length > 0) {
+              const normRange = document.createRange();
+              setRangeBoundaryInsideCell(normRange, cells[0], true);
+              setRangeBoundaryInsideCell(normRange, cells[cells.length - 1], false);
+              return normRange;
+            }
+          }
+        }
+
+        // If boundary is a cell that contains .col-resize-handle
+        const cell = (sc.nodeType === 1 ? sc : sc.parentElement)?.closest('td, th');
+        if (cell) {
+          const handle = cell.querySelector(':scope > .col-resize-handle');
+          if (handle) {
+            if (ec === cell && eo >= Array.from(cell.childNodes).indexOf(handle)) {
+              const normRange = range.cloneRange();
+              normRange.setEndBefore(handle);
+              return normRange;
+            }
+            if (handle.contains(ec) || ec === handle) {
+              const normRange = range.cloneRange();
+              normRange.setEndBefore(handle);
+              return normRange;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('normalizeTableRange error:', err);
+      }
+      return range;
+    }
+
+    function saveCurrentRange() {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (editor && editor.contains(range.commonAncestorContainer)) {
+          lastEditorRange = normalizeTableRange(range).cloneRange();
+        }
+      }
+    }
+
+    function restoreSelectionIfNeeded() {
+      const sel = window.getSelection();
+      let range = null;
+      if (sel && sel.rangeCount > 0) {
+        const testRange = sel.getRangeAt(0);
+        if (editor && editor.contains(testRange.commonAncestorContainer)) {
+          range = normalizeTableRange(testRange);
+        }
+      }
+      if ((!range || (range.collapsed && lastEditorRange && !lastEditorRange.collapsed)) &&
+          lastEditorRange && editor && editor.contains(lastEditorRange.commonAncestorContainer)) {
+        range = normalizeTableRange(lastEditorRange);
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+      if (range) {
+        const containerNode = range.commonAncestorContainer;
+        const editableEl = (containerNode.nodeType === 1 ? containerNode : containerNode.parentElement)?.closest('[contenteditable="true"]') || editor;
+        if (document.activeElement !== editableEl && typeof editableEl.focus === 'function') {
+          editableEl.focus();
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
+      }
+      return range;
+    }
+
+    document.addEventListener('selectionchange', saveCurrentRange);
+
     // ==========================================
     // Undo / Redo Stack Management
     // ==========================================
@@ -1194,6 +1347,20 @@
           convertMarkdownInBlock(block, true);
         }
       });
+
+      function handleTableCellMultiClick(e) {
+        if (e.detail >= 3) {
+          const cell = e.target.closest('td, th');
+          if (cell) {
+            e.preventDefault();
+            selectCellContent(cell);
+          }
+        }
+      }
+
+      editor.addEventListener('pointerdown', handleTableCellMultiClick);
+      editor.addEventListener('mousedown', handleTableCellMultiClick);
+      editor.addEventListener('click', handleTableCellMultiClick);
 
       editor.addEventListener('click', updateActiveElement);
       editor.addEventListener('pointerdown', (e) => {
@@ -2452,7 +2619,7 @@
     function transformCurrentBlockTo(tagName, content) {
       hideAutocomplete();
       const block = getClosestBlockElement();
-      if (!block) return;
+      if (!block || ['TD', 'TH'].includes(block.tagName) || block.closest('table')) return;
       const el = document.createElement(tagName);
       el.innerHTML = content || '<br>';
       block.parentNode.replaceChild(el, block);
@@ -2462,7 +2629,7 @@
 
     function transformCurrentBlockToTask(content, isChecked) {
       const block = getClosestBlockElement();
-      if (!block) return;
+      if (!block || ['TD', 'TH'].includes(block.tagName) || block.closest('table')) return;
       const task = document.createElement('div');
       task.className = 'stilo-task' + (isChecked ? ' completed' : '');
       const checkedAttr = isChecked ? 'checked="checked"' : '';
@@ -2475,7 +2642,7 @@
 
     function transformCurrentBlockToList(listTag, content) {
       const block = getClosestBlockElement();
-      if (!block) return;
+      if (!block || ['TD', 'TH'].includes(block.tagName) || block.closest('table')) return;
       const list = document.createElement(listTag);
       list.className = listTag === 'ul' ? 'stilo-list' : 'stilo-numbered-list';
       const li = document.createElement('li');
@@ -2488,7 +2655,7 @@
 
     function transformCurrentBlockToQuote(content) {
       const block = getClosestBlockElement();
-      if (!block) return;
+      if (!block || ['TD', 'TH'].includes(block.tagName) || block.closest('table')) return;
       const quote = document.createElement('blockquote');
       quote.className = 'stilo-quote';
       quote.innerHTML = content || '<br>';
@@ -2499,7 +2666,7 @@
 
     function transformCurrentBlockToCode(content = '', lang = '') {
       const block = getClosestBlockElement();
-      if (!block) return;
+      if (!block || ['TD', 'TH'].includes(block.tagName) || block.closest('table')) return;
       const pre = document.createElement('pre');
       pre.className = 'stilo-code-block';
       if (lang) pre.setAttribute('data-lang', lang);
@@ -2523,12 +2690,27 @@
 
     function applyFormat(cmd, val = null) {
       closeAllPopups();
+      const range = restoreSelectionIfNeeded();
+      if (range) {
+        const norm = normalizeTableRange(range);
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(norm);
+        }
+      }
       document.execCommand(cmd, false, val);
       notifyChange();
     }
 
     function applyHeading(tag) {
       closeAllPopups();
+      const range = restoreSelectionIfNeeded();
+      const cell = getClosestElement('td, th');
+      if (cell) {
+        // Do not convert table cell to block-level heading
+        return;
+      }
       if (tag === 'p') {
         document.execCommand('formatBlock', false, 'div');
       } else {
@@ -2539,16 +2721,86 @@
 
     function applyList(cmd) {
       closeAllPopups();
+      const range = restoreSelectionIfNeeded();
+      const cell = getClosestElement('td, th');
+      if (cell) {
+        // Do not convert table cell to block-level list
+        return;
+      }
       document.execCommand(cmd, false, null);
       notifyChange();
+    }
+
+    function highlightTableCell(cell) {
+      if (!cell) return;
+      const existingMark = cell.querySelector('mark.stilo-highlight');
+      if (existingMark) {
+        const parent = existingMark.parentNode;
+        while (existingMark.firstChild) {
+          parent.insertBefore(existingMark.firstChild, existingMark);
+        }
+        parent.removeChild(existingMark);
+        parent.normalize();
+        return;
+      }
+      const validNodes = getValidCellNodes(cell);
+      if (validNodes.length === 0) return;
+      const cellRange = document.createRange();
+      cellRange.setStart(validNodes[0], 0);
+      const last = validNodes[validNodes.length - 1];
+      const len = last.nodeType === Node.TEXT_NODE ? last.textContent.length : last.childNodes.length;
+      cellRange.setEnd(last, len);
+
+      const mark = document.createElement('mark');
+      mark.className = 'stilo-highlight';
+      try {
+        cellRange.surroundContents(mark);
+      } catch (_) {
+        const frag = cellRange.extractContents();
+        mark.appendChild(frag);
+        cellRange.insertNode(mark);
+      }
+      mark.removeAttribute('style');
+      mark.querySelectorAll('*').forEach(el => {
+        el.style.fontSize = '';
+        el.style.fontWeight = '';
+        el.style.lineHeight = '';
+        if (!el.getAttribute('style')) el.removeAttribute('style');
+      });
     }
 
     function doApplyHighlight() {
       closeAllPopups();
       saveUndoState();
-      editor.focus();
+      let range = restoreSelectionIfNeeded();
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
+      if (!sel || !range) return;
+
+      range = normalizeTableRange(range);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      lastEditorRange = range.cloneRange();
+
+      // Check if selection covers multiple cells in a table
+      const startCell = (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('td, th');
+      const endCell = (range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement)?.closest('td, th');
+      if (startCell && endCell && startCell !== endCell) {
+        const table = startCell.closest('table.stilo-table');
+        if (table && table === endCell.closest('table.stilo-table')) {
+          const allCells = Array.from(table.querySelectorAll('td, th'));
+          const sIdx = allCells.indexOf(startCell);
+          const eIdx = allCells.indexOf(endCell);
+          if (sIdx !== -1 && eIdx !== -1) {
+            const fromIdx = Math.min(sIdx, eIdx);
+            const toIdx = Math.max(sIdx, eIdx);
+            for (let i = fromIdx; i <= toIdx; i++) {
+              highlightTableCell(allCells[i]);
+            }
+            notifyChange();
+            return;
+          }
+        }
+      }
 
       // 1. If cursor or selection is already inside a mark, toggle it off by unwrapping
       const existingMark = getClosestElement('mark');
@@ -2564,12 +2816,27 @@
       }
 
       function wrapRangeWithMark(targetRange) {
+        // Safety check: NEVER wrap table structure elements
+        const cloned = targetRange.cloneContents();
+        if (cloned.querySelector('table, thead, tbody, tr, th, td, .stilo-table-wrapper')) {
+          const cell = (targetRange.startContainer.nodeType === 1 ? targetRange.startContainer : targetRange.startContainer.parentElement)?.closest('td, th');
+          if (cell) {
+            highlightTableCell(cell);
+            return cell.querySelector('mark.stilo-highlight');
+          }
+          return null;
+        }
+
         const mark = document.createElement('mark');
         mark.className = 'stilo-highlight';
         try {
           targetRange.surroundContents(mark);
         } catch (_) {
           const frag = targetRange.extractContents();
+          if (frag.querySelector('table, thead, tbody, tr, th, td, .stilo-table-wrapper')) {
+            targetRange.insertNode(frag);
+            return null;
+          }
           mark.appendChild(frag);
           targetRange.insertNode(mark);
         }
@@ -2583,17 +2850,19 @@
         return mark;
       }
 
-      const range = sel.getRangeAt(0);
       if (!range.collapsed) {
         // Text is selected: wrap with <mark class="stilo-highlight">
         const text = sel.toString();
         if (text) {
           const mark = wrapRangeWithMark(range);
-          const newRange = document.createRange();
-          newRange.selectNodeContents(mark);
-          sel.removeAllRanges();
-          sel.addRange(newRange);
-          notifyChange();
+          if (mark) {
+            const newRange = document.createRange();
+            newRange.selectNodeContents(mark);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+            lastEditorRange = newRange.cloneRange();
+            notifyChange();
+          }
         }
       } else {
         // Collapsed cursor: expand to current word under cursor
@@ -2610,13 +2879,16 @@
             range.setStart(node, start);
             range.setEnd(node, end);
             const mark = wrapRangeWithMark(range);
-            const newRange = document.createRange();
-            newRange.setStartAfter(mark);
-            newRange.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(newRange);
-            notifyChange();
-            return;
+            if (mark) {
+              const newRange = document.createRange();
+              newRange.setStartAfter(mark);
+              newRange.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+              lastEditorRange = newRange.cloneRange();
+              notifyChange();
+              return;
+            }
           }
         }
         // If not on a word, insert empty mark and place cursor inside
@@ -2632,12 +2904,9 @@
     function doClearFormatting() {
       closeAllPopups();
       saveUndoState();
-      editor.focus();
-
+      const range = restoreSelectionIfNeeded();
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-
-      const range = sel.getRangeAt(0);
+      if (!sel || !range) return;
       const formattingSelector = 'strong, b, em, i, u, ins, del, s, strike, mark, sub, sup, code, a, font, span[style], span.stilo-tag, span.stilo-footnote-ref';
 
       if (!range.collapsed) {
@@ -2716,17 +2985,19 @@
     function insertTodoItem() {
       closeAllPopups();
       saveUndoState();
-      editor.focus();
+      const range = restoreSelectionIfNeeded();
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-
-      const range = sel.getRangeAt(0);
-      const text = sel.isCollapsed ? '' : sel.toString().trim();
+      if (!sel || !range) return;
 
       const block = getClosestBlockElement();
+      if (block && (['TD', 'TH'].includes(block.tagName) || block.closest('table'))) {
+        return;
+      }
+
+      const text = range.collapsed ? '' : sel.toString().trim();
       const isBlockEmpty = block && (!block.textContent.trim() || block.innerHTML === '<br>');
 
-      if (sel.isCollapsed && block && block !== editor && !block.closest('.stilo-task') && !['H1', 'TABLE'].includes(block.tagName) && !isBlockEmpty) {
+      if (range.collapsed && block && block !== editor && !block.closest('.stilo-task') && !['H1', 'TABLE'].includes(block.tagName) && !isBlockEmpty) {
         // Convert existing line into a checklist task
         const existingHtml = block.innerHTML;
         const task = document.createElement('div');
@@ -2759,35 +3030,11 @@
       notifyChange();
     }
 
-    let lastEditorRange = null;
-
-    function saveCurrentRange() {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        if (editor.contains(range.commonAncestorContainer)) {
-          lastEditorRange = range.cloneRange();
-        }
-      }
-    }
-
-    document.addEventListener('selectionchange', saveCurrentRange);
 
     function insertHtmlSafely(htmlString) {
-      editor.focus();
+      const range = restoreSelectionIfNeeded();
       const sel = window.getSelection();
-      let range = null;
-      if (sel && sel.rangeCount > 0) {
-        const testRange = sel.getRangeAt(0);
-        if (editor.contains(testRange.commonAncestorContainer)) {
-          range = testRange;
-        }
-      }
-      if (!range && lastEditorRange && editor.contains(lastEditorRange.commonAncestorContainer)) {
-        range = lastEditorRange;
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
+
 
       if (range) {
         range.deleteContents();
@@ -3018,18 +3265,23 @@
     function insertCodeBlock() {
       closeAllPopups();
       saveUndoState();
-      editor.focus();
+      const range = restoreSelectionIfNeeded();
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
+      if (!sel || !range) return;
 
-      const range = sel.getRangeAt(0);
       let text = '';
-      if (!sel.isCollapsed) {
+      if (!range.collapsed) {
         text = sel.toString();
       }
       const placeholder = text ? escapeHtml(text) : '// Code here...';
 
       const block = getClosestBlockElement();
+      if (block && (['TD', 'TH'].includes(block.tagName) || block.closest('table'))) {
+        document.execCommand('insertHTML', false, `<code>${placeholder}</code>`);
+        notifyChange();
+        return;
+      }
+
       const isBlockEmpty = block && (!block.textContent.trim() || block.innerHTML === '<br>');
 
       const pre = document.createElement('pre');
@@ -3064,15 +3316,18 @@
     function insertQuote() {
       closeAllPopups();
       saveUndoState();
-      editor.focus();
+      const range = restoreSelectionIfNeeded();
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-
-      const range = sel.getRangeAt(0);
-      const text = sel.isCollapsed ? '' : sel.toString().trim();
-      const placeholder = text ? escapeHtml(text) : 'Quote text...';
+      if (!sel || !range) return;
 
       const block = getClosestBlockElement();
+      if (block && (['TD', 'TH'].includes(block.tagName) || block.closest('table'))) {
+        return;
+      }
+
+      const text = range.collapsed ? '' : sel.toString().trim();
+      const placeholder = text ? escapeHtml(text) : 'Quote text...';
+
       const isBlockEmpty = block && (!block.textContent.trim() || block.innerHTML === '<br>');
 
       const quote = document.createElement('blockquote');
