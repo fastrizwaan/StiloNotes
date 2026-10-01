@@ -353,40 +353,74 @@ popover .themeselector checkbutton radio:checked {
   border-radius: 9999px;
 }
 
-/* Sidebar section headers (Categories, Tags) */
-row.sidebar-section-header {
-  background: transparent;
-  padding: 0;
-  margin: 0;
+/* Sidebar row alignment with add_cat_btn on the top left */
+list.navigation-sidebar > row,
+.navigation-sidebar > row {
+  padding-left: 9px;
+  padding-right: 8px;
 }
 
-row.sidebar-section-header:hover,
-row.sidebar-section-header:focus,
-row.sidebar-section-header:selected {
-  background: transparent;
+/* Sidebar horizontal splitter / separator (Nautilus style) */
+list.navigation-sidebar > row.sidebar-separator-row,
+.navigation-sidebar > row.sidebar-separator-row,
+row.sidebar-separator-row {
+  min-height: 1px;
+  padding-left: 0;
+  padding-right: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  margin-left: 10px;
+  margin-right: 10px;
+  background-color: alpha(currentColor, 0.14);
+  border: none;
+  box-shadow: none;
+}
+
+row.sidebar-separator-row separator {
+  min-height: 1px;
+  background-color: alpha(currentColor, 0.14);
+}
+
+list.navigation-sidebar > row.sidebar-separator-row:hover,
+list.navigation-sidebar > row.sidebar-separator-row:focus,
+list.navigation-sidebar > row.sidebar-separator-row:selected,
+row.sidebar-separator-row:hover,
+row.sidebar-separator-row:focus,
+row.sidebar-separator-row:selected {
+  background-color: alpha(currentColor, 0.14);
   outline: none;
 }
 
-.caption-heading {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  opacity: 0.7;
-}
-
-/* Sidebar Category Tree Expander */
+/* Sidebar Category Expander (AdwExpanderRow style chevron on right) */
 button.category-expander {
-  min-width: 18px;
-  min-height: 18px;
+  min-width: 22px;
+  min-height: 22px;
   padding: 0;
   margin: 0;
   border-radius: 4px;
   border: none;
   box-shadow: none;
   background: transparent;
+  opacity: 0.7;
 }
 
 button.category-expander:hover {
-  background: alpha(currentColor, 0.1);
+  background: alpha(currentColor, 0.12);
+  opacity: 1.0;
 }
+
+/* Empty Trash Bar below HeaderBar */
+.empty-trash-bar {
+  padding: 6px 12px;
+  background-color: alpha(currentColor, 0.03);
+  border-bottom: 1px solid alpha(currentColor, 0.08);
+}
+
+.empty-trash-button {
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-weight: 500;
+}
+

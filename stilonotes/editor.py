@@ -74,16 +74,13 @@ class FormattingBar(Gtk.Box):
 
     __gtype_name__ = "StiloFormattingBar"
 
-    def __init__(self, exec_fn, insert_table_fn=None, pick_image_fn=None, toggle_pin_fn=None, is_pinned=False):
+    def __init__(self, exec_fn, insert_table_fn=None, pick_image_fn=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self._exec = exec_fn
         self._insert_table = insert_table_fn
         self._pick_image = pick_image_fn
-        self._toggle_pin = toggle_pin_fn
-        self._is_pinned = is_pinned
         self.h_pop = None
         self.table_pop = None
-        self.pin_btn = None
         self._build()
 
     def is_popover_open(self) -> bool:
@@ -288,37 +285,11 @@ class FormattingBar(Gtk.Box):
         flowbox.append(img_btn)
         _setup_flow_child(img_btn)
 
-        # 7. Pin ToggleButton packed at the end of bar_box
-        self.pin_btn = Gtk.ToggleButton()
-        self.pin_btn.set_icon_name("view-pin-symbolic")
-        self.pin_btn.set_tooltip_text("Unpin Toolbar (Auto-hide)" if self._is_pinned else "Pin Toolbar (Always visible)")
-        self.pin_btn.set_active(self._is_pinned)
-        self.pin_btn.set_focus_on_click(False)
-        self.pin_btn.add_css_class("flat")
-        self.pin_btn.set_valign(Gtk.Align.CENTER)
-        self.pin_btn.set_halign(Gtk.Align.END)
-        if self._is_pinned:
-            self.pin_btn.add_css_class("stilo-pin-active")
-        self.pin_btn.connect("toggled", self._on_pin_toggled)
-        bar_box.append(self.pin_btn)
-
     def _on_image_clicked(self):
         if self._pick_image:
             self._pick_image()
         else:
             self._exec("image")
-
-    def _on_pin_toggled(self, btn):
-        pinned = btn.get_active()
-        self._is_pinned = pinned
-        if pinned:
-            btn.add_css_class("stilo-pin-active")
-            btn.set_tooltip_text("Unpin Toolbar (Auto-hide)")
-        else:
-            btn.remove_css_class("stilo-pin-active")
-            btn.set_tooltip_text("Pin Toolbar (Always visible)")
-        if self._toggle_pin:
-            self._toggle_pin(pinned)
 
     def _add_btn(self, box, icon_name, tooltip, cmd):
         btn = Gtk.Button()
@@ -369,11 +340,10 @@ class NoteEditor(Gtk.Box):
         self._pending_save_data = None
         self._mouse_over_toolbar = False
         self._mouse_near_bottom = False
-        self._is_toolbar_pinned = (self.db.get_setting("toolbar_pinned", "false") == "true")
+        self._is_toolbar_pinned = self.config_manager.get_toolbar_pinned()
         self._page_loaded = False
         self._pending_load_note = None
         self._save_timeout_id = None
-        self._syncing_format_btn = False
         _register_attachment_scheme(self.db)
         self._build_ui()
 
@@ -424,12 +394,13 @@ class NoteEditor(Gtk.Box):
         self.info_btn.set_tooltip_text("Note Statistics")
         self.info_btn.set_popover(self.stats_popover)
 
-        # 3. Format Toolbar Toggle button
+        # 3. Format Toolbar Toggle button (controls toolbar pinning)
         self.format_btn = Gtk.ToggleButton()
         self.format_btn.set_icon_name("format-text-bold-symbolic")
         self.format_btn.set_tooltip_text("Toggle Formatting Bar (Ctrl+Shift+F)")
         self.format_btn.set_focus_on_click(False)
         self.format_btn.add_css_class("flat")
+        self.format_btn.set_active(self._is_toolbar_pinned)
         self.format_btn.connect("toggled", self._on_format_btn_toggled)
 
         # 4. Star / Favorites toggle button
@@ -453,6 +424,13 @@ class NoteEditor(Gtk.Box):
         self.header_stack.add_named(self.category_header_bar, "category")
 
         self.append(self.header_stack)
+
+        # Conflict Banner for external edits
+        self.conflict_banner = Adw.Banner.new("This note was modified in another window.")
+        self.conflict_banner.set_button_label("Reload")
+        self.conflict_banner.set_revealed(False)
+        self.conflict_banner.connect("button-clicked", self._on_conflict_reload_clicked)
+        self.append(self.conflict_banner)
 
         # Overlay: WebView + bottom revealer
         overlay = Gtk.Overlay()
@@ -492,8 +470,6 @@ class NoteEditor(Gtk.Box):
             exec_fn=self._exec_js_format,
             insert_table_fn=self._insert_table_at_cursor,
             pick_image_fn=self._trigger_pick_image,
-            toggle_pin_fn=self._on_toolbar_pin_toggled,
-            is_pinned=self._is_toolbar_pinned
         )
 
         self.fmt_revealer = Gtk.Revealer()
@@ -502,9 +478,8 @@ class NoteEditor(Gtk.Box):
         self.fmt_revealer.set_valign(Gtk.Align.END)
         self.fmt_revealer.set_halign(Gtk.Align.FILL)
         self.fmt_revealer.set_hexpand(True)
-        self.fmt_revealer.set_reveal_child(True)
+        self.fmt_revealer.set_reveal_child(self._is_toolbar_pinned)
         self.fmt_revealer.set_child(self.fmt_bar)
-        self.fmt_revealer.connect("notify::reveal-child", lambda _r, _p: self._sync_format_btn())
 
         # Mouse motion on bottom revealer so it stays visible while hovering
         revealer_motion = Gtk.EventControllerMotion()
@@ -525,25 +500,20 @@ class NoteEditor(Gtk.Box):
 
     # ── Toolbar auto-hide / hover / pin handling ──────────────────────────
 
-    def _sync_format_btn(self):
-        if hasattr(self, "format_btn") and hasattr(self, "fmt_revealer"):
-            is_revealed = self.fmt_revealer.get_reveal_child()
-            if self.format_btn.get_active() != is_revealed:
-                self._syncing_format_btn = True
-                self.format_btn.set_active(is_revealed)
-                self._syncing_format_btn = False
-
     def _on_format_btn_toggled(self, btn):
-        if getattr(self, "_syncing_format_btn", False):
-            return
-        reveal = btn.get_active()
-        if reveal:
+        pinned = btn.get_active()
+        self._is_toolbar_pinned = pinned
+        self.config_manager.set_toolbar_pinned(pinned)
+        if pinned:
             self._show_toolbar()
         else:
             if self._toolbar_reveal_timeout:
                 GLib.source_remove(self._toolbar_reveal_timeout)
                 self._toolbar_reveal_timeout = None
-            self.fmt_revealer.set_reveal_child(False)
+            if not self._mouse_over_toolbar and not self._mouse_near_bottom:
+                self.fmt_revealer.set_reveal_child(False)
+            else:
+                self._schedule_hide_toolbar()
 
     def _insert_table_at_cursor(self, rows: int, cols: int, has_header: bool):
         script = f"if (window.insertCustomTable) {{ window.insertCustomTable({rows}, {cols}, {'true' if has_header else 'false'}); }}"
@@ -551,14 +521,6 @@ class NoteEditor(Gtk.Box):
 
     def _trigger_pick_image(self):
         self._on_js_pick_image(None, None)
-
-    def _on_toolbar_pin_toggled(self, is_pinned: bool):
-        self._is_toolbar_pinned = is_pinned
-        self.db.set_setting("toolbar_pinned", "true" if is_pinned else "false")
-        if is_pinned:
-            self._show_toolbar()
-        else:
-            self._schedule_hide_toolbar()
 
     def _on_toolbar_enter(self, _ctrl, _x, _y):
         self._mouse_over_toolbar = True
@@ -817,16 +779,60 @@ class NoteEditor(Gtk.Box):
         self.current_note.category = clean_cat
         if clean_cat:
             self.db.create_category(clean_cat)
-        self.db.save_note(note_id=self.current_note.id, category=clean_cat)
+        self.db.save_note(note_id=self.current_note.id, category=clean_cat, sender=self)
         self.header_stack.set_visible_child_name("main")
         self.emit("note-category-changed", self.current_note.id, clean_cat)
 
     def _on_abort_category_change(self, _bar):
         self.header_stack.set_visible_child_name("main")
 
+    # ── External Sync & Conflict Handling ─────────────────────────────────
+
+    def show_conflict_banner(self):
+        self.conflict_banner.set_revealed(True)
+
+    def hide_conflict_banner(self):
+        self.conflict_banner.set_revealed(False)
+
+    def has_pending_changes(self) -> bool:
+        return self._pending_save_data is not None
+
+    def _on_conflict_reload_clicked(self, _banner):
+        self.hide_conflict_banner()
+        if self._save_timeout_id:
+            GLib.source_remove(self._save_timeout_id)
+            self._save_timeout_id = None
+        self._pending_save_data = None
+        if self.current_note:
+            full = self.db.get_note(self.current_note.id)
+            if full:
+                self.reload_note_from_db(full)
+
+    def reload_note_from_db(self, note: Note):
+        """Reload note content from DB without resetting scroll or focus unnecessarily."""
+        self.hide_conflict_banner()
+        self.current_note = note
+        self.title_label.set_text(note.title)
+        self.status_label.set_text("Saved")
+        self._update_star_btn(note.is_pinned)
+        self.latest_stats = compute_note_stats(note.content_html, note.content_markdown)
+        self.update_stats_popover()
+
+        html_content = note.content_html
+        if not html_content and note.content_markdown:
+            html_content = markdown_to_html(note.content_markdown)
+        if not html_content:
+            html_content = f"<h1>{note.title}</h1><div><br></div>"
+
+        escaped_html = json.dumps(html_content)
+        script = f"if (window.setEditorContent) {{ window.setEditorContent({escaped_html}, false); }}"
+        self.webview.evaluate_javascript(script, -1, None, None, None, None)
+        self._sync_autocomplete_data()
+
     # ── Note loading & theme ──────────────────────────────────────────────
 
     def load_note(self, note: Note):
+        self.hide_conflict_banner()
         self.flush_save()
         full_note = self.db.get_note(note.id)
         if full_note:
@@ -981,7 +987,7 @@ class NoteEditor(Gtk.Box):
             if cat_name and self.current_note:
                 self.current_note.category = cat_name
                 self.db.create_category(cat_name)
-                self.db.save_note(self.current_note.id, category=cat_name)
+                self.db.save_note(self.current_note.id, category=cat_name, sender=self)
                 self.category_header_bar.set_category(cat_name)
                 self.emit("note-category-changed", self.current_note.id, cat_name)
                 self._sync_autocomplete_data()
@@ -1023,7 +1029,8 @@ class NoteEditor(Gtk.Box):
                         content_html=data["html"],
                         content_markdown=md_content,
                         tags=note_tags,
-                        has_todo=data["has_todo"]
+                        has_todo=data["has_todo"],
+                        sender=self
                     )
                     if self.current_note and self.current_note.id == data["note_id"]:
                         self.current_note.content_markdown = md_content
@@ -1031,6 +1038,7 @@ class NoteEditor(Gtk.Box):
                     def on_done():
                         if self._pending_save_data and self._pending_save_data.get("html") == data["html"]:
                             self._pending_save_data = None
+                            self.hide_conflict_banner()
                             self.status_label.set_text("Saved")
                             self.emit("note-updated", data["note_id"], data["title"], data["excerpt"], data["html"], md_content, data.get("tags", []), data["has_todo"])
                         return False
@@ -1061,10 +1069,12 @@ class NoteEditor(Gtk.Box):
                     excerpt=data["excerpt"],
                     content_html=data["html"],
                     content_markdown=md,
-                    has_todo=data["has_todo"]
+                    has_todo=data["has_todo"],
+                    sender=self
                 )
                 if self.current_note and self.current_note.id == data["note_id"]:
                     self.current_note.content_markdown = md
+                self.hide_conflict_banner()
                 self.status_label.set_text("Saved")
                 self.emit("note-updated", data["note_id"], data["title"], data["excerpt"], data["html"], md, [], data["has_todo"])
             except Exception as e:

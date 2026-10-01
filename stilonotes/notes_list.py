@@ -7,6 +7,9 @@ import re
 import urllib.parse
 from datetime import datetime, timedelta
 from typing import List, Optional
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
 
 from stilonotes.models import Note
@@ -735,14 +738,14 @@ class NotesList(Gtk.Box):
         self.empty_page = Adw.StatusPage()
         self.empty_page.set_title("Note List Empty")
         self.empty_page.set_description("Capture your ideas, checklists, and notes in markdown.")
-        self.empty_page.set_icon_name("text-justify-fill-symbolic")
+        self.empty_page.set_icon_name("text-editor-symbolic")
 
-        new_btn = Gtk.Button(label="New Note")
-        new_btn.add_css_class("pill")
-        new_btn.add_css_class("suggested-action")
-        new_btn.set_halign(Gtk.Align.CENTER)
-        new_btn.connect("clicked", lambda _b: self.emit("new-note-requested"))
-        self.empty_page.set_child(new_btn)
+        self.empty_new_btn = Gtk.Button(label="New Note")
+        self.empty_new_btn.add_css_class("pill")
+        self.empty_new_btn.add_css_class("suggested-action")
+        self.empty_new_btn.set_halign(Gtk.Align.CENTER)
+        self.empty_new_btn.connect("clicked", lambda _b: self.emit("new-note-requested"))
+        self.empty_page.set_child(self.empty_new_btn)
         self.stack.add_named(self.empty_page, "empty")
 
         # 3. Search Empty Page
@@ -866,6 +869,16 @@ class NotesList(Gtk.Box):
             if is_search:
                 self.stack.set_visible_child_name("search_empty")
             else:
+                if active_filter_type == "trash":
+                    self.empty_page.set_title("Trash is Empty")
+                    self.empty_page.set_description("")
+                    self.empty_page.set_icon_name("user-trash-symbolic")
+                    self.empty_new_btn.set_visible(False)
+                else:
+                    self.empty_page.set_title("Note List Empty")
+                    self.empty_page.set_description("Capture your ideas, checklists, and notes in markdown.")
+                    self.empty_page.set_icon_name("text-editor-symbolic")
+                    self.empty_new_btn.set_visible(True)
                 self.stack.set_visible_child_name("empty")
             return
 

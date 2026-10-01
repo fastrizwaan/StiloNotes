@@ -146,9 +146,22 @@ class IndexView(Adw.BreakpointBin):
         self.selection_header.connect("export", self._on_selection_export)
         self.selection_header.connect("delete", self._on_selection_delete)
 
-        self.header_stack.add_named(self.selection_header, "selection")
-
         self.toolbar_view.add_top_bar(self.header_stack)
+
+        # Empty Trash Bar
+        self.empty_trash_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.empty_trash_bar.add_css_class("empty-trash-bar")
+        self.empty_trash_bar.set_visible(False)
+
+        empty_trash_spacer = Gtk.Box(hexpand=True)
+        self.empty_trash_bar.append(empty_trash_spacer)
+
+        self.empty_trash_btn = Gtk.Button(label="Empty Trash…")
+        self.empty_trash_btn.add_css_class("empty-trash-button")
+        self.empty_trash_btn.connect("clicked", self._on_empty_trash_clicked)
+        self.empty_trash_bar.append(self.empty_trash_btn)
+
+        self.toolbar_view.add_top_bar(self.empty_trash_bar)
 
         # Notes List inside Toast Overlay
         self.toast_overlay = Adw.ToastOverlay()
@@ -205,6 +218,10 @@ class IndexView(Adw.BreakpointBin):
         s_theme.append_item(item_theme)
         menu.append_section(None, s_theme)
 
+        s_window = Gio.Menu()
+        s_window.append("New Window", "app.new-window")
+        menu.append_section(None, s_window)
+
         s_app = Gio.Menu()
         s_app.append("Preferences", "app.preferences")
         s_app.append("Keyboard Shortcuts", "app.shortcuts")
@@ -212,21 +229,52 @@ class IndexView(Adw.BreakpointBin):
         menu.append_section(None, s_app)
         return menu
 
+    def _on_empty_trash_clicked(self, _btn):
+        dialog = Adw.AlertDialog.new(
+            "Empty Trash?",
+            "All notes in the trash will be permanently deleted."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("empty", "Empty Trash")
+        dialog.set_response_appearance("empty", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_d, response):
+            if response == "empty":
+                self.db.empty_trash(sender=self)
+                self.refresh(update_sidebar=True)
+                self.toast_overlay.add_toast(Adw.Toast.new("Trash emptied"))
+
+        dialog.connect("response", on_response)
+        root = self.get_root()
+        if root:
+            dialog.present(root)
+        else:
+            dialog.present(self)
+
     def refresh(self, update_sidebar: bool = True):
         """Fetch filtered notes and reload list."""
         if update_sidebar:
             self.sidebar.refresh()
+
+        is_trash = (self.active_filter_type == "trash")
+        self.new_note_btn.set_visible(not is_trash)
 
         # Update title
         if self.active_filter_type == "all":
             self.window_title.set_title("All Notes")
         elif self.active_filter_type == "uncategorized":
             self.window_title.set_title("Uncategorized")
-        elif self.active_filter_type == "pinned":
+        elif self.active_filter_type in ("pinned", "favorites"):
             self.window_title.set_title("Favorites")
-        elif self.active_filter_type == "todo":
-            self.window_title.set_title("Tasks")
-        elif self.active_filter_type == "trash":
+        elif self.active_filter_type in ("todo", "todos"):
+            self.window_title.set_title("Todos")
+        elif self.active_filter_type in ("list", "lists"):
+            self.window_title.set_title("Lists")
+        elif self.active_filter_type in ("recent", "recents"):
+            self.window_title.set_title("Recent")
+        elif is_trash:
             self.window_title.set_title("Trash")
         elif self.active_filter_type == "category":
             self.window_title.set_title(self.active_category_name or "Category")
@@ -239,6 +287,9 @@ class IndexView(Adw.BreakpointBin):
             tag_name=self.active_category_name if self.active_filter_type == "tag" else "",
             search_query=self.search_query
         )
+
+        self.empty_trash_bar.set_visible(is_trash and len(notes) > 0)
+
         self.notes_list.set_notes(
             notes,
             is_search=bool(self.search_query),

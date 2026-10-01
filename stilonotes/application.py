@@ -18,8 +18,16 @@ class StiloApplication(Adw.Application):
             application_id=APP_ID,
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS
         )
-        self.window: Optional[StiloWindow] = None
         self.db: Optional[NoteDatabase] = None
+        self.config_manager: Optional[ConfigManager] = None
+
+    def create_window(self) -> StiloWindow:
+        """Create and return a new application window sharing the database and config."""
+        if not self.db:
+            self.db = NoteDatabase()
+        if not self.config_manager:
+            self.config_manager = ConfigManager.get_default(self.db)
+        return StiloWindow(self, self.db)
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -40,10 +48,13 @@ class StiloApplication(Adw.Application):
             self.db = NoteDatabase()
         self.config_manager = ConfigManager.get_default(self.db)
 
-        if not self.window:
-            self.window = StiloWindow(self, self.db)
-
-        self.window.present()
+        windows = self.get_windows()
+        if not windows:
+            win = self.create_window()
+            win.present()
+        else:
+            active_win = self.get_active_window() or windows[0]
+            active_win.present()
 
     def _load_css(self):
         css_path = get_assets_path() / "css" / "style.css"
@@ -69,10 +80,15 @@ class StiloApplication(Adw.Application):
             if accels:
                 self.set_accels_for_action(f"app.{name}", accels)
 
+        add_simple_action("new-window", self._on_new_window, ["<Control><Shift>n"])
         add_simple_action("about", self._on_about)
         add_simple_action("preferences", self._on_preferences, ["<Control>comma"])
         add_simple_action("shortcuts", self._on_shortcuts, ["<Control>question"])
         add_simple_action("quit", lambda _a, _p: self.quit(), ["<Control>q"])
+
+    def _on_new_window(self, _action, _param):
+        win = self.create_window()
+        win.present()
 
     def _on_about(self, _action, _param):
         about = Adw.AboutDialog()
@@ -162,6 +178,13 @@ class StiloApplication(Adw.Application):
           <object class="GtkShortcutsGroup">
             <property name="visible">True</property>
             <property name="title">General</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;n</property>
+                <property name="title">New window</property>
+              </object>
+            </child>
             <child>
               <object class="GtkShortcutsShortcut">
                 <property name="visible">True</property>

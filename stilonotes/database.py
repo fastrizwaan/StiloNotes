@@ -22,6 +22,7 @@ from stilonotes.markdown_utils import (
     extract_categories,
     extract_table_data,
     check_has_todo,
+    check_has_list,
     markdown_to_html,
     html_to_markdown,
 )
@@ -39,8 +40,50 @@ class NoteDatabase:
 
         self._lock = threading.RLock()
         self._conn: Optional[sqlite3.Connection] = None
+        self._change_listeners = []
 
         self._init_db()
+
+    def add_change_listener(self, callback):
+        """Register a callback for database change notifications: callback(event_type, data, sender)."""
+        if callback not in self._change_listeners:
+            self._change_listeners.append(callback)
+
+    def remove_change_listener(self, callback):
+        """Unregister a database change callback."""
+        if callback in self._change_listeners:
+            self._change_listeners.remove(callback)
+
+    def _notify_change(self, event_type: str, data: Optional[Dict[str, Any]] = None, sender: Any = None):
+        """Notify all registered listeners on the GLib main loop."""
+        if not self._change_listeners:
+            return
+        payload = data or {}
+        listeners = list(self._change_listeners)
+
+        def dispatch():
+            for cb in listeners:
+                try:
+                    cb(event_type, payload, sender)
+                except Exception as e:
+                    print(f"Error in db change listener for {event_type}:", e)
+            return False
+
+        try:
+            GLib.idle_add(dispatch)
+        except Exception:
+            dispatch()
+
+    def _register_functions(self, conn: sqlite3.Connection):
+        """Register custom SQLite functions for fast content classification."""
+        conn.create_function(
+            "has_todo_fn", 2,
+            lambda md, html: 1 if (check_has_todo(md) or check_has_todo(html)) else 0
+        )
+        conn.create_function(
+            "has_list_fn", 2,
+            lambda md, html: 1 if (check_has_list(md) or check_has_list(html)) else 0
+        )
 
     @contextmanager
     def get_connection(self):
@@ -51,6 +94,7 @@ class NoteDatabase:
                 conn_path = ":memory:" if is_mem else str(self.db_path)
                 conn = sqlite3.connect(conn_path, check_same_thread=False)
                 conn.row_factory = sqlite3.Row
+                self._register_functions(conn)
 
                 # Performance tuning pragmas
                 if not is_mem:
@@ -151,6 +195,12 @@ class NoteDatabase:
                 md = html_to_markdown(r["content_html"])
                 cursor.execute("UPDATE notes SET content_markdown = ? WHERE id = ?", (md, r["id"]))
 
+            # Ensure notes with checklist items have has_todo set to 1
+            cursor.execute("SELECT id, content_markdown, content_html, has_todo FROM notes WHERE has_todo = 0 AND is_trashed = 0")
+            for r in cursor.fetchall():
+                if check_has_todo(r["content_markdown"]) or check_has_todo(r["content_html"]):
+                    cursor.execute("UPDATE notes SET has_todo = 1 WHERE id = ?", (r["id"],))
+
             conn.commit()
 
             # Seed initial sample note if empty
@@ -240,8 +290,14 @@ Enjoy writing with Stilo Notes!
             # Category / Tab filters
             if filter_type in ("pinned", "favorites"):
                 query += " AND is_pinned = 1"
-            elif filter_type == "todo":
-                query += " AND has_todo = 1"
+            elif filter_type in ("todo", "todos"):
+                query += " AND (has_todo = 1 OR has_todo_fn(content_markdown, content_html) = 1)"
+            elif filter_type in ("list", "lists"):
+                query += " AND has_list_fn(content_markdown, content_html) = 1"
+            elif filter_type in ("recent", "recents"):
+                recent_cutoff = time.time() - (7 * 86400)
+                query += " AND updated_at >= ?"
+                params.append(recent_cutoff)
             elif filter_type == "uncategorized":
                 query += " AND (category = '' OR category IS NULL)"
             elif filter_type == "category" and category_name:
@@ -296,6 +352,7 @@ Enjoy writing with Stilo Notes!
         is_archived: Optional[bool] = None,
         is_trashed: Optional[bool] = None,
         has_todo: Optional[bool] = None,
+        sender: Any = None,
     ) -> Note:
         """Save note with Markdown as the authoritative single source of truth."""
         now = time.time()
@@ -345,10 +402,10 @@ Enjoy writing with Stilo Notes!
                 new_pinned = int(is_pinned if is_pinned is not None else existing.is_pinned)
                 new_archived = int(is_archived if is_archived is not None else existing.is_archived)
                 new_trashed = int(is_trashed if is_trashed is not None else existing.is_trashed)
-                if has_todo is not None:
-                    new_todo = 1 if has_todo else 0
+                if has_todo or check_has_todo(new_md) or check_has_todo(new_html):
+                    new_todo = 1
                 else:
-                    new_todo = 1 if check_has_todo(new_md or new_html) else 0
+                    new_todo = 0
 
                 cursor.execute("""
                 UPDATE notes SET
@@ -410,10 +467,10 @@ Enjoy writing with Stilo Notes!
                 new_pinned = int(is_pinned or 0)
                 new_archived = int(is_archived or 0)
                 new_trashed = int(is_trashed or 0)
-                if has_todo is not None:
-                    new_todo = 1 if has_todo else 0
+                if has_todo or check_has_todo(new_md) or check_has_todo(new_html):
+                    new_todo = 1
                 else:
-                    new_todo = 1 if check_has_todo(new_md or new_html) else 0
+                    new_todo = 0
 
                 cursor.execute("""
                 INSERT INTO notes (
@@ -454,7 +511,7 @@ Enjoy writing with Stilo Notes!
                     cursor.execute("DELETE FROM attachments WHERE note_id = ?", (note_id,))
 
             conn.commit()
-            return Note(
+            saved_note = Note(
                 id=note_id,
                 title=new_title,
                 content_html=new_html,
@@ -469,8 +526,10 @@ Enjoy writing with Stilo Notes!
                 created_at=row["created_at"] if row else now,
                 updated_at=now,
             )
+            self._notify_change("note-saved", {"note_id": note_id, "note": saved_note}, sender=sender)
+            return saved_note
 
-    def create_note(self, title: str = "Untitled Note", category: str = "", initial_text: str = "") -> Note:
+    def create_note(self, title: str = "Untitled Note", category: str = "", initial_text: str = "", sender: Any = None) -> Note:
         """Create a new note."""
         note_id = str(uuid.uuid4())
         md_content = initial_text or (f"# {title}\n\n" if title != "Untitled Note" else "")
@@ -480,10 +539,11 @@ Enjoy writing with Stilo Notes!
             title=title,
             category=category,
             content_html=html_content,
-            content_markdown=md_content
+            content_markdown=md_content,
+            sender=sender
         )
 
-    def delete_note(self, note_id: str, permanent: bool = False):
+    def delete_note(self, note_id: str, permanent: bool = False, sender: Any = None):
         """Move note to trash, or delete permanently."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -493,23 +553,44 @@ Enjoy writing with Stilo Notes!
             else:
                 cursor.execute("UPDATE notes SET is_trashed = 1, updated_at = ? WHERE id = ?", (time.time(), note_id))
             conn.commit()
+        self._notify_change("note-deleted", {"note_id": note_id, "permanent": permanent}, sender=sender)
 
-    def restore_note(self, note_id: str):
+    def restore_note(self, note_id: str, sender: Any = None):
         """Restore note from trash."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE notes SET is_trashed = 0, updated_at = ? WHERE id = ?", (time.time(), note_id))
             conn.commit()
+        self._notify_change("note-restored", {"note_id": note_id}, sender=sender)
 
-    def set_note_pinned(self, note_id: str, is_pinned: bool):
+    def empty_trash(self, sender: Any = None) -> int:
+        """Permanently delete all notes in trash along with their attachments."""
+        deleted_count = 0
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM notes WHERE is_trashed = 1")
+            rows = cursor.fetchall()
+            if rows:
+                trashed_ids = [r["id"] for r in rows]
+                deleted_count = len(trashed_ids)
+                placeholders = ",".join("?" for _ in trashed_ids)
+                cursor.execute(f"DELETE FROM attachments WHERE note_id IN ({placeholders})", trashed_ids)
+                cursor.execute("DELETE FROM notes WHERE is_trashed = 1")
+                conn.commit()
+        if deleted_count > 0:
+            self._notify_change("trash-emptied", {"count": deleted_count}, sender=sender)
+        return deleted_count
+
+    def set_note_pinned(self, note_id: str, is_pinned: bool, sender: Any = None):
         """Set pinned status directly."""
         val = 1 if is_pinned else 0
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE notes SET is_pinned = ?, updated_at = ? WHERE id = ?", (val, time.time(), note_id))
             conn.commit()
+        self._notify_change("note-pin-toggled", {"note_id": note_id, "is_pinned": bool(val)}, sender=sender)
 
-    def set_notes_pinned(self, note_ids: List[str], is_pinned: bool):
+    def set_notes_pinned(self, note_ids: List[str], is_pinned: bool, sender: Any = None):
         """Set pinned status for multiple notes."""
         if not note_ids:
             return
@@ -520,8 +601,10 @@ Enjoy writing with Stilo Notes!
             placeholders = ",".join("?" for _ in note_ids)
             cursor.execute(f"UPDATE notes SET is_pinned = ?, updated_at = ? WHERE id IN ({placeholders})", [val, now] + note_ids)
             conn.commit()
+        for nid in note_ids:
+            self._notify_change("note-pin-toggled", {"note_id": nid, "is_pinned": bool(val)}, sender=sender)
 
-    def set_note_category(self, note_id: str, category: str):
+    def set_note_category(self, note_id: str, category: str, sender: Any = None):
         """Set category for a single note."""
         clean_cat = category.strip()
         if clean_cat:
@@ -530,8 +613,9 @@ Enjoy writing with Stilo Notes!
             cursor = conn.cursor()
             cursor.execute("UPDATE notes SET category = ?, updated_at = ? WHERE id = ?", (clean_cat, time.time(), note_id))
             conn.commit()
+        self._notify_change("category-changed", {"note_id": note_id, "category": clean_cat}, sender=sender)
 
-    def set_notes_category(self, note_ids: List[str], category: str):
+    def set_notes_category(self, note_ids: List[str], category: str, sender: Any = None):
         """Set category for multiple notes."""
         if not note_ids:
             return
@@ -544,8 +628,9 @@ Enjoy writing with Stilo Notes!
             placeholders = ",".join("?" for _ in note_ids)
             cursor.execute(f"UPDATE notes SET category = ?, updated_at = ? WHERE id IN ({placeholders})", [clean_cat, now] + note_ids)
             conn.commit()
+        self._notify_change("category-changed", {"note_ids": note_ids, "category": clean_cat}, sender=sender)
 
-    def delete_notes(self, note_ids: List[str], permanent: bool = False):
+    def delete_notes(self, note_ids: List[str], permanent: bool = False, sender: Any = None):
         """Move multiple notes to trash, or delete permanently."""
         if not note_ids:
             return
@@ -559,8 +644,9 @@ Enjoy writing with Stilo Notes!
             else:
                 cursor.execute(f"UPDATE notes SET is_trashed = 1, updated_at = ? WHERE id IN ({placeholders})", [now] + note_ids)
             conn.commit()
+        self._notify_change("notes-deleted", {"note_ids": note_ids, "permanent": permanent}, sender=sender)
 
-    def restore_notes(self, note_ids: List[str]):
+    def restore_notes(self, note_ids: List[str], sender: Any = None):
         """Restore multiple notes from trash."""
         if not note_ids:
             return
@@ -570,8 +656,9 @@ Enjoy writing with Stilo Notes!
             placeholders = ",".join("?" for _ in note_ids)
             cursor.execute(f"UPDATE notes SET is_trashed = 0, updated_at = ? WHERE id IN ({placeholders})", [now] + note_ids)
             conn.commit()
+        self._notify_change("notes-restored", {"note_ids": note_ids}, sender=sender)
 
-    def toggle_pin_note(self, note_id: str) -> bool:
+    def toggle_pin_note(self, note_id: str, sender: Any = None) -> bool:
         """Toggle pinned status."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -581,6 +668,7 @@ Enjoy writing with Stilo Notes!
                 new_state = 0 if row["is_pinned"] else 1
                 cursor.execute("UPDATE notes SET is_pinned = ?, updated_at = ? WHERE id = ?", (new_state, time.time(), note_id))
                 conn.commit()
+                self._notify_change("note-pin-toggled", {"note_id": note_id, "is_pinned": bool(new_state)}, sender=sender)
                 return bool(new_state)
         return False
 
@@ -736,33 +824,40 @@ Enjoy writing with Stilo Notes!
         return None
 
     def get_categories(self) -> List[Category]:
-        """Fetch categories with active note counts in a single optimized query."""
+        """Fetch categories with active note counts in that category and its subcategories."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-            SELECT c.id, c.name, c.icon, c.color,
-                   COALESCE(n.cnt, 0) as count
-            FROM categories c
-            LEFT JOIN (
-                SELECT category, COUNT(*) as cnt
-                FROM notes
-                WHERE is_trashed = 0 AND category != '' AND category IS NOT NULL
-                GROUP BY category
-            ) n ON c.name = n.category
-            ORDER BY c.name ASC
-            """)
+            cursor.execute("SELECT id, name, icon, color FROM categories ORDER BY name ASC")
+            cat_rows = cursor.fetchall()
+
+            # Note counts per category including subcategories (without counting subcategories as notes)
+            cursor.execute(
+                "SELECT category, COUNT(*) as cnt FROM notes "
+                "WHERE is_trashed = 0 AND category != '' AND category IS NOT NULL "
+                "GROUP BY category"
+            )
+            note_rows = cursor.fetchall()
+            cat_counts: Dict[str, int] = {}
+            for row in note_rows:
+                cat = row["category"]
+                cnt = row["cnt"]
+                parts = cat.split("/")
+                for i in range(len(parts)):
+                    ancestor = "/".join(parts[:i + 1])
+                    cat_counts[ancestor] = cat_counts.get(ancestor, 0) + cnt
+
             return [
                 Category(
                     id=row["id"],
                     name=row["name"],
                     icon=row["icon"] or "folder-symbolic",
                     color=row["color"] or "",
-                    count=row["count"]
+                    count=cat_counts.get(row["name"], 0)
                 )
-                for row in cursor.fetchall()
+                for row in cat_rows
             ]
 
-    def create_category(self, name: str, icon: str = "folder-symbolic", color: str = "") -> bool:
+    def create_category(self, name: str, icon: str = "folder-symbolic", color: str = "", sender: Any = None) -> bool:
         """Create a new category."""
         clean_name = name.strip()
         if not clean_name:
@@ -775,11 +870,12 @@ Enjoy writing with Stilo Notes!
                     (str(uuid.uuid4()), clean_name, icon, color, time.time())
                 )
                 conn.commit()
-                return True
+            self._notify_change("categories-updated", {"category": clean_name}, sender=sender)
+            return True
         except sqlite3.IntegrityError:
             return False
 
-    def rename_category(self, old_name: str, new_name: str):
+    def rename_category(self, old_name: str, new_name: str, sender: Any = None):
         """Rename a category and all its subcategories and update affected notes."""
         old_name = old_name.strip()
         new_name = new_name.strip()
@@ -788,7 +884,11 @@ Enjoy writing with Stilo Notes!
         now = time.time()
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE categories SET name = ? WHERE name = ?", (new_name, old_name))
+            cursor.execute("SELECT id FROM categories WHERE name = ?", (new_name,))
+            if cursor.fetchone():
+                cursor.execute("DELETE FROM categories WHERE name = ?", (old_name,))
+            else:
+                cursor.execute("UPDATE categories SET name = ? WHERE name = ?", (new_name, old_name))
             old_prefix = old_name + "/"
             new_prefix = new_name + "/"
             cursor.execute(
@@ -801,8 +901,9 @@ Enjoy writing with Stilo Notes!
                 (new_prefix, len(old_prefix) + 1, now, old_prefix + "%")
             )
             conn.commit()
+        self._notify_change("categories-updated", {"old_name": old_name, "new_name": new_name}, sender=sender)
 
-    def delete_category(self, name: str):
+    def delete_category(self, name: str, sender: Any = None):
         """Delete category and any subcategories and reset affected notes' category."""
         clean_name = name.strip()
         if not clean_name:
@@ -816,24 +917,30 @@ Enjoy writing with Stilo Notes!
                 (now, clean_name, clean_name + "/%")
             )
             conn.commit()
+        self._notify_change("categories-updated", {"deleted": clean_name}, sender=sender)
 
     def get_counts(self) -> Dict[str, int]:
         """Return counts for standard tabs plus per-category counts in 2 fast queries."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            recent_cutoff = time.time() - (7 * 86400)
             cursor.execute("""
             SELECT
                 COUNT(CASE WHEN is_trashed = 0 THEN 1 END) as all_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_pinned = 1 THEN 1 END) as pinned_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND has_todo = 1 THEN 1 END) as todo_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND (has_todo = 1 OR has_todo_fn(content_markdown, content_html) = 1) THEN 1 END) as todo_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND has_list_fn(content_markdown, content_html) = 1 THEN 1 END) as list_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND updated_at >= ? THEN 1 END) as recent_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND (category = '' OR category IS NULL) THEN 1 END) as uncat_cnt,
                 COUNT(CASE WHEN is_trashed = 1 THEN 1 END) as trash_cnt
             FROM notes
-            """)
+            """, (recent_cutoff,))
             counts_row = cursor.fetchone()
             all_cnt = counts_row["all_cnt"]
             pinned_cnt = counts_row["pinned_cnt"]
             todo_cnt = counts_row["todo_cnt"]
+            list_cnt = counts_row["list_cnt"]
+            recent_cnt = counts_row["recent_cnt"]
             uncat_cnt = counts_row["uncat_cnt"]
             trash_cnt = counts_row["trash_cnt"]
 
@@ -857,6 +964,10 @@ Enjoy writing with Stilo Notes!
                 "pinned": pinned_cnt,
                 "favorites": pinned_cnt,
                 "todo": todo_cnt,
+                "todos": todo_cnt,
+                "list": list_cnt,
+                "lists": list_cnt,
+                "recent": recent_cnt,
                 "uncategorized": uncat_cnt,
                 "trash": trash_cnt,
             }

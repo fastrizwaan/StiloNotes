@@ -29,6 +29,7 @@ class StiloWindow(Adw.ApplicationWindow):
         self._setup_actions()
         self._setup_theme()
         self._restore_session()
+        self.db.add_change_listener(self._on_db_changed)
 
     def _build_ui(self):
         self.navigation = Adw.NavigationView()
@@ -140,6 +141,9 @@ class StiloWindow(Adw.ApplicationWindow):
         self.config_manager.set_last_opened_note_id("")
 
     def _on_close_request(self, _win):
+        # Unsubscribe db change listener
+        if hasattr(self, "db") and self.db:
+            self.db.remove_change_listener(self._on_db_changed)
         # Flush any pending editor changes
         if hasattr(self, "editor"):
             self.editor.flush_save()
@@ -171,7 +175,7 @@ class StiloWindow(Adw.ApplicationWindow):
 
     def _on_create_note(self, _iv):
         category = self.index_view.active_category_name if self.index_view.active_filter_type == "category" else ""
-        note = self.db.create_note(title="Untitled Note", category=category)
+        note = self.db.create_note(title="Untitled Note", category=category, sender=self)
         self.index_view.refresh()
         full_note = self.db.get_note(note.id)
         self.open_note(full_note or note, immediate=False)
@@ -181,12 +185,12 @@ class StiloWindow(Adw.ApplicationWindow):
             self.index_view.refresh(update_sidebar=False)
 
     def _on_editor_note_deleted(self, _ed, note_id: str):
-        self.db.delete_note(note_id)
+        self.db.delete_note(note_id, sender=self)
         self._go_back()
         self.index_view.refresh(update_sidebar=True)
 
     def _on_editor_note_pin_toggled(self, _ed, note_id: str):
-        self.db.toggle_pin_note(note_id)
+        self.db.toggle_pin_note(note_id, sender=self)
         # Reflect current note pin state in the star button
         if self.editor.current_note and self.editor.current_note.id == note_id:
             self.editor._update_star_btn(self.editor.current_note.is_pinned)
@@ -197,6 +201,72 @@ class StiloWindow(Adw.ApplicationWindow):
         self.index_view.refresh(update_sidebar=True)
         if dup:
             self.open_note(dup, immediate=False)
+
+    def _on_db_changed(self, event_type: str, data: dict, sender: Any):
+        # Ignore events originating from this window or its child components
+        if sender in (self, getattr(self, "editor", None), getattr(self, "index_view", None)):
+            return
+
+        is_in_editor = (self.navigation.get_visible_page() == self.editor_page)
+        curr_note = self.editor.current_note if hasattr(self, "editor") else None
+        curr_note_id = curr_note.id if curr_note else None
+
+        if event_type == "note-saved":
+            note_id = data.get("note_id")
+            if is_in_editor and curr_note_id == note_id:
+                # Same note is open in this window!
+                if self.editor.has_pending_changes():
+                    # Local window has pending unsaved changes -> show conflict banner
+                    self.editor.show_conflict_banner()
+                else:
+                    # Clean reload from DB
+                    full = self.db.get_note(note_id)
+                    if full:
+                        self.editor.reload_note_from_db(full)
+            else:
+                self.index_view.refresh(update_sidebar=True)
+                if is_in_editor:
+                    self.editor._sync_autocomplete_data()
+
+        elif event_type in ("note-deleted", "notes-deleted"):
+            deleted_ids = [data.get("note_id")] if event_type == "note-deleted" else data.get("note_ids", [])
+            if is_in_editor and curr_note_id in deleted_ids:
+                is_perm = data.get("permanent", False)
+                self._go_back()
+                msg = "Note permanently deleted in another window" if is_perm else "Note moved to trash in another window"
+                self.index_view.toast_overlay.add_toast(Adw.Toast.new(msg))
+            self.index_view.refresh(update_sidebar=True)
+
+        elif event_type == "trash-emptied":
+            if is_in_editor and curr_note and curr_note.is_trashed:
+                self._go_back()
+                self.index_view.toast_overlay.add_toast(Adw.Toast.new("Trash was emptied in another window"))
+            self.index_view.refresh(update_sidebar=True)
+
+        elif event_type in ("note-restored", "notes-restored"):
+            restored_ids = [data.get("note_id")] if event_type == "note-restored" else data.get("note_ids", [])
+            if is_in_editor and curr_note_id in restored_ids:
+                if self.editor.current_note:
+                    self.editor.current_note.is_trashed = False
+            self.index_view.refresh(update_sidebar=True)
+
+        elif event_type == "note-pin-toggled":
+            pinned_id = data.get("note_id")
+            if is_in_editor and curr_note_id == pinned_id:
+                is_pinned = data.get("is_pinned")
+                if is_pinned is not None:
+                    self.editor.current_note.is_pinned = is_pinned
+                    self.editor._update_star_btn(is_pinned)
+            self.index_view.refresh(update_sidebar=True)
+
+        elif event_type in ("category-changed", "categories-updated"):
+            if is_in_editor and curr_note_id:
+                full = self.db.get_note(curr_note_id)
+                if full:
+                    self.editor.current_note.category = full.category
+                    self.editor.category_header_bar.set_category(full.category)
+                self.editor._sync_autocomplete_data()
+            self.index_view.refresh(update_sidebar=True)
 
     def _on_editor_category_changed(self, _ed, note_id: str, new_category: str):
         self.index_view.refresh(update_sidebar=True)

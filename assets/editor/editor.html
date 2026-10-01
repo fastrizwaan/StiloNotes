@@ -2489,7 +2489,7 @@
             }
 
             // Checklist
-            if (textBefore === '- [ ]' || textBefore === '[]' || textBefore === '-[]' || textBefore === '+ [ ]' || textBefore === '+[]' || textBefore === '* [ ]' || textBefore === '*[]') {
+            if (textBefore === '- [ ]' || textBefore === '[ ]' || textBefore === '[]' || textBefore === '-[]' || textBefore === '+ [ ]' || textBefore === '+[]' || textBefore === '* [ ]' || textBefore === '*[]') {
               e.preventDefault();
               node.textContent = textAfter;
               transformCurrentBlockToTask(textAfter, false);
@@ -3684,7 +3684,10 @@
     }
 
     function hasTodo() {
-      return editor.querySelector('.stilo-task') !== null;
+      return editor.querySelector('.stilo-task') !== null ||
+             editor.innerHTML.includes('[ ]') ||
+             editor.innerHTML.includes('[x]') ||
+             editor.innerHTML.includes('[X]');
     }
 
     function getCleanHtml() {

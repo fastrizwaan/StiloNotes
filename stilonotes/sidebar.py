@@ -106,7 +106,7 @@ class Sidebar(Adw.Bin):
         self.add_cat_btn.connect("clicked", self._on_add_category_clicked)
         self.header_bar.pack_start(self.add_cat_btn)
 
-        self.window_title = Adw.WindowTitle(title="Categories & Tags")
+        self.window_title = Adw.WindowTitle(title="Stilo Notes")
         self.header_bar.set_title_widget(self.window_title)
 
         self.menu_btn = Gtk.MenuButton()
@@ -143,6 +143,10 @@ class Sidebar(Adw.Bin):
         s_theme.append_item(item_theme)
         menu.append_section(None, s_theme)
 
+        s_window = Gio.Menu()
+        s_window.append("New Window", "app.new-window")
+        menu.append_section(None, s_window)
+
         s_app = Gio.Menu()
         s_app.append("Preferences",       "app.preferences")
         s_app.append("Keyboard Shortcuts","app.shortcuts")
@@ -167,10 +171,22 @@ class Sidebar(Adw.Bin):
             self._add_row("all", "", "All Notes", "view-grid-symbolic", counts.get("all", 0))
 
             # 2. Favorites (pinned)
-            fav_count = counts.get("favorites", 0)
+            fav_count = counts.get("favorites", counts.get("pinned", 0))
             self._add_row("favorites", "", "Favorites", "starred-symbolic", fav_count)
 
-            # 3. Uncategorized
+            # 3. Todos (contains checklist)
+            todo_count = counts.get("todos", counts.get("todo", 0))
+            self._add_row("todos", "", "Todos", "checkbox-checked-symbolic", todo_count)
+
+            # 4. Lists (contains bullet or numbered list)
+            list_count = counts.get("lists", counts.get("list", 0))
+            self._add_row("lists", "", "Lists", "view-list-bullet-symbolic", list_count)
+
+            # 5. Recent (recently updated notes)
+            recent_count = counts.get("recent", 0)
+            self._add_row("recent", "", "Recent", "document-open-recent-symbolic", recent_count)
+
+            # 6. Uncategorized
             self._add_row("uncategorized", "", "Uncategorized", "folder-open-symbolic",
                           counts.get("uncategorized", 0))
 
@@ -181,7 +197,7 @@ class Sidebar(Adw.Bin):
                 if self.active_filter_type == "category" and self.active_category_name:
                     self._ensure_ancestors_expanded(self.active_category_name)
 
-                self._add_section_header("Categories", "folder-symbolic")
+                self._add_separator()
                 for full_name, depth, display_name, has_children in tree_items:
                     icon = "folder-symbolic" if depth == 0 else "folder-open-symbolic"
                     is_expanded = full_name not in self._collapsed_categories
@@ -197,7 +213,7 @@ class Sidebar(Adw.Bin):
             # 5. Tags section
             tags = self.db.get_all_tags()
             if tags:
-                self._add_section_header("Tags", "tag-symbolic")
+                self._add_separator()
                 for tag_name, cnt in tags:
                     self._add_row("tag", tag_name, f"#{tag_name}", "tag-symbolic", cnt)
 
@@ -208,32 +224,17 @@ class Sidebar(Adw.Bin):
         finally:
             self._updating = False
 
-    def _add_section_header(self, title: str, icon_name: str = ""):
+    def _add_separator(self):
         row = Gtk.ListBoxRow()
         row.set_selectable(False)
         row.set_activatable(False)
         row.set_can_focus(False)
-        row.add_css_class("sidebar-section-header")
+        row.add_css_class("sidebar-separator-row")
 
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        box.set_margin_start(10)
-        box.set_margin_end(10)
-        box.set_margin_top(12)
-        box.set_margin_bottom(4)
-
-        if icon_name:
-            img = Gtk.Image.new_from_icon_name(icon_name)
-            img.set_pixel_size(13)
-            img.add_css_class("dim-label")
-            box.append(img)
-
-        lbl = Gtk.Label(label=title)
-        lbl.add_css_class("caption-heading")
-        lbl.add_css_class("dim-label")
-        lbl.set_halign(Gtk.Align.START)
-        box.append(lbl)
-
-        row.set_child(box)
+        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        sep.set_hexpand(True)
+        sep.set_halign(Gtk.Align.FILL)
+        row.set_child(sep)
         self.listbox.append(row)
 
     def _add_row(
@@ -247,42 +248,15 @@ class Sidebar(Adw.Bin):
         row._has_children = has_children
         row._depth = depth
 
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        # Indent nested categories
-        box.set_margin_start(10 + depth * 16)
-        box.set_margin_end(10)
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # Indent nested categories; depth 0 aligns with add_cat_btn and standard rows
+        if is_user_category:
+            box.set_margin_start(depth * 16)
+        else:
+            box.set_margin_start(0)
+        box.set_margin_end(0)
         box.set_margin_top(6)
         box.set_margin_bottom(6)
-
-        if is_user_category:
-            self._category_rows[category_name] = row
-            is_visible = self._is_category_visible(category_name)
-            row.set_visible(is_visible)
-
-            if has_children:
-                arrow_btn = Gtk.Button()
-                arrow_btn.set_has_frame(False)
-                arrow_btn.add_css_class("flat")
-                arrow_btn.add_css_class("category-expander")
-                arrow_btn.set_valign(Gtk.Align.CENTER)
-                arrow_btn.set_halign(Gtk.Align.CENTER)
-                arrow_btn.set_can_focus(False)
-                arrow_btn.set_tooltip_text("Collapse" if is_expanded else "Expand")
-
-                arrow_img = Gtk.Image.new_from_icon_name(
-                    "pan-down-symbolic" if is_expanded else "pan-end-symbolic"
-                )
-                arrow_img.set_pixel_size(12)
-                arrow_btn.set_child(arrow_img)
-                arrow_btn.connect("clicked", lambda _b, cat=category_name: self._on_toggle_category(cat))
-
-                row._arrow_btn = arrow_btn
-                row._arrow_img = arrow_img
-                box.append(arrow_btn)
-            else:
-                spacer = Gtk.Box()
-                spacer.set_size_request(18, -1)
-                box.append(spacer)
 
         img = Gtk.Image.new_from_icon_name(icon_name)
         img.set_pixel_size(16)
@@ -300,10 +274,36 @@ class Sidebar(Adw.Bin):
             count_lbl = Gtk.Label(label=str(count))
             count_lbl.add_css_class("caption")
             count_lbl.add_css_class("dimmed")
-            count_lbl.set_margin_end(4)
+            count_lbl.set_margin_end(2)
             box.append(count_lbl)
 
         if is_user_category:
+            self._category_rows[category_name] = row
+            is_visible = self._is_category_visible(category_name)
+            row.set_visible(is_visible)
+
+            # AdwExpanderRow style: expander chevron on the right side
+            if has_children:
+                arrow_btn = Gtk.Button()
+                arrow_btn.set_has_frame(False)
+                arrow_btn.add_css_class("flat")
+                arrow_btn.add_css_class("category-expander")
+                arrow_btn.set_valign(Gtk.Align.CENTER)
+                arrow_btn.set_halign(Gtk.Align.CENTER)
+                arrow_btn.set_can_focus(False)
+                arrow_btn.set_tooltip_text("Collapse" if is_expanded else "Expand")
+
+                arrow_img = Gtk.Image.new_from_icon_name(
+                    "pan-down-symbolic" if is_expanded else "pan-end-symbolic"
+                )
+                arrow_img.set_pixel_size(14)
+                arrow_btn.set_child(arrow_img)
+                arrow_btn.connect("clicked", lambda _b, cat=category_name: self._on_toggle_category(cat))
+
+                row._arrow_btn = arrow_btn
+                row._arrow_img = arrow_img
+                box.append(arrow_btn)
+
             self._setup_category_context_menu(row, category_name)
 
         row.set_child(box)
@@ -397,6 +397,8 @@ class Sidebar(Adw.Bin):
             return
         if (self.active_filter_type == row._filter_type and
                 self.active_category_name == row._category_name):
+            if getattr(row, "_has_children", False):
+                self._on_toggle_category(row._category_name)
             return
         self.active_filter_type = row._filter_type
         self.active_category_name = row._category_name
@@ -436,8 +438,9 @@ class Sidebar(Adw.Bin):
         dialog.present(self.get_root() or self)
 
     def _on_add_subcategory(self, parent_name: str):
+        parent_display = parent_name.split("/")[-1]
         dialog = Adw.AlertDialog.new(
-            f"New Subcategory under '{parent_name}'",
+            f"New Subcategory under '{parent_display}'",
             "Enter the subcategory name:"
         )
         dialog.add_response("cancel", "Cancel")
@@ -477,8 +480,9 @@ class Sidebar(Adw.Bin):
     # ── Rename dialog ─────────────────────────────────────────────────────
 
     def _on_rename_category(self, old_name: str):
+        display_name = old_name.split("/")[-1]
         dialog = Adw.AlertDialog.new(
-            f"Rename '{old_name}'",
+            f"Rename '{display_name}'",
             "Enter a new name:"
         )
         dialog.add_response("cancel", "Cancel")
@@ -488,19 +492,31 @@ class Sidebar(Adw.Bin):
         dialog.set_close_response("cancel")
 
         entry = Gtk.Entry()
-        entry.set_text(old_name)
+        entry.set_text(display_name)
         entry.set_activates_default(True)
         dialog.set_extra_child(entry)
 
         def on_response(_d, response):
             if response == "rename":
-                new_name = entry.get_text().strip().strip("/")
-                if new_name and new_name != old_name:
+                new_leaf = entry.get_text().strip().strip("/")
+                if not new_leaf:
+                    return
+
+                if "/" in old_name:
+                    parent_path = old_name.rsplit("/", 1)[0]
+                    new_name = f"{parent_path}/{new_leaf}"
+                else:
+                    new_name = new_leaf
+
+                if new_name != old_name:
                     self.db.rename_category(old_name, new_name)
+                    was_active = False
                     if self.active_category_name == old_name:
                         self.active_category_name = new_name
+                        was_active = True
                     elif self.active_category_name.startswith(old_name + "/"):
                         self.active_category_name = new_name + self.active_category_name[len(old_name):]
+                        was_active = True
 
                     # Update collapsed categories
                     new_collapsed = set()
@@ -515,6 +531,8 @@ class Sidebar(Adw.Bin):
                     self.config_manager.set_collapsed_categories(self._collapsed_categories)
 
                     self.refresh()
+                    if was_active:
+                        self.emit("filter-changed", "category", self.active_category_name)
 
         dialog.connect("response", on_response)
         dialog.present(self.get_root() or self)
@@ -522,8 +540,9 @@ class Sidebar(Adw.Bin):
     # ── Delete dialog ─────────────────────────────────────────────────────
 
     def _on_delete_category(self, name: str):
+        display_name = name.split("/")[-1]
         dialog = Adw.AlertDialog.new(
-            f"Delete '{name}'?",
+            f"Delete '{display_name}'?",
             "Notes inside will remain but their category will be cleared.\n"
             "All subcategories will also be deleted."
         )
@@ -536,9 +555,11 @@ class Sidebar(Adw.Bin):
         def on_response(_d, response):
             if response == "delete":
                 self.db.delete_category(name)
+                was_active = False
                 if self.active_category_name == name or self.active_category_name.startswith(name + "/"):
                     self.active_filter_type = "all"
                     self.active_category_name = ""
+                    was_active = True
 
                 # Clean up collapsed categories
                 self._collapsed_categories = {
@@ -548,6 +569,8 @@ class Sidebar(Adw.Bin):
                 self.config_manager.set_collapsed_categories(self._collapsed_categories)
 
                 self.refresh()
+                if was_active:
+                    self.emit("filter-changed", "all", "")
 
         dialog.connect("response", on_response)
         dialog.present(self.get_root() or self)

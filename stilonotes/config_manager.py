@@ -164,3 +164,13 @@ class ConfigManager:
             import json
             self.db.set_setting("collapsed_categories", json.dumps(sorted(list(collapsed))))
 
+    def get_toolbar_pinned(self) -> bool:
+        """Return whether formatting toolbar is pinned."""
+        if self.db:
+            return self.db.get_setting("toolbar_pinned", "false") == "true"
+        return False
+
+    def set_toolbar_pinned(self, pinned: bool):
+        if self.db:
+            self.db.set_setting("toolbar_pinned", "true" if pinned else "false")
+

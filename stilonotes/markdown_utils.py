@@ -162,9 +162,16 @@ EMOJI_MAP: Dict[str, str] = {
 # Pre-compiled regular expressions for high performance
 
 # check_has_todo
+RE_TODO_BRACKETS = re.compile(r'\[[ xX]\]')
 RE_TODO_STILO_TASK = re.compile(r'class=["\']stilo-task')
 RE_TODO_STILO_CB = re.compile(r'class=["\']stilo-checkbox')
 RE_TODO_MD = re.compile(r'^[-*+]\s+\[[ xX]\]', re.MULTILINE)
+RE_TODO_INPUT_CB = re.compile(r'<input[^>]*type=["\']checkbox["\']', re.IGNORECASE)
+
+# check_has_list
+RE_LIST_MD_BULLET = re.compile(r'^\s*[-*+]\s+(?!\[[ xX]\])', re.MULTILINE)
+RE_LIST_MD_NUMBER = re.compile(r'^\s*\d+\.\s+', re.MULTILINE)
+RE_LIST_HTML = re.compile(r'<ul\b|<ol\b|stilo-list|stilo-numbered-list', re.IGNORECASE)
 
 # strip_markdown
 RE_HTML_TAGS = re.compile(r'<[^>]+>')
@@ -329,9 +336,22 @@ def check_has_todo(content: str) -> bool:
     if not content:
         return False
     return bool(
-        RE_TODO_STILO_TASK.search(content)
+        RE_TODO_BRACKETS.search(content)
+        or RE_TODO_STILO_TASK.search(content)
         or RE_TODO_STILO_CB.search(content)
         or RE_TODO_MD.search(content)
+        or RE_TODO_INPUT_CB.search(content)
+    )
+
+
+def check_has_list(content: str) -> bool:
+    """Check if content contains a bullet list (*, -, +) or numbered list (1., etc.)."""
+    if not content:
+        return False
+    return bool(
+        RE_LIST_MD_BULLET.search(content)
+        or RE_LIST_MD_NUMBER.search(content)
+        or RE_LIST_HTML.search(content)
     )
 
 
