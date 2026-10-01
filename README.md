@@ -30,6 +30,10 @@
   - Collapsible folder and category sidebar (`Adw.OverlaySplitView`).
   - Fast search with instant filtering across note titles, contents, and #tags.
   - Multi-selection mode for batch operations (export, duplicate, move, delete).
+- **Multi-Window Support & Live Sync**: Open multiple windows (<kbd>Ctrl+Shift+N</kbd>) with real-time SQLite database change synchronization and concurrent conflict detection.
+- **Trash Management & Empty State**: Dedicated "Empty Trash…" action bar and clean "Trash is Empty" state.
+- **Collapsible Category Hierarchy**: Nested category sidebar with AdwExpanderRow chevron layout, subcategory note counts, and intuitive leaf renaming.
+- **Smart Filters**: Quick sidebar filters for Favorites, Todos (notes containing checklists), Lists (bullet and numbered lists), and Recent notes.
 - **Session Memory**: Remembers window geometry, view mode (list/grid), last active folder/category, and previously viewed note.
 - **Real-Time Note Statistics**: Instant word count, character count, paragraph count, and reading time estimate.
 - **Seamless Theme Sync**: Automatic synchronization with Libadwaita dark and light modes, with a manual quick-toggle.
@@ -106,6 +110,7 @@ flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNote
 | Shortcut | Action |
 | :--- | :--- |
 | <kbd>Ctrl</kbd> + <kbd>N</kbd> | Create a new note |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> | Open a new window |
 | <kbd>Ctrl</kbd> + <kbd>F</kbd> | Search notes |
 | <kbd>Ctrl</kbd> + <kbd>G</kbd> | Toggle List / Grid view |
 | <kbd>Ctrl</kbd> + <kbd>\</kbd> | Toggle folder sidebar |
