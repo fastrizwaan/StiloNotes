@@ -73,7 +73,7 @@ class StiloApplication(Adw.Application):
             except Exception:
                 pass
             self.db = None
-        super().do_shutdown()
+        Gio.Application.do_shutdown(self)
 
     def _load_css(self):
         css_path = get_assets_path() / "css" / "style.css"
