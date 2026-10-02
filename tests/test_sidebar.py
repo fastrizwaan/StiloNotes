@@ -483,6 +483,25 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         self.assertTrue(row_tag.get_visible())
         self.assertFalse(sidebar._tags_chevron_btn.get_visible())
 
+    def test_window_on_sidebar_filter_changed_argument_flexibility(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.window import StiloWindow
+        win = StiloWindow()
+
+        # Should accept 3 args (Gtk signal handler style: self, sender, filter_type, category_name)
+        win.on_sidebar_filter_changed(win.sidebar, "category", "Personal")
+
+        # Should also accept 2 args without error (self, filter_type, category_name)
+        win.on_sidebar_filter_changed("category", "Personal")
+
+        # Should accept no args
+        win.on_sidebar_filter_changed()
+
+        win.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

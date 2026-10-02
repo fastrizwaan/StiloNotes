@@ -280,7 +280,7 @@ class IndexView(Adw.Bin):
 
         root = self.get_root()
         if root and hasattr(root, "on_sidebar_filter_changed"):
-            root.on_sidebar_filter_changed(filter_type, category_name)
+            root.on_sidebar_filter_changed(_sb, filter_type, category_name)
         elif root and hasattr(root, "split_view") and root.split_view.get_collapsed():
             root.split_view.set_show_sidebar(False)
 

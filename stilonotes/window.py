@@ -192,7 +192,7 @@ class StiloWindow(Adw.ApplicationWindow):
         is_show = self.split_view.get_show_sidebar()
         self.split_view.set_show_sidebar(not is_show)
 
-    def on_sidebar_filter_changed(self, _sb, filter_type: str, category_name: str):
+    def on_sidebar_filter_changed(self, *args, **kwargs):
         if self.navigation.get_visible_page() == self.editor_page:
             self._go_back()
         if self.split_view.get_collapsed():
