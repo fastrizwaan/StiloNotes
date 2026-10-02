@@ -438,9 +438,9 @@ class Sidebar(Adw.Bin):
 
         actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
 
-        # + button with dropdown Popover
-        add_tag_btn = Gtk.MenuButton()
-        add_tag_btn.set_tooltip_text("Add Tag")
+        # + button
+        add_tag_btn = Gtk.Button()
+        add_tag_btn.set_tooltip_text("New Tag")
         add_tag_btn.set_has_frame(False)
         add_tag_btn.add_css_class("flat")
         add_tag_btn.add_css_class("sidebar-action-btn")
@@ -450,39 +450,13 @@ class Sidebar(Adw.Bin):
         add_tag_img.set_pixel_size(14)
         add_tag_btn.set_child(add_tag_img)
 
-        popover = Gtk.Popover()
-        pop_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        pop_box.set_margin_top(10)
-        pop_box.set_margin_bottom(10)
-        pop_box.set_margin_start(10)
-        pop_box.set_margin_end(10)
-        pop_box.set_size_request(200, -1)
-
-        pop_title = Gtk.Label(label="New Tag")
-        pop_title.add_css_class("heading")
-        pop_title.set_halign(Gtk.Align.START)
-        pop_box.append(pop_title)
-
-        tag_entry = Gtk.Entry()
-        tag_entry.set_placeholder_text("Tag name…")
-        tag_entry.set_activates_default(True)
-        pop_box.append(tag_entry)
-
-        submit_btn = Gtk.Button(label="Add Tag")
-        submit_btn.add_css_class("suggested-action")
-        pop_box.append(submit_btn)
-
-        def do_add_tag():
-            val = tag_entry.get_text().strip().lstrip("#")
-            if val:
-                tag_entry.set_text("")
-                self._on_add_tag_from_dropdown(val, popover)
-
-        tag_entry.connect("activate", lambda _e: do_add_tag())
-        submit_btn.connect("clicked", lambda _b: do_add_tag())
-
-        popover.set_child(pop_box)
-        add_tag_btn.set_popover(popover)
+        def on_add_tag_clicked(_b):
+            self._toggling_category = True
+            try:
+                self._on_add_tag_clicked(_b)
+            finally:
+                GLib.idle_add(self._clear_toggling_flag)
+        add_tag_btn.connect("clicked", on_add_tag_clicked)
         actions_box.append(add_tag_btn)
 
         # > chevron button (only shown when collapsed)
@@ -514,11 +488,35 @@ class Sidebar(Adw.Bin):
         row.set_child(box)
         self.listbox.append(row)
 
-    def _on_add_tag_from_dropdown(self, tag_name: str, popover: Gtk.Popover):
+    def _on_add_tag_clicked(self, _btn):
+        dialog = Adw.AlertDialog.new(
+            "New Tag",
+            "Enter a name for the new tag:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("create", "Create")
+        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("create")
+        dialog.set_close_response("cancel")
+
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("e.g. project  or  #ideas")
+        entry.set_activates_default(True)
+        dialog.set_extra_child(entry)
+
+        def on_response(_d, response):
+            if response == "create":
+                name = entry.get_text().strip().lstrip("#")
+                if name:
+                    self._create_tag(name)
+
+        dialog.connect("response", on_response)
+        dialog.present(self.get_root() or self)
+
+    def _create_tag(self, tag_name: str):
         clean = tag_name.strip().lstrip("#").lower()
         if not clean:
             return
-        popover.popdown()
 
         root = self.get_root()
         active_note_id = None
