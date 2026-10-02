@@ -13,7 +13,7 @@ from stilonotes.selection_header_bar import SelectionHeaderBar
 from stilonotes.exporter import export_note_dialog, export_notes_dialog
 
 
-class IndexView(Adw.BreakpointBin):
+class IndexView(Adw.Bin):
     __gtype_name__ = "IndexView"
 
     __gsignals__ = {
@@ -21,7 +21,7 @@ class IndexView(Adw.BreakpointBin):
         "create-note": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
-    def __init__(self, db: NoteDatabase):
+    def __init__(self, db: NoteDatabase, sidebar: Optional[Sidebar] = None):
         super().__init__()
         self.set_size_request(360, 100)
         self.db = db
@@ -32,27 +32,15 @@ class IndexView(Adw.BreakpointBin):
         self.search_query = ""
         self._search_debounce_id = None
 
+        self.sidebar = sidebar or Sidebar(self.db)
+        self.sidebar.connect("filter-changed", self._on_sidebar_filter_changed)
+
         self.notes_list = NotesList(self.db, view_mode=self.config_manager.get_view_mode())
         self._build_ui()
-        self._setup_breakpoint()
         self.refresh()
 
     def _build_ui(self):
-        self.split_view = Adw.OverlaySplitView()
-        self.split_view.set_sidebar_width_fraction(0.3)
-        self.split_view.set_max_sidebar_width(320)
-        self.split_view.set_min_sidebar_width(240)
-        self.split_view.set_collapsed(False)
-        self.split_view.set_show_sidebar(True)
-        self.split_view.set_pin_sidebar(True)
-
-        # 1. Sidebar
-        self.sidebar = Sidebar(self.db)
-        self.sidebar.connect("filter-changed", self._on_sidebar_filter_changed)
-        self.sidebar.connect("close-requested", lambda _sb: self.split_view.set_show_sidebar(False))
-        self.split_view.set_sidebar(self.sidebar)
-
-        # 2. Content Area
+        # Content Area
         self.toolbar_view = Adw.ToolbarView()
         self.toolbar_view.set_hexpand(True)
 
@@ -174,33 +162,10 @@ class IndexView(Adw.BreakpointBin):
 
         self.toast_overlay.set_child(self.notes_list)
         self.toolbar_view.set_content(self.toast_overlay)
-        self.split_view.set_content(self.toolbar_view)
 
-        self.set_child(self.split_view)
+        self.set_child(self.toolbar_view)
 
-    def _setup_breakpoint(self):
-        cond = Adw.breakpoint_condition_parse("max-width: 700sp")
-        bp = Adw.Breakpoint.new(cond)
-        bp.connect("apply", self._on_breakpoint_apply)
-        bp.connect("unapply", self._on_breakpoint_unapply)
-        self.add_breakpoint(bp)
-
-        # Initial button configuration (desktop mode by default)
-        self._update_header_buttons(is_collapsed=False)
-
-    def _on_breakpoint_apply(self, _bp):
-        self.split_view.set_pin_sidebar(False)
-        self.split_view.set_collapsed(True)
-        self.split_view.set_show_sidebar(False)
-        self._update_header_buttons(is_collapsed=True)
-
-    def _on_breakpoint_unapply(self, _bp):
-        self.split_view.set_pin_sidebar(True)
-        self.split_view.set_collapsed(False)
-        self.split_view.set_show_sidebar(True)
-        self._update_header_buttons(is_collapsed=False)
-
-    def _update_header_buttons(self, is_collapsed: bool):
+    def update_header_buttons(self, is_collapsed: bool):
         if is_collapsed:
             self.sidebar_toggle_btn.set_visible(True)
             self.sidebar.show_buttons(show_close=True, show_menu=False)
@@ -209,6 +174,9 @@ class IndexView(Adw.BreakpointBin):
             self.sidebar_toggle_btn.set_visible(False)
             self.sidebar.show_buttons(show_close=False, show_menu=True)
             self.main_menu_btn.set_visible(False)
+
+    def _update_header_buttons(self, is_collapsed: bool):
+        self.update_header_buttons(is_collapsed)
 
     def _create_main_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
@@ -310,8 +278,11 @@ class IndexView(Adw.BreakpointBin):
         self.active_filter_type = filter_type
         self.active_category_name = category_name
 
-        if self.split_view.get_collapsed():
-            self.split_view.set_show_sidebar(False)
+        root = self.get_root()
+        if root and hasattr(root, "on_sidebar_filter_changed"):
+            root.on_sidebar_filter_changed(filter_type, category_name)
+        elif root and hasattr(root, "split_view") and root.split_view.get_collapsed():
+            root.split_view.set_show_sidebar(False)
 
         self.refresh(update_sidebar=False)
 
@@ -327,6 +298,12 @@ class IndexView(Adw.BreakpointBin):
         self.search_entry.set_text("")
         self.header_stack.set_visible_child_name("main")
         self.refresh()
+
+    def destroy_view(self):
+        """Cancel any pending search debouncing timeout to avoid leaks."""
+        if self._search_debounce_id:
+            GLib.source_remove(self._search_debounce_id)
+            self._search_debounce_id = None
 
     def _on_search_text_changed(self, entry):
         if self._search_debounce_id:
@@ -424,8 +401,9 @@ class IndexView(Adw.BreakpointBin):
             self.emit("note-opened", dup, False)
 
     def toggle_sidebar(self):
-        is_show = self.split_view.get_show_sidebar()
-        self.split_view.set_show_sidebar(not is_show)
+        root = self.get_root()
+        if root and hasattr(root, "toggle_sidebar"):
+            root.toggle_sidebar()
 
     def _update_view_toggle_button(self):
         is_grid = (self.notes_list.view_mode == "grid")

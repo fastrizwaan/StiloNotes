@@ -10,7 +10,8 @@ from typing import List, Optional
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
+gi.require_version('GdkPixbuf', '2.0')
+from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango, GdkPixbuf
 
 from stilonotes.models import Note
 from stilonotes.markdown_utils import strip_markdown, extract_table_data
@@ -106,14 +107,13 @@ def _create_thumbnail_texture(img_bytes: bytes) -> Optional[Gdk.Texture]:
     if cache_key in _TEXTURE_CACHE:
         return _TEXTURE_CACHE[cache_key]
 
+    loader = None
     try:
-        import gi
-        gi.require_version('GdkPixbuf', '2.0')
-        from gi.repository import GdkPixbuf
         loader = GdkPixbuf.PixbufLoader()
         loader.write(img_bytes)
         loader.close()
         pix = loader.get_pixbuf()
+        loader = None
         if pix:
             target_w, target_h = 216, 80
             w, h = pix.get_width(), pix.get_height()
@@ -144,6 +144,12 @@ def _create_thumbnail_texture(img_bytes: bytes) -> Optional[Gdk.Texture]:
                         return tex
     except Exception:
         pass
+    finally:
+        if loader is not None:
+            try:
+                loader.close()
+            except Exception:
+                pass
     return None
 
 
@@ -669,7 +675,21 @@ class NotesList(Gtk.Box):
         self.active_filter_type = "all"
         self.active_category_name = ""
 
+        try:
+            from stilonotes.config_manager import ConfigManager
+            self.config_manager = ConfigManager.get_default(self.db)
+            self.set_card_size(self.config_manager.get_card_font_size())
+        except Exception:
+            self.set_card_size("default")
+
         self._build_ui()
+
+    def set_card_size(self, size: str):
+        for s in ("small", "default", "large", "xlarge"):
+            self.remove_css_class(f"card-size-{s}")
+        if size not in ("small", "default", "large", "xlarge"):
+            size = "default"
+        self.add_css_class(f"card-size-{size}")
 
     @property
     def _all_rows(self) -> List[BaseNoteCard]:
@@ -782,7 +802,7 @@ class NotesList(Gtk.Box):
         flowbox.set_column_spacing(col_sp)
         flowbox.set_row_spacing(row_sp)
         flowbox.set_min_children_per_line(1)
-        flowbox.set_max_children_per_line(8 if self.view_mode == "grid" else 3)
+        flowbox.set_max_children_per_line(24 if self.view_mode == "grid" else 1)
         flowbox.set_valign(Gtk.Align.START)
         flowbox.set_halign(Gtk.Align.FILL)
         flowbox.set_hexpand(True)
@@ -825,7 +845,7 @@ class NotesList(Gtk.Box):
         if self.view_mode != mode:
             self.view_mode = mode
             col_sp, row_sp = self._get_spacing()
-            max_children = 8 if mode == "grid" else 3
+            max_children = 24 if mode == "grid" else 1
             for fb in self._get_all_flowboxes():
                 fb.set_column_spacing(col_sp)
                 fb.set_row_spacing(row_sp)

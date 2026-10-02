@@ -7,33 +7,11 @@ from stilonotes.config_manager import ConfigManager
 
 
 class FontSizeSelector(Gtk.Box):
-    """Font size selector with [-] {size}pt [+] matching Iotas."""
+    """Note zoom / text size selector with [-] {percent}% [+] in 10% steps (80%..160%)."""
 
     __gtype_name__ = "FontSizeSelector"
 
-    VALID_SIZES = [
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17,
-        18,
-        20,
-        22,
-        24,
-        26,
-        28,
-        30,
-        34,
-        38,
-    ]
+    VALID_PERCENTAGES = [80, 90, 100, 110, 120, 130, 140, 150, 160]
 
     def __init__(self, config_manager: Optional[ConfigManager] = None, on_font_size_changed: Optional[Callable[[int], None]] = None):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL)
@@ -59,7 +37,7 @@ class FontSizeSelector(Gtk.Box):
         self._decrease_btn.connect("clicked", lambda _b: self.decrease())
         inner_box.append(self._decrease_btn)
 
-        # Label [ 16pt ]
+        # Label [ 100% ]
         self._label = Gtk.Label()
         self._label.set_hexpand(True)
         self._label.set_halign(Gtk.Align.CENTER)
@@ -77,46 +55,52 @@ class FontSizeSelector(Gtk.Box):
         self.refresh()
 
     def get_current_size(self) -> int:
-        return self.config_manager.get_font_size()
+        return self.get_current_percent()
 
-    def set_size(self, size: int):
-        self.config_manager.set_font_size(size)
+    def get_current_percent(self) -> int:
+        return self.config_manager.get_editor_zoom_percent()
+
+    def set_percent(self, percent: int):
+        self.config_manager.set_editor_zoom_percent(percent)
         self.refresh()
         if self.on_font_size_changed:
-            self.on_font_size_changed(size)
+            self.on_font_size_changed(percent)
+
+    def set_size(self, size: int):
+        self.set_percent(size)
 
     def increase(self):
-        curr = self.get_current_size()
-        if curr in self.VALID_SIZES:
-            idx = self.VALID_SIZES.index(curr)
-            if idx + 1 < len(self.VALID_SIZES):
-                self.set_size(self.VALID_SIZES[idx + 1])
+        curr = self.get_current_percent()
+        if curr in self.VALID_PERCENTAGES:
+            idx = self.VALID_PERCENTAGES.index(curr)
+            if idx + 1 < len(self.VALID_PERCENTAGES):
+                self.set_percent(self.VALID_PERCENTAGES[idx + 1])
         else:
-            greater = [s for s in self.VALID_SIZES if s > curr]
+            greater = [s for s in self.VALID_PERCENTAGES if s > curr]
             if greater:
-                self.set_size(greater[0])
+                self.set_percent(greater[0])
 
     def decrease(self):
-        curr = self.get_current_size()
-        if curr in self.VALID_SIZES:
-            idx = self.VALID_SIZES.index(curr)
+        curr = self.get_current_percent()
+        if curr in self.VALID_PERCENTAGES:
+            idx = self.VALID_PERCENTAGES.index(curr)
             if idx - 1 >= 0:
-                self.set_size(self.VALID_SIZES[idx - 1])
+                self.set_percent(self.VALID_PERCENTAGES[idx - 1])
         else:
-            smaller = [s for s in self.VALID_SIZES if s < curr]
+            smaller = [s for s in self.VALID_PERCENTAGES if s < curr]
             if smaller:
-                self.set_size(smaller[-1])
+                self.set_percent(smaller[-1])
 
     def reset(self):
-        self.set_size(16)
+        self.set_percent(100)
 
     def refresh(self):
-        size = self.get_current_size()
-        self._label.set_label(f"{size}pt")
-        if size in self.VALID_SIZES:
-            idx = self.VALID_SIZES.index(size)
-            self._increase_btn.set_sensitive(idx + 1 < len(self.VALID_SIZES))
+        percent = self.get_current_percent()
+        self._label.set_label(f"{percent}%")
+        if percent in self.VALID_PERCENTAGES:
+            idx = self.VALID_PERCENTAGES.index(percent)
+            self._increase_btn.set_sensitive(idx + 1 < len(self.VALID_PERCENTAGES))
             self._decrease_btn.set_sensitive(idx - 1 >= 0)
         else:
-            self._increase_btn.set_sensitive(True)
-            self._decrease_btn.set_sensitive(True)
+            self._increase_btn.set_sensitive(percent < 160)
+            self._decrease_btn.set_sensitive(percent > 80)

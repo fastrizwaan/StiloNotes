@@ -324,6 +324,7 @@ class NoteEditor(Gtk.Box):
         "tag-clicked":           (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "open-note-link":        (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "back":                  (GObject.SignalFlags.RUN_FIRST, None, ()),
+        "toggle-sidebar":        (GObject.SignalFlags.RUN_FIRST, None, ()),
         "toggle-app-theme":      (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
@@ -361,7 +362,7 @@ class NoteEditor(Gtk.Box):
 
         self.back_btn = Gtk.Button()
         self.back_btn.set_icon_name("go-previous-symbolic")
-        self.back_btn.set_tooltip_text("Back to Notes")
+        self.back_btn.set_tooltip_text("Back to Notes (Esc)")
         self.back_btn.connect("clicked", lambda _b: self.emit("back"))
         self.main_header_bar.pack_start(self.back_btn)
 
@@ -459,7 +460,14 @@ class NoteEditor(Gtk.Box):
         self.webview.connect("load-changed", self._on_webview_load_changed)
 
         font_size = self.config_manager.get_font_size()
-        initial_html = get_editor_html_page("", self.is_dark_mode, font_size)
+        heading_scale = self.config_manager.get_heading_scale()
+        code_font_size = self.config_manager.get_code_font_size()
+        quote_font_size = self.config_manager.get_quote_font_size()
+        font_family = self.config_manager.get_font_family()
+        initial_html = get_editor_html_page(
+            "", self.is_dark_mode, font_size, heading_scale, code_font_size, quote_font_size,
+            font_family=font_family
+        )
         assets_uri = f"file://{get_assets_path()}/"
         self.webview.load_html(initial_html, assets_uri)
 
@@ -698,6 +706,7 @@ class NoteEditor(Gtk.Box):
         menu.append_section(None, s_font)
 
         s1 = Gio.Menu()
+        s1.append("Toggle Sidebar",     "editor.toggle-sidebar")
         s1.append("Note Statistics",    "editor.show-stats")
         menu.append_section(None, s1)
 
@@ -737,6 +746,7 @@ class NoteEditor(Gtk.Box):
         act("increase-font-size", lambda: self.font_size_selector.increase())
         act("decrease-font-size", lambda: self.font_size_selector.decrease())
         act("reset-font-size",    lambda: self.font_size_selector.reset())
+        act("toggle-sidebar",     lambda: self.emit("toggle-sidebar"))
         act("rename-title",  lambda: self._on_title_clicked(None))
         act("edit-category", self.enter_edit_category)
         act("toggle-pin",    self._on_toggle_pin)
@@ -760,6 +770,7 @@ class NoteEditor(Gtk.Box):
             app.set_accels_for_action("editor.increase-font-size", ["<Control>plus", "<Control>equal"])
             app.set_accels_for_action("editor.decrease-font-size", ["<Control>minus", "<Control>underscore"])
             app.set_accels_for_action("editor.reset-font-size", ["<Control>0"])
+            app.set_accels_for_action("editor.toggle-sidebar", ["<Control>backslash", "F11"])
             app.set_accels_for_action("editor.toggle-format-toolbar", ["<Control><Shift>f"])
 
     # ── Category editing ──────────────────────────────────────────────────
@@ -880,8 +891,31 @@ class NoteEditor(Gtk.Box):
             self.theme_selector.populate()
 
     def update_font_size(self, size: int):
-        script = f"if (window.setFontSize) {{ window.setFontSize({size}); }}"
+        self.update_typography()
+
+    def update_typography(self):
+        scale = self.config_manager.get_editor_zoom_level()
+        if hasattr(self.webview, "set_zoom_level"):
+            self.webview.set_zoom_level(scale)
+
+        base_font_pt = round(16 * scale)
+        code_font_px = round(14 * scale)
+        quote_font_pt = round(16 * scale)
+        font_family_stack = self.config_manager.get_font_family_stack()
+        config_json = json.dumps({
+            "zoomLevel": scale,
+            "fontSize": base_font_pt,
+            "headingScale": 1.0,
+            "codeFontSize": code_font_px,
+            "quoteFontSize": quote_font_pt,
+            "fontFamily": font_family_stack,
+        })
+        script = f"if (window.setTypography) {{ window.setTypography({config_json}); }}"
         self.webview.evaluate_javascript(script, -1, None, None, None, None)
+
+    def update_font_family(self, family: str):
+        self.config_manager.set_font_family(family)
+        self.update_typography()
 
     def _on_toggle_theme(self, _btn):
         """Emit signal up to the window so it can do full Adw theme toggle."""
@@ -1032,10 +1066,9 @@ class NoteEditor(Gtk.Box):
                         has_todo=data["has_todo"],
                         sender=self
                     )
-                    if self.current_note and self.current_note.id == data["note_id"]:
-                        self.current_note.content_markdown = md_content
-
                     def on_done():
+                        if self.current_note and self.current_note.id == data["note_id"]:
+                            self.current_note.content_markdown = md_content
                         if self._pending_save_data and self._pending_save_data.get("html") == data["html"]:
                             self._pending_save_data = None
                             self.hide_conflict_banner()
@@ -1079,6 +1112,29 @@ class NoteEditor(Gtk.Box):
                 self.emit("note-updated", data["note_id"], data["title"], data["excerpt"], data["html"], md, [], data["has_todo"])
             except Exception as e:
                 print("Flush save error:", e)
+
+    def destroy_editor(self):
+        """Clean up timers, pending saves, and WebKit handlers to avoid memory leaks."""
+        self.flush_save()
+        if self._save_timeout_id:
+            GLib.source_remove(self._save_timeout_id)
+            self._save_timeout_id = None
+        if self._toolbar_reveal_timeout:
+            GLib.source_remove(self._toolbar_reveal_timeout)
+            self._toolbar_reveal_timeout = None
+        if hasattr(self, "webview") and self.webview:
+            try:
+                ucm = self.webview.get_user_content_manager()
+                for handler in [
+                    "contentChanged", "statsChanged", "pickImage",
+                    "uploadImage", "tagClicked", "openNoteLink", "categorySelected"
+                ]:
+                    try:
+                        ucm.unregister_script_message_handler(handler)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     def _on_js_upload_image(self, _ucm, js_result):
         """Handle pasted or dropped images sent from JavaScript as binary attachments."""

@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from typing import Optional
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, Gio, GLib, GObject
 
 from stilonotes.models import Note
@@ -18,6 +21,8 @@ class StiloWindow(Adw.ApplicationWindow):
         super().__init__(application=app)
         self.db = db
         self.config_manager = ConfigManager.get_default(db)
+        self._pending_sidebar_width = None
+        self._sidebar_resize_idle_id = None
 
         self.set_title("Stilo Notes")
         self.set_icon_name(APP_ID)
@@ -32,18 +37,39 @@ class StiloWindow(Adw.ApplicationWindow):
         self.db.add_change_listener(self._on_db_changed)
 
     def _build_ui(self):
+        self.split_view = Adw.OverlaySplitView()
+        sidebar_w = self.config_manager.get_sidebar_width()
+        if hasattr(Adw, "LengthUnit") and hasattr(self.split_view, "set_sidebar_width_unit"):
+            self.split_view.set_sidebar_width_unit(Adw.LengthUnit.PX)
+        self.split_view.set_min_sidebar_width(sidebar_w)
+        self.split_view.set_max_sidebar_width(sidebar_w)
+        self.split_view.set_sidebar_width_fraction(0.3)
+        self.split_view.set_collapsed(False)
+        self.split_view.set_show_sidebar(True)
+        self.split_view.set_pin_sidebar(True)
+
+        # 1. Sidebar
+        from stilonotes.sidebar import Sidebar
+        self.sidebar = Sidebar(self.db)
+        self.sidebar.connect("filter-changed", self.on_sidebar_filter_changed)
+        self.sidebar.connect("close-requested", lambda _sb: self.split_view.set_show_sidebar(False))
+        self.sidebar.connect("width-dragged", self._on_sidebar_width_dragged)
+        self.sidebar.connect("width-drag-ended", self._on_sidebar_width_drag_ended)
+        self.split_view.set_sidebar(self.sidebar)
+
+        # 2. Content Navigation
         self.navigation = Adw.NavigationView()
 
-        # 1. Index Page
-        self.index_view = IndexView(self.db)
+        # 2a. Index Page (Notes List)
+        self.index_view = IndexView(self.db, sidebar=self.sidebar)
         self.index_view.connect("note-opened", self._on_note_opened)
         self.index_view.connect("create-note", self._on_create_note)
 
         self.index_page = Adw.NavigationPage.new(self.index_view, "Notes")
-        self.index_page.connect("shown", lambda _p: self.index_view.refresh(update_sidebar=False))
+        self.index_page.connect("shown", lambda _p: self.index_view.refresh(update_sidebar=True))
         self.navigation.add(self.index_page)
 
-        # 2. Editor Page
+        # 2b. Editor Page
         self.editor = NoteEditor(self.db)
         self.editor.setup_actions(self)
         self.editor.connect("note-updated", self._on_note_updated)
@@ -54,16 +80,127 @@ class StiloWindow(Adw.ApplicationWindow):
         self.editor.connect("tag-clicked", self._on_editor_tag_clicked)
         self.editor.connect("open-note-link", self._on_editor_open_note_link)
         self.editor.connect("back", self._on_editor_back)
+        self.editor.connect("toggle-sidebar", lambda _ed: self.toggle_sidebar())
         self.editor.connect("toggle-app-theme", lambda _ed: self._toggle_theme())
 
         self.editor_page = Adw.NavigationPage.new(self.editor, "Editor")
         self.editor_page.set_can_pop(True)
         self.editor_page.connect("shown", lambda _p: self.editor.focus_editor())
+        self.navigation.add(self.editor_page)
 
-        self.set_content(self.navigation)
+        self.split_view.set_content(self.navigation)
+        self.set_content(self.split_view)
 
-        # Connect close-request to remember state
+        self._setup_breakpoint()
+
+        # Connect close-request and destroy to cleanly release resources and remember state
         self.connect("close-request", self._on_close_request)
+        self.connect("destroy", self._on_destroy)
+
+    def apply_editor_mode(self, mode: str):
+        """Update sidebar visibility based on editor_mode without reparenting containers."""
+        is_editor = (self.navigation.get_visible_page() == self.editor_page)
+        if is_editor:
+            if mode == "distraction_free":
+                self.split_view.set_show_sidebar(False)
+            else:
+                if not self.split_view.get_collapsed():
+                    self.split_view.set_show_sidebar(True)
+        else:
+            if not self.split_view.get_collapsed():
+                self.split_view.set_show_sidebar(True)
+
+    def _setup_breakpoint(self):
+        cond = Adw.breakpoint_condition_parse("max-width: 700sp")
+        bp = Adw.Breakpoint.new(cond)
+        bp.connect("apply", self._on_breakpoint_apply)
+        bp.connect("unapply", self._on_breakpoint_unapply)
+        self.add_breakpoint(bp)
+
+        self._update_responsive_state(is_collapsed=False)
+
+    def _on_breakpoint_apply(self, _bp):
+        self.split_view.set_pin_sidebar(False)
+        self.split_view.set_collapsed(True)
+        self.split_view.set_show_sidebar(False)
+        self.sidebar.set_resizer_visible(False)
+        self._update_responsive_state(is_collapsed=True)
+
+    def _on_breakpoint_unapply(self, _bp):
+        self.split_view.set_pin_sidebar(True)
+        self.split_view.set_collapsed(False)
+        self.sidebar.set_resizer_visible(True)
+        is_editor = (self.navigation.get_visible_page() == self.editor_page)
+        if is_editor and self.config_manager.get_editor_mode() == "distraction_free":
+            self.split_view.set_show_sidebar(False)
+        else:
+            self.split_view.set_show_sidebar(True)
+        self._update_responsive_state(is_collapsed=False)
+
+    def _update_responsive_state(self, is_collapsed: bool):
+        self.index_view.update_header_buttons(is_collapsed)
+
+    def _on_sidebar_width_dragged(self, _sb, new_width: int):
+        self._pending_sidebar_width = new_width
+        if self._sidebar_resize_idle_id is None:
+            self._sidebar_resize_idle_id = GLib.idle_add(
+                self._apply_pending_sidebar_width,
+                priority=GLib.PRIORITY_DEFAULT_IDLE
+            )
+
+    def _on_sidebar_width_drag_ended(self, _sb, final_width: int):
+        self._pending_sidebar_width = final_width
+        self._flush_pending_sidebar_resize()
+
+    def _flush_pending_sidebar_resize(self):
+        if self._sidebar_resize_idle_id is not None:
+            GLib.source_remove(self._sidebar_resize_idle_id)
+            self._sidebar_resize_idle_id = None
+        self._apply_pending_sidebar_width()
+
+    def _apply_pending_sidebar_width(self) -> bool:
+        self._sidebar_resize_idle_id = None
+        new_width = self._pending_sidebar_width
+        if new_width is None:
+            return GLib.SOURCE_REMOVE
+
+        cur_min = int(self.split_view.get_min_sidebar_width())
+        cur_max = int(self.split_view.get_max_sidebar_width())
+
+        if new_width == cur_min and new_width == cur_max:
+            return GLib.SOURCE_REMOVE
+
+        # Order updates so min_sidebar_width is never greater than max_sidebar_width
+        if new_width > cur_max:
+            self.split_view.set_max_sidebar_width(new_width)
+            self.split_view.set_min_sidebar_width(new_width)
+        else:
+            self.split_view.set_min_sidebar_width(new_width)
+            self.split_view.set_max_sidebar_width(new_width)
+
+        total_w = self.split_view.get_allocated_width() or self.get_width()
+        if total_w > 0:
+            self.split_view.set_sidebar_width_fraction(new_width / total_w)
+
+        return GLib.SOURCE_REMOVE
+
+    def toggle_sidebar(self):
+        mode = self.config_manager.get_editor_mode()
+        if mode == "distraction_free" and self.navigation.get_visible_page() == self.editor_page:
+            self._go_back()
+            return
+        is_show = self.split_view.get_show_sidebar()
+        self.split_view.set_show_sidebar(not is_show)
+
+    def on_sidebar_filter_changed(self, _sb, filter_type: str, category_name: str):
+        if self.navigation.get_visible_page() == self.editor_page:
+            self._go_back()
+        if self.split_view.get_collapsed():
+            self.split_view.set_show_sidebar(False)
+
+    def apply_card_size(self, size: str):
+        if hasattr(self, "index_view") and hasattr(self.index_view, "notes_list"):
+            self.index_view.notes_list.set_card_size(size)
 
     def _setup_actions(self):
         action_group = Gio.SimpleActionGroup()
@@ -88,9 +225,9 @@ class StiloWindow(Adw.ApplicationWindow):
 
         # Toggle sidebar
         act_sidebar = Gio.SimpleAction.new("toggle-sidebar", None)
-        act_sidebar.connect("activate", lambda _a, _p: self.index_view.toggle_sidebar())
+        act_sidebar.connect("activate", lambda _a, _p: self.toggle_sidebar())
         action_group.add_action(act_sidebar)
-        self.get_application().set_accels_for_action("win.toggle-sidebar", ["<Control>backslash"])
+        self.get_application().set_accels_for_action("win.toggle-sidebar", ["<Control>backslash", "F11"])
 
         # Toggle Theme
         act_theme = Gio.SimpleAction.new("toggle-theme", None)
@@ -140,13 +277,24 @@ class StiloWindow(Adw.ApplicationWindow):
         # Always start on All Notes view (do not auto-open or create notes on launch)
         self.config_manager.set_last_opened_note_id("")
 
-    def _on_close_request(self, _win):
-        # Unsubscribe db change listener
+    def _cleanup(self):
+        """Release timers, DB listeners, and child resources cleanly."""
+        self._flush_pending_sidebar_resize()
         if hasattr(self, "db") and self.db:
-            self.db.remove_change_listener(self._on_db_changed)
-        # Flush any pending editor changes
-        if hasattr(self, "editor"):
-            self.editor.flush_save()
+            try:
+                self.db.remove_change_listener(self._on_db_changed)
+            except Exception:
+                pass
+        if hasattr(self, "editor") and self.editor:
+            self.editor.destroy_editor()
+        if hasattr(self, "index_view") and self.index_view:
+            self.index_view.destroy_view()
+
+    def _on_destroy(self, _win):
+        self._cleanup()
+
+    def _on_close_request(self, _win):
+        self._cleanup()
         # Save window geometry
         w = self.get_width()
         h = self.get_height()
@@ -166,9 +314,12 @@ class StiloWindow(Adw.ApplicationWindow):
                 self.navigation.push_by_tag("editor") if False else self.navigation.push(self.editor_page)
             else:
                 self.navigation.push(self.editor_page)
-        GLib.idle_add(self.editor.focus_editor)
-        GLib.timeout_add(100, self.editor.focus_editor)
-        GLib.timeout_add(250, self.editor.focus_editor)
+
+        if self.config_manager.get_editor_mode() == "distraction_free":
+            self.split_view.set_show_sidebar(False)
+        else:
+            if not self.split_view.get_collapsed():
+                self.split_view.set_show_sidebar(True)
 
     def _on_note_opened(self, _iv, note: Note, immediate: bool):
         self.open_note(note, immediate)
@@ -292,5 +443,6 @@ class StiloWindow(Adw.ApplicationWindow):
                 return
             self.editor.flush_save()
             self.navigation.pop()
-            self.index_view.refresh(update_sidebar=True)
+            if not self.split_view.get_collapsed():
+                self.split_view.set_show_sidebar(True)
             self.config_manager.set_last_opened_note_id("")

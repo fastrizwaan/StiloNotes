@@ -120,6 +120,14 @@ class ConfigManager:
     def set_font_size(self, size: int):
         if self.db:
             self.db.set_setting("font_size", str(size))
+            if size <= 14:
+                self.db.set_setting("editor_font_size", "small")
+            elif size <= 17:
+                self.db.set_setting("editor_font_size", "default")
+            elif size <= 20:
+                self.db.set_setting("editor_font_size", "large")
+            else:
+                self.db.set_setting("editor_font_size", "xlarge")
 
     def get_view_mode(self) -> str:
         """Return 'list' or 'grid'."""
@@ -164,6 +172,26 @@ class ConfigManager:
             import json
             self.db.set_setting("collapsed_categories", json.dumps(sorted(list(collapsed))))
 
+    def get_categories_expanded(self) -> bool:
+        """Return whether categories section in sidebar is expanded (default True)."""
+        if self.db:
+            return self.db.get_setting("categories_expanded", "true") == "true"
+        return True
+
+    def set_categories_expanded(self, expanded: bool):
+        if self.db:
+            self.db.set_setting("categories_expanded", "true" if expanded else "false")
+
+    def get_tags_expanded(self) -> bool:
+        """Return whether tags section in sidebar is expanded (default True)."""
+        if self.db:
+            return self.db.get_setting("tags_expanded", "true") == "true"
+        return True
+
+    def set_tags_expanded(self, expanded: bool):
+        if self.db:
+            self.db.set_setting("tags_expanded", "true" if expanded else "false")
+
     def get_toolbar_pinned(self) -> bool:
         """Return whether formatting toolbar is pinned."""
         if self.db:
@@ -174,3 +202,191 @@ class ConfigManager:
         if self.db:
             self.db.set_setting("toolbar_pinned", "true" if pinned else "false")
 
+    def get_sidebar_width(self) -> int:
+        """Return sidebar width in pixels (default 260, clamped 200..500)."""
+        if self.db:
+            try:
+                val = int(self.db.get_setting("sidebar_width", "260"))
+                return max(200, min(val, 500))
+            except Exception:
+                pass
+        return 260
+
+    def set_sidebar_width(self, width: int):
+        clamped = max(200, min(int(width), 500))
+        if self.db:
+            self.db.set_setting("sidebar_width", str(clamped))
+
+    def get_editor_mode(self) -> str:
+        """Return 'distraction_free' (default, hide sidebar) or 'standard' (keep sidebar)."""
+        if self.db:
+            mode = self.db.get_setting("editor_mode", "distraction_free")
+            if mode in ("standard", "distraction_free"):
+                return mode
+        return "distraction_free"
+
+    def set_editor_mode(self, mode: str):
+        if mode not in ("standard", "distraction_free"):
+            mode = "distraction_free"
+        if self.db:
+            self.db.set_setting("editor_mode", mode)
+
+    def get_card_font_size(self) -> str:
+        """Return 'small', 'default', 'large', or 'xlarge'."""
+        if self.db:
+            size = self.db.get_setting("card_font_size", "default")
+            if size in ("small", "default", "large", "xlarge"):
+                return size
+        return "default"
+
+    def set_card_font_size(self, size: str):
+        if size not in ("small", "default", "large", "xlarge"):
+            size = "default"
+        if self.db:
+            self.db.set_setting("card_font_size", size)
+
+    EDITOR_ZOOM_MAP = {
+        "small": 0.85,
+        "default": 1.0,
+        "large": 1.20,
+        "xlarge": 1.40,
+    }
+
+    def get_editor_zoom_percent(self) -> int:
+        """Return note editor zoom percentage (80..160, default 100)."""
+        if self.db:
+            try:
+                raw = self.db.get_setting("editor_zoom_percent", "")
+                if raw:
+                    val = int(raw)
+                    return max(80, min(val, 160))
+            except Exception:
+                pass
+            size = self.db.get_setting("editor_font_size", "")
+            if size == "small":
+                return 80
+            elif size == "large":
+                return 120
+            elif size == "xlarge":
+                return 140
+        return 100
+
+    def set_editor_zoom_percent(self, percent: int):
+        clamped = max(80, min(int(percent), 160))
+        if self.db:
+            self.db.set_setting("editor_zoom_percent", str(clamped))
+            zoom = clamped / 100.0
+            self.db.set_setting("font_size", str(round(16 * zoom)))
+            if clamped <= 85:
+                self.db.set_setting("editor_font_size", "small")
+            elif clamped >= 135:
+                self.db.set_setting("editor_font_size", "xlarge")
+            elif clamped >= 115:
+                self.db.set_setting("editor_font_size", "large")
+            else:
+                self.db.set_setting("editor_font_size", "default")
+
+    def get_editor_font_size(self) -> str:
+        """Return note editor text size preset: 'small', 'default', 'large', 'xlarge'."""
+        pct = self.get_editor_zoom_percent()
+        if pct <= 85:
+            return "small"
+        elif pct >= 135:
+            return "xlarge"
+        elif pct >= 115:
+            return "large"
+        return "default"
+
+    def set_editor_font_size(self, size: str):
+        pct_map = {"small": 80, "default": 100, "large": 120, "xlarge": 140}
+        pct = pct_map.get(size, 100)
+        self.set_editor_zoom_percent(pct)
+
+    def get_editor_zoom_level(self) -> float:
+        """Return zoom multiplier (e.g. 1.0 for 100%, 0.8 for 80%, 1.2 for 120%)."""
+        return self.get_editor_zoom_percent() / 100.0
+
+    def get_heading_scale(self) -> str:
+        """Return heading scale: 'compact', 'normal', 'large', 'xlarge'."""
+        if self.db:
+            scale = self.db.get_setting("heading_scale", "normal")
+            if scale in ("compact", "normal", "large", "xlarge"):
+                return scale
+        return "normal"
+
+    def set_heading_scale(self, scale: str):
+        if scale not in ("compact", "normal", "large", "xlarge"):
+            scale = "normal"
+        if self.db:
+            self.db.set_setting("heading_scale", scale)
+
+    def get_code_font_size(self) -> int:
+        """Return monospace code font size in px (default 14, range 10..24)."""
+        if self.db:
+            try:
+                val = int(self.db.get_setting("code_font_size", "14"))
+                return max(10, min(val, 24))
+            except Exception:
+                pass
+        return 14
+
+    def set_code_font_size(self, size: int):
+        clamped = max(10, min(int(size), 24))
+        if self.db:
+            self.db.set_setting("code_font_size", str(clamped))
+
+    def get_quote_font_size(self) -> int:
+        """Return quote font size in pt (default 16, range 10..24)."""
+        if self.db:
+            try:
+                val = int(self.db.get_setting("quote_font_size", "16"))
+                return max(10, min(val, 24))
+            except Exception:
+                pass
+        return 16
+
+    def set_quote_font_size(self, size: int):
+        clamped = max(10, min(int(size), 24))
+        if self.db:
+            self.db.set_setting("quote_font_size", str(clamped))
+
+    FONT_STACKS = {
+        "system": '-apple-system, BlinkMacSystemFont, "Cantarell", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+        "sans": '"Inter", "Cantarell", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        "serif": '"Charter", "Georgia", "Cambria", "Times New Roman", "Source Serif Pro", serif',
+        "monospace": '"JetBrains Mono", "Fira Code", "Source Code Pro", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    }
+
+    def get_font_family(self) -> str:
+        """Return font family key: 'system', 'sans', 'serif', 'monospace' (default 'system')."""
+        if self.db:
+            family = self.db.get_setting("font_family", "system")
+            if family in ("sans-serif", "sans_serif"):
+                return "sans"
+            if family in self.FONT_STACKS:
+                return family
+        return "system"
+
+    def set_font_family(self, family: str):
+        if family in ("sans-serif", "sans_serif"):
+            family = "sans"
+        if family not in self.FONT_STACKS:
+            family = "system"
+        if self.db:
+            self.db.set_setting("font_family", family)
+
+    def get_font_family_stack(self, family: Optional[str] = None) -> str:
+        if family is None:
+            family = self.get_font_family()
+        elif family in ("sans-serif", "sans_serif"):
+            family = "sans"
+        return self.FONT_STACKS.get(family, self.FONT_STACKS["system"])
+
+    def reset_typography_defaults(self):
+        """Reset all typography settings to their default values."""
+        self.set_card_font_size("default")
+        self.set_font_family("system")
+        self.set_editor_zoom_percent(100)
+        self.set_heading_scale("normal")
+        self.set_code_font_size(14)
+        self.set_quote_font_size(16)

@@ -19,6 +19,11 @@
 
 ## ✨ Features
 
+- **Distraction-Free & Standard View Modes**: Default distraction-free mode keeps your focus solely on writing by auto-hiding the sidebar, with instant toggle via <kbd>Ctrl+\</kbd> / <kbd>F11</kbd> or the option to keep the sidebar pinned in Preferences.
+- **Custom Typography & Font Families**: Choose between System (Default), clean Sans-Serif, classic Serif, and developer Monospace typefaces with instant live preview.
+- **Unified Text Zoom & Sizing**: Zoom notes smoothly from 80% to 160% in 10% steps, customize Card & List text size (Small, Normal, Large, Extra Large), and restore baseline settings anytime with a dedicated "Reset to Defaults" button.
+- **Draggable Sidebar Splitter**: Smooth, flicker-free drag resizer between the sidebar and notes list with persistent width memory.
+- **Category Hierarchy & Tag Popover**: Nested categories with inline [+] add button, collapsible chevrons, and dedicated Tags popover dropdown for quick tag filtering.
 - **Dynamic WebKit Markdown Live Rendering**: Type standard and extended markdown syntax (`# `, `## `, `### `, `- [ ]`, `*`, `**`, `==highlight==`, `~~strike~~`, `~sub~`, `^super^`, `>`, ````lang````, `| a | b |`, `---`, emojis `:smile:`, and symbols `->`) and watch it dynamically transform into rich, beautifully styled interactive HTML on the fly.
 - **List and Grid Views**: Toggle effortlessly between compact list view and visual note card grid view (`Ctrl+G`), with responsive FlowBox category sections.
 - **Visual Note Cards**: Card previews show note titles, formatted excerpts, primary image thumbnails, and partial table previews with a clean, modern flat design.
@@ -32,13 +37,13 @@
   - Multi-selection mode for batch operations (export, duplicate, move, delete).
 - **Multi-Window Support & Live Sync**: Open multiple windows (<kbd>Ctrl+Shift+N</kbd>) with real-time SQLite database change synchronization and concurrent conflict detection.
 - **Trash Management & Empty State**: Dedicated "Empty Trash…" action bar and clean "Trash is Empty" state.
-- **Collapsible Category Hierarchy**: Nested category sidebar with AdwExpanderRow chevron layout, subcategory note counts, and intuitive leaf renaming.
 - **Smart Filters**: Quick sidebar filters for Favorites, Todos (notes containing checklists), Lists (bullet and numbered lists), and Recent notes.
 - **Session Memory**: Remembers window geometry, view mode (list/grid), last active folder/category, and previously viewed note.
 - **Real-Time Note Statistics**: Instant word count, character count, paragraph count, and reading time estimate.
 - **Seamless Theme Sync**: Automatic synchronization with Libadwaita dark and light modes, with a manual quick-toggle.
 - **Multiple Export Formats**: Export notes cleanly to Markdown (`.md`), HTML (`.html` with bundled base64 images), or Plain Text (`.txt`).
 - **Cute Design & Mascot**: Includes custom Adwaita squircle SVG icon and symbolic icon featuring "Stilo" the stylus mascot.
+- **Robust Architecture**: Thread-safe background database saving, zero UI freezes, and clean lifecycle management with zero memory leaks.
 
 ---
 

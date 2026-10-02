@@ -7,6 +7,9 @@
   <style>
     :root {
       --base-font-size: 16pt;
+      --heading-scale: 1.0;
+      --code-font-size: 14px;
+      --quote-font-size: 16pt;
       --font-stack: -apple-system, BlinkMacSystemFont, "Cantarell", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --font-mono: "JetBrains Mono", "Fira Code", "Source Code Pro", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       --transition-speed: 0.2s;
@@ -153,7 +156,7 @@
     }
 
     h1 {
-      font-size: 2.15rem;
+      font-size: calc(2.15rem * var(--heading-scale, 1.0));
       letter-spacing: -0.02em;
       margin-top: 0;
       border-bottom: 1px solid var(--border-color);
@@ -161,20 +164,20 @@
     }
 
     h2 {
-      font-size: 1.65rem;
+      font-size: calc(1.65rem * var(--heading-scale, 1.0));
       letter-spacing: -0.015em;
       margin-top: 0.35em;
       margin-bottom: 0.2em;
     }
 
     h3 {
-      font-size: 1.32rem;
+      font-size: calc(1.32rem * var(--heading-scale, 1.0));
       margin-top: 0.3em;
       margin-bottom: 0.2em;
     }
 
     h4 {
-      font-size: 1.12rem;
+      font-size: calc(1.12rem * var(--heading-scale, 1.0));
       margin-top: 0.25em;
       margin-bottom: 0.15em;
     }
@@ -253,6 +256,7 @@
 
     /* Blockquotes */
     blockquote.stilo-quote {
+      font-size: var(--quote-font-size, 16pt);
       margin: 14px 0;
       padding: 10px 18px;
       border-left: 4px solid var(--quote-border);
@@ -339,7 +343,7 @@
       border-radius: 8px;
       padding: 14px 16px;
       font-family: var(--font-mono);
-      font-size: 14px;
+      font-size: var(--code-font-size, 14px);
       line-height: 1.5;
       overflow-x: auto;
       margin: 14px 0;
@@ -353,7 +357,7 @@
       padding: 2px 6px;
       border-radius: 4px;
       font-family: var(--font-mono);
-      font-size: 13.5px;
+      font-size: calc(var(--code-font-size, 14px) * 0.95);
     }
 
     mark.stilo-highlight, .stilo-highlight {
@@ -3777,6 +3781,19 @@
 
     window.setFontSize = function(sizePt) {
       document.documentElement.style.setProperty('--base-font-size', sizePt + 'pt');
+    };
+
+    window.setFontFamily = function(fontStack) {
+      if (fontStack) document.documentElement.style.setProperty('--font-stack', fontStack);
+    };
+
+    window.setTypography = function(config) {
+      if (!config) return;
+      if (config.fontSize) document.documentElement.style.setProperty('--base-font-size', config.fontSize + 'pt');
+      if (config.headingScale) document.documentElement.style.setProperty('--heading-scale', config.headingScale);
+      if (config.codeFontSize) document.documentElement.style.setProperty('--code-font-size', config.codeFontSize + 'px');
+      if (config.quoteFontSize) document.documentElement.style.setProperty('--quote-font-size', config.quoteFontSize + 'pt');
+      if (config.fontFamily) document.documentElement.style.setProperty('--font-stack', config.fontFamily);
     };
 
     window.performUndo = performUndo;

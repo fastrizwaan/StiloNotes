@@ -30,6 +30,21 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5" date="2026-10-02">
+      <description>
+        <p>New features and improvements in Stilo Notes 0.5:</p>
+        <ul>
+          <li>Distraction-Free and Standard Editor view modes with smooth transitions and persistent preference</li>
+          <li>Typography preferences with Font Family selection (System, Sans-Serif, Serif, and Monospace)</li>
+          <li>Unified note text zoom (80% to 160%) and Card &amp; List text size options in Preferences</li>
+          <li>One-click "Reset to Defaults" button for typography and text sizing</li>
+          <li>Flicker-free draggable sidebar splitter with persistent width saving</li>
+          <li>Quick "+" category button and collapsible chevrons for category hierarchies</li>
+          <li>Tags dropdown popover menu for easy tag filtering and management</li>
+          <li>Memory leak fixes and thread-safe background database save synchronization</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4" date="2026-10-01">
       <description>
         <p>New features and improvements in Stilo Notes 0.4:</p>

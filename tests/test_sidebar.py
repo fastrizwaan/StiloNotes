@@ -275,6 +275,216 @@ class TestToolbarPin(unittest.TestCase):
         self.assertFalse(hasattr(bar, "pin_btn"))
 
 
+class TestSidebarSplitterResizer(unittest.TestCase):
+    def setUp(self):
+        self.db = NoteDatabase(":memory:")
+        self.config = ConfigManager(self.db)
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_sidebar_drag_calculation_and_clamping(self):
+        from unittest.mock import MagicMock
+        from stilonotes.sidebar import Sidebar
+
+        sidebar = Sidebar(self.db)
+        sidebar._drag_start_width = 260
+        sidebar._mouse_edge_offset = 3.0  # mouse was clicked 3px from sidebar right edge
+
+        # Mock gesture without event position -> fallback to offset_x
+        mock_gesture = MagicMock()
+        mock_gesture.get_current_sequence.return_value = None
+        mock_gesture.get_last_event.return_value = None
+        mock_gesture.get_current_event.return_value = None
+
+        # Test fallback
+        sidebar._mouse_edge_offset = None
+        w1 = sidebar._calculate_target_width(mock_gesture, offset_x=20)
+        self.assertEqual(w1, 280)
+
+        # Clamping minimum (200px)
+        w_min = sidebar._calculate_target_width(mock_gesture, offset_x=-100)
+        self.assertEqual(w_min, 200)
+
+        # Clamping maximum (500px)
+        w_max = sidebar._calculate_target_width(mock_gesture, offset_x=300)
+        self.assertEqual(w_max, 500)
+
+    def test_sidebar_drag_signals_and_persistence(self):
+        from unittest.mock import MagicMock
+        from stilonotes.sidebar import Sidebar
+
+        sidebar = Sidebar(self.db)
+        dragged_widths = []
+        ended_widths = []
+
+        sidebar.connect("width-dragged", lambda _sb, w: dragged_widths.append(w))
+        sidebar.connect("width-drag-ended", lambda _sb, w: ended_widths.append(w))
+
+        mock_gesture = MagicMock()
+        mock_gesture.get_current_sequence.return_value = None
+        mock_gesture.get_last_event.return_value = None
+        mock_gesture.get_current_event.return_value = None
+
+        sidebar._on_resizer_drag_begin(mock_gesture, 3, 100)
+        self.assertTrue(sidebar.drag_handle.has_css_class("dragging"))
+
+        # Move to +15px
+        sidebar._on_resizer_drag_update(mock_gesture, offset_x=15, offset_y=0)
+        self.assertEqual(dragged_widths, [275])
+
+        # Same width movement: duplicate must be suppressed
+        sidebar._on_resizer_drag_update(mock_gesture, offset_x=15.2, offset_y=0)
+        self.assertEqual(len(dragged_widths), 1)
+
+        # Move to +25px
+        sidebar._on_resizer_drag_update(mock_gesture, offset_x=25, offset_y=0)
+        self.assertEqual(dragged_widths, [275, 285])
+
+        # Release drag
+        sidebar._on_resizer_drag_end(mock_gesture, offset_x=25, offset_y=0)
+        self.assertFalse(sidebar.drag_handle.has_css_class("dragging"))
+        self.assertEqual(ended_widths, [285])
+        self.assertEqual(self.config.get_sidebar_width(), 285)
+
+    def test_window_constraint_ordering_never_violates_min_max(self):
+        """Verify min_sidebar_width is never strictly greater than max_sidebar_width."""
+        from gi.repository import Adw
+        split_view = Adw.OverlaySplitView()
+        split_view.set_min_sidebar_width(260)
+        split_view.set_max_sidebar_width(260)
+
+        # Expanding: 260 -> 300
+        new_width = 300
+        cur_max = int(split_view.get_max_sidebar_width())
+        if new_width > cur_max:
+            split_view.set_max_sidebar_width(new_width)
+            self.assertLessEqual(split_view.get_min_sidebar_width(), split_view.get_max_sidebar_width())
+            split_view.set_min_sidebar_width(new_width)
+            self.assertEqual(split_view.get_min_sidebar_width(), split_view.get_max_sidebar_width())
+
+        # Shrinking: 300 -> 220
+        new_width = 220
+        cur_max = int(split_view.get_max_sidebar_width())
+        if new_width <= cur_max:
+            split_view.set_min_sidebar_width(new_width)
+            self.assertLessEqual(split_view.get_min_sidebar_width(), split_view.get_max_sidebar_width())
+            split_view.set_max_sidebar_width(new_width)
+            self.assertEqual(split_view.get_min_sidebar_width(), split_view.get_max_sidebar_width())
+
+
+class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
+    def setUp(self):
+        self.db = NoteDatabase(":memory:")
+        self.config = ConfigManager(self.db)
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_categories_and_tags_expansion_persistence(self):
+        self.assertTrue(self.config.get_categories_expanded())
+        self.assertTrue(self.config.get_tags_expanded())
+
+        self.config.set_categories_expanded(False)
+        self.assertFalse(self.config.get_categories_expanded())
+
+        self.config.set_tags_expanded(False)
+        self.assertFalse(self.config.get_tags_expanded())
+
+        self.config.set_categories_expanded(True)
+        self.assertTrue(self.config.get_categories_expanded())
+
+    def test_tag_rename_and_delete_in_database(self):
+        note1 = self.db.create_note(title="Note 1", initial_text="hello", tags=["alpha", "beta"])
+        note2 = self.db.create_note(title="Note 2", initial_text="world", tags=["alpha", "omega"])
+
+        self.db.rename_tag("alpha", "gamma")
+        n1 = self.db.get_note(note1.id)
+        n2 = self.db.get_note(note2.id)
+        self.assertIn("gamma", n1.tags)
+        self.assertNotIn("alpha", n1.tags)
+        self.assertIn("gamma", n2.tags)
+        self.assertNotIn("alpha", n2.tags)
+
+        self.db.delete_tag("beta")
+        n1 = self.db.get_note(note1.id)
+        self.assertNotIn("beta", n1.tags)
+        self.assertIn("gamma", n1.tags)
+
+    def test_sidebar_section_headers_alignment_and_expansion(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.sidebar import Sidebar
+        self.db.create_category("Personal")
+        self.db.create_category("Personal/Projects")
+        self.db.create_note(title="Tag Note", tags=["important"])
+
+        sidebar = Sidebar(self.db)
+
+        # Find rows
+        cat_header_row = None
+        tag_header_row = None
+        for i in range(50):
+            r = sidebar.listbox.get_row_at_index(i)
+            if not r:
+                break
+            ft = getattr(r, "_filter_type", None)
+            if ft == "categories_header":
+                cat_header_row = r
+            elif ft == "tags_header":
+                tag_header_row = r
+
+        self.assertIsNotNone(cat_header_row)
+        self.assertIsNotNone(tag_header_row)
+
+        # Verify left alignment: 1st category (depth 0) must align left (margin_start == 0)
+        row_root_cat = sidebar._category_rows.get("Personal")
+        self.assertIsNotNone(row_root_cat)
+        box_root = row_root_cat.get_child()
+        self.assertEqual(box_root.get_margin_start(), 0)
+
+        # Subcategory (depth 1) must be indented
+        row_sub_cat = sidebar._category_rows.get("Personal/Projects")
+        self.assertIsNotNone(row_sub_cat)
+        box_sub = row_sub_cat.get_child()
+        self.assertEqual(box_sub.get_margin_start(), 16)
+
+        # Initial state: expanded by default -> chevron is hidden
+        self.assertFalse(sidebar._categories_chevron_btn.get_visible())
+        self.assertFalse(sidebar._tags_chevron_btn.get_visible())
+
+        # Toggle categories section: should hide category rows and SHOW > chevron
+        self.assertTrue(row_root_cat.get_visible())
+        sidebar._on_toggle_categories_section()
+        self.assertFalse(sidebar._categories_expanded)
+        self.assertFalse(row_root_cat.get_visible())
+        self.assertFalse(row_sub_cat.get_visible())
+        self.assertTrue(sidebar._categories_chevron_btn.get_visible())
+
+        # Toggle again: should show category rows and HIDE chevron
+        sidebar._on_toggle_categories_section()
+        self.assertTrue(sidebar._categories_expanded)
+        self.assertTrue(row_root_cat.get_visible())
+        self.assertFalse(sidebar._categories_chevron_btn.get_visible())
+
+        # Toggle tags section: should hide tags and SHOW > chevron
+        row_tag = sidebar._tag_rows.get("important")
+        self.assertIsNotNone(row_tag)
+        self.assertTrue(row_tag.get_visible())
+        sidebar._on_toggle_tags_section()
+        self.assertFalse(sidebar._tags_expanded)
+        self.assertFalse(row_tag.get_visible())
+        self.assertTrue(sidebar._tags_chevron_btn.get_visible())
+
+        sidebar._on_toggle_tags_section()
+        self.assertTrue(sidebar._tags_expanded)
+        self.assertTrue(row_tag.get_visible())
+        self.assertFalse(sidebar._tags_chevron_btn.get_visible())
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

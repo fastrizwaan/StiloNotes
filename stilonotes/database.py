@@ -110,6 +110,7 @@ class NoteDatabase:
     def close(self):
         """Cleanly close database connection and free resources."""
         with self._lock:
+            self._change_listeners.clear()
             if self._conn is not None:
                 try:
                     self._conn.close()
@@ -529,7 +530,14 @@ Enjoy writing with Stilo Notes!
             self._notify_change("note-saved", {"note_id": note_id, "note": saved_note}, sender=sender)
             return saved_note
 
-    def create_note(self, title: str = "Untitled Note", category: str = "", initial_text: str = "", sender: Any = None) -> Note:
+    def create_note(
+        self,
+        title: str = "Untitled Note",
+        category: str = "",
+        initial_text: str = "",
+        tags: Optional[List[str]] = None,
+        sender: Any = None
+    ) -> Note:
         """Create a new note."""
         note_id = str(uuid.uuid4())
         md_content = initial_text or (f"# {title}\n\n" if title != "Untitled Note" else "")
@@ -540,6 +548,7 @@ Enjoy writing with Stilo Notes!
             category=category,
             content_html=html_content,
             content_markdown=md_content,
+            tags=tags,
             sender=sender
         )
 
@@ -1010,6 +1019,64 @@ Enjoy writing with Stilo Notes!
                     if t_clean:
                         tag_counts[t_clean] = tag_counts.get(t_clean, 0) + 1
             return sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
+
+    def delete_tag(self, tag_name: str):
+        """Remove a tag from all notes."""
+        clean = tag_name.strip().lstrip("#").lower()
+        if not clean:
+            return
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, tags FROM notes WHERE is_trashed = 0")
+            for r in cursor.fetchall():
+                note_id = r["id"]
+                raw = r["tags"]
+                if not raw:
+                    continue
+                try:
+                    t_list = json.loads(raw)
+                    if isinstance(t_list, list):
+                        new_list = [t for t in t_list if t.strip().lstrip("#").lower() != clean]
+                        if len(new_list) != len(t_list):
+                            cursor.execute("UPDATE notes SET tags = ? WHERE id = ?", (json.dumps(new_list), note_id))
+                except Exception:
+                    pass
+            conn.commit()
+        self._notify_change("tag-deleted", {"tag": clean})
+
+    def rename_tag(self, old_tag: str, new_tag: str):
+        """Rename a tag across all notes."""
+        old_clean = old_tag.strip().lstrip("#").lower()
+        new_clean = new_tag.strip().lstrip("#").lower()
+        if not old_clean or not new_clean or old_clean == new_clean:
+            return
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, tags FROM notes WHERE is_trashed = 0")
+            for r in cursor.fetchall():
+                note_id = r["id"]
+                raw = r["tags"]
+                if not raw:
+                    continue
+                try:
+                    t_list = json.loads(raw)
+                    if isinstance(t_list, list):
+                        modified = False
+                        new_list = []
+                        for t in t_list:
+                            if t.strip().lstrip("#").lower() == old_clean:
+                                if new_clean not in new_list:
+                                    new_list.append(new_clean)
+                                modified = True
+                            else:
+                                if t not in new_list:
+                                    new_list.append(t)
+                        if modified:
+                            cursor.execute("UPDATE notes SET tags = ? WHERE id = ?", (json.dumps(new_list), note_id))
+                except Exception:
+                    pass
+            conn.commit()
+        self._notify_change("tag-renamed", {"old_tag": old_clean, "new_tag": new_clean})
 
     def find_note_by_title(self, title: str) -> Optional[Note]:
         """Find non-trashed note by title (case-insensitive exact match)."""
