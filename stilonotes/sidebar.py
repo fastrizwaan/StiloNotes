@@ -368,6 +368,7 @@ class Sidebar(Adw.Bin):
         add_btn.add_css_class("flat")
         add_btn.add_css_class("sidebar-action-btn")
         add_btn.set_can_focus(False)
+        add_btn.set_visible(self._categories_expanded)
         add_img = Gtk.Image.new_from_icon_name("list-add-symbolic")
         add_img.set_pixel_size(14)
         add_btn.set_child(add_img)
@@ -380,6 +381,8 @@ class Sidebar(Adw.Bin):
                 GLib.idle_add(self._clear_toggling_flag)
         add_btn.connect("clicked", on_add_cat_clicked)
         actions_box.append(add_btn)
+
+        self._categories_add_btn = add_btn
 
         # > chevron button (only shown when collapsed)
         chevron_btn = Gtk.Button()
@@ -445,6 +448,7 @@ class Sidebar(Adw.Bin):
         add_tag_btn.add_css_class("flat")
         add_tag_btn.add_css_class("sidebar-action-btn")
         add_tag_btn.set_can_focus(False)
+        add_tag_btn.set_visible(self._tags_expanded)
 
         add_tag_img = Gtk.Image.new_from_icon_name("list-add-symbolic")
         add_tag_img.set_pixel_size(14)
@@ -458,6 +462,8 @@ class Sidebar(Adw.Bin):
                 GLib.idle_add(self._clear_toggling_flag)
         add_tag_btn.connect("clicked", on_add_tag_clicked)
         actions_box.append(add_tag_btn)
+
+        self._tags_add_btn = add_tag_btn
 
         # > chevron button (only shown when collapsed)
         chevron_btn = Gtk.Button()
@@ -554,6 +560,8 @@ class Sidebar(Adw.Bin):
         self.config_manager.set_categories_expanded(self._categories_expanded)
         if hasattr(self, "_categories_chevron_btn"):
             self._categories_chevron_btn.set_visible(not self._categories_expanded)
+        if hasattr(self, "_categories_add_btn"):
+            self._categories_add_btn.set_visible(self._categories_expanded)
         self._update_category_tree_ui()
 
     def _on_toggle_tags_section(self):
@@ -561,6 +569,8 @@ class Sidebar(Adw.Bin):
         self.config_manager.set_tags_expanded(self._tags_expanded)
         if hasattr(self, "_tags_chevron_btn"):
             self._tags_chevron_btn.set_visible(not self._tags_expanded)
+        if hasattr(self, "_tags_add_btn"):
+            self._tags_add_btn.set_visible(self._tags_expanded)
         for tag_name, row in self._tag_rows.items():
             row.set_visible(self._tags_expanded)
 

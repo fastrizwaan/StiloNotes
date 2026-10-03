@@ -451,25 +451,29 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         box_sub = row_sub_cat.get_child()
         self.assertEqual(box_sub.get_margin_start(), 16)
 
-        # Initial state: expanded by default -> chevron is hidden
+        # Initial state: expanded by default -> chevron is hidden, + button is visible
         self.assertFalse(sidebar._categories_chevron_btn.get_visible())
+        self.assertTrue(sidebar._categories_add_btn.get_visible())
         self.assertFalse(sidebar._tags_chevron_btn.get_visible())
+        self.assertTrue(sidebar._tags_add_btn.get_visible())
 
-        # Toggle categories section: should hide category rows and SHOW > chevron
+        # Toggle categories section: should hide category rows and + button, SHOW > chevron
         self.assertTrue(row_root_cat.get_visible())
         sidebar._on_toggle_categories_section()
         self.assertFalse(sidebar._categories_expanded)
         self.assertFalse(row_root_cat.get_visible())
         self.assertFalse(row_sub_cat.get_visible())
         self.assertTrue(sidebar._categories_chevron_btn.get_visible())
+        self.assertFalse(sidebar._categories_add_btn.get_visible())
 
-        # Toggle again: should show category rows and HIDE chevron
+        # Toggle again: should show category rows and + button, HIDE chevron
         sidebar._on_toggle_categories_section()
         self.assertTrue(sidebar._categories_expanded)
         self.assertTrue(row_root_cat.get_visible())
         self.assertFalse(sidebar._categories_chevron_btn.get_visible())
+        self.assertTrue(sidebar._categories_add_btn.get_visible())
 
-        # Toggle tags section: should hide tags and SHOW > chevron
+        # Toggle tags section: should hide tags and + button, SHOW > chevron
         row_tag = sidebar._tag_rows.get("important")
         self.assertIsNotNone(row_tag)
         self.assertTrue(row_tag.get_visible())
@@ -477,11 +481,13 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         self.assertFalse(sidebar._tags_expanded)
         self.assertFalse(row_tag.get_visible())
         self.assertTrue(sidebar._tags_chevron_btn.get_visible())
+        self.assertFalse(sidebar._tags_add_btn.get_visible())
 
         sidebar._on_toggle_tags_section()
         self.assertTrue(sidebar._tags_expanded)
         self.assertTrue(row_tag.get_visible())
         self.assertFalse(sidebar._tags_chevron_btn.get_visible())
+        self.assertTrue(sidebar._tags_add_btn.get_visible())
 
     def test_window_on_sidebar_filter_changed_argument_flexibility(self):
         from gi.repository import Gdk
