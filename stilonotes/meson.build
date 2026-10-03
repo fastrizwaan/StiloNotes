@@ -27,6 +27,7 @@ configure_file(
 sources = [
   '__init__.py',
   'application.py',
+  'backup_encryption.py',
   'category_header_bar.py',
   'config_manager.py',
   'database.py',

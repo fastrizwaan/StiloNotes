@@ -419,6 +419,11 @@ class StiloWindow(Adw.ApplicationWindow):
                 self.editor._sync_autocomplete_data()
             self.index_view.refresh(update_sidebar=True)
 
+        elif event_type == "database-restored":
+            if is_in_editor:
+                self._go_back()
+            self.index_view.refresh(update_sidebar=True)
+
     def _on_editor_category_changed(self, _ed, note_id: str, new_category: str):
         self.index_view.refresh(update_sidebar=True)
 

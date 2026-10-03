@@ -30,6 +30,20 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.6" date="2026-10-03">
+      <description>
+        <p>New features and improvements in Stilo Notes 0.6:</p>
+        <ul>
+          <li>Privacy-first local database backup and restore system (.db and AES-256 encrypted .db.gpg)</li>
+          <li>Standalone GPG symmetric encryption with loopback passphrase input, completely decoupled from system keyrings</li>
+          <li>Optional automatic database backup on exit with configurable destination folder and password protection</li>
+          <li>New dedicated "Backup &amp; Restore" preferences page in application settings</li>
+          <li>Resolved GtkStack child selection warning when switching to batch note selection mode</li>
+          <li>Fixed Gtk.FileDialog parent type compatibility with Adw.PreferencesDialog</li>
+          <li>Fully offline Flatpak sandbox profile without network access requirements</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5" date="2026-10-02">
       <description>
         <p>New features and improvements in Stilo Notes 0.5:</p>

@@ -1119,3 +1119,41 @@ Enjoy writing with Stilo Notes!
                 conn.commit()
         except Exception as e:
             print("Error saving setting:", e)
+
+    def backup_to_file(self, target_path: str):
+        """Export a clean, atomic snapshot of this SQLite database to target_path."""
+        target = Path(target_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with self.get_connection() as src_conn:
+            # Checkpoint WAL if not in-memory
+            if str(self.db_path) != ":memory:":
+                try:
+                    src_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except Exception:
+                    pass
+            dest_conn = sqlite3.connect(str(target))
+            try:
+                src_conn.backup(dest_conn)
+            finally:
+                dest_conn.close()
+
+    def restore_from_file(self, source_path: str, sender: Any = None):
+        """Restore database state from a backup file and notify change listeners."""
+        source = Path(source_path)
+        if not source.exists():
+            raise FileNotFoundError(f"Backup file not found: {source_path}")
+
+        src_conn = sqlite3.connect(str(source))
+        try:
+            with self.get_connection() as dest_conn:
+                src_conn.backup(dest_conn)
+                dest_conn.commit()
+                if str(self.db_path) != ":memory:":
+                    try:
+                        dest_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    except Exception:
+                        pass
+        finally:
+            src_conn.close()
+
+        self._notify_change("database-restored", {}, sender=sender)

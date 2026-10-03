@@ -133,6 +133,7 @@ class IndexView(Adw.Bin):
         self.selection_header.connect("set-favourite", self._on_selection_toggle_favourite)
         self.selection_header.connect("export", self._on_selection_export)
         self.selection_header.connect("delete", self._on_selection_delete)
+        self.header_stack.add_named(self.selection_header, "selection")
 
         self.toolbar_view.add_top_bar(self.header_stack)
 

@@ -390,3 +390,50 @@ class ConfigManager:
         self.set_heading_scale("normal")
         self.set_code_font_size(14)
         self.set_quote_font_size(16)
+
+    # ── Database Backup Settings ─────────────────────────────────────────
+
+    def get_auto_backup_folder(self) -> str:
+        if self.db:
+            return self.db.get_setting("auto_backup_folder", "")
+        return ""
+
+    def set_auto_backup_folder(self, folder_path: str):
+        if self.db:
+            self.db.set_setting("auto_backup_folder", folder_path.strip())
+
+    def get_auto_backup_folder_enabled(self) -> bool:
+        if self.db:
+            return self.db.get_setting("auto_backup_folder_enabled", "false") == "true"
+        return False
+
+    def set_auto_backup_folder_enabled(self, enabled: bool):
+        if self.db:
+            self.db.set_setting("auto_backup_folder_enabled", "true" if enabled else "false")
+
+    def get_auto_backup_encrypted(self) -> bool:
+        if self.db:
+            return self.db.get_setting("auto_backup_encrypted", "false") == "true"
+        return False
+
+    def set_auto_backup_encrypted(self, enabled: bool):
+        if self.db:
+            self.db.set_setting("auto_backup_encrypted", "true" if enabled else "false")
+
+    def get_auto_backup_password(self) -> str:
+        if self.db:
+            return self.db.get_setting("auto_backup_password", "")
+        return ""
+
+    def set_auto_backup_password(self, password: str):
+        if self.db:
+            self.db.set_setting("auto_backup_password", password)
+
+    def get_last_local_backup(self) -> str:
+        if self.db:
+            return self.db.get_setting("last_local_backup_time", "")
+        return ""
+
+    def set_last_local_backup(self, timestamp_str: str):
+        if self.db:
+            self.db.set_setting("last_local_backup_time", timestamp_str)

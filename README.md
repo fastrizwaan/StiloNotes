@@ -41,6 +41,7 @@
 - **Session Memory**: Remembers window geometry, view mode (list/grid), last active folder/category, and previously viewed note.
 - **Real-Time Note Statistics**: Instant word count, character count, paragraph count, and reading time estimate.
 - **Seamless Theme Sync**: Automatic synchronization with Libadwaita dark and light modes, with a manual quick-toggle.
+- **Local Database Backup & Standalone GPG Encryption**: Export clean, atomic SQLite database snapshots anytime, or protect them with AES-256 password encryption via standalone GPG (`.db.gpg`) without touching system keyrings. Supports one-click restore and optional automatic backups on exit to a chosen folder.
 - **Multiple Export Formats**: Export notes cleanly to Markdown (`.md`), HTML (`.html` with bundled base64 images), or Plain Text (`.txt`).
 - **Cute Design & Mascot**: Includes custom Adwaita squircle SVG icon and symbolic icon featuring "Stilo" the stylus mascot.
 - **Robust Architecture**: Thread-safe background database saving, zero UI freezes, and clean lifecycle management with zero memory leaks.
@@ -156,6 +157,7 @@ StiloNotes/
 ├── po/                              # Gettext localization
 ├── stilonotes/                      # Core Python application package
 │   ├── application.py               # Adw.Application, actions & dialogs
+│   ├── backup_encryption.py         # Standalone GPG symmetric backup encryption
 │   ├── category_header_bar.py       # Category header and filter widgets
 │   ├── config_manager.py            # Preferences and session state memory
 │   ├── const.py                     # App constants & path resolution

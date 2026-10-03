@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import sys
+import threading
+import time
+import tempfile
 from pathlib import Path
 import gi
 gi.require_version('Gtk', '4.0')
@@ -11,6 +15,7 @@ from gi.repository import Adw, Gtk, Gio, Gdk, GLib
 from stilonotes.const import APP_ID, APP_NAME, VERSION, get_assets_path
 from stilonotes.database import NoteDatabase
 from stilonotes.config_manager import ConfigManager
+from stilonotes import backup_encryption
 from stilonotes.window import StiloWindow
 
 class StiloApplication(Adw.Application):
@@ -61,6 +66,32 @@ class StiloApplication(Adw.Application):
 
     def do_shutdown(self):
         """Cleanly close all window resources and database on application quit."""
+        # Optional auto-backup on exit
+        if self.config_manager and self.db:
+            if self.config_manager.get_auto_backup_folder_enabled():
+                folder = self.config_manager.get_auto_backup_folder()
+                if folder and os.path.isdir(folder):
+                    try:
+                        date_suffix = time.strftime("%Y%m%d_%H%M%S")
+                        is_enc = self.config_manager.get_auto_backup_encrypted()
+                        pwd = self.config_manager.get_auto_backup_password()
+                        if is_enc and pwd:
+                            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+                                tmp_path = tmp.name
+                            self.db.backup_to_file(tmp_path)
+                            target_file = os.path.join(folder, f"stilonotes_backup_{date_suffix}.db.gpg")
+                            backup_encryption.encrypt_file(tmp_path, target_file, pwd)
+                            try:
+                                os.unlink(tmp_path)
+                            except Exception:
+                                pass
+                        else:
+                            target_file = os.path.join(folder, f"stilonotes_backup_{date_suffix}.db")
+                            self.db.backup_to_file(target_file)
+                        self.config_manager.set_last_local_backup(time.strftime("%Y-%m-%d %H:%M"))
+                    except Exception as e:
+                        print("Auto-backup to folder on exit failed:", e)
+
         for win in list(self.get_windows()):
             if hasattr(win, "_cleanup"):
                 try:
@@ -340,6 +371,417 @@ class StiloApplication(Adw.Application):
         group_reset.add(reset_row)
         page_typo.add(group_reset)
         dialog.add(page_typo)
+
+        # ── Page 3: Backup & Restore ─────────────────────────────────────────
+        page_backup = Adw.PreferencesPage()
+        page_backup.set_title("Backup & Restore")
+        page_backup.set_icon_name("folder-download-symbolic")
+
+        target_win = parent if isinstance(parent, Gtk.Window) else None
+
+        # ── Group 1: Backup and Restore ──────────────────────────────────────
+        group_manual = Adw.PreferencesGroup()
+        group_manual.set_title("Backup and Restore")
+        group_manual.set_description("Create or restore snapshots of your notes, categories, and attachments")
+
+        # Row 1: Backup Database to File
+        backup_row = Adw.ActionRow()
+        backup_row.set_title("Backup Notes Database")
+        last_bk = self.config_manager.get_last_local_backup() if self.config_manager else ""
+        backup_row.set_subtitle(f"Last backup: {last_bk}" if last_bk else "Export an atomic snapshot (.db or password-protected .db.gpg)")
+
+        backup_btn = Gtk.Button(label="Backup to File…")
+        backup_btn.add_css_class("suggested-action")
+        backup_btn.set_valign(Gtk.Align.CENTER)
+        backup_row.add_suffix(backup_btn)
+        backup_row.set_activatable_widget(backup_btn)
+        group_manual.add(backup_row)
+
+        # Row 2: Restore Notes Database
+        restore_row = Adw.ActionRow()
+        restore_row.set_title("Restore Notes Database")
+        restore_row.set_subtitle("Restore notes from a backup file (.db or encrypted .db.gpg)")
+
+        restore_btn = Gtk.Button(label="Restore from File…")
+        restore_btn.set_valign(Gtk.Align.CENTER)
+        restore_row.add_suffix(restore_btn)
+        restore_row.set_activatable_widget(restore_btn)
+        group_manual.add(restore_row)
+
+        page_backup.add(group_manual)
+
+        # ── Group 2: Automatic Backups ───────────────────────────────────────
+        group_auto = Adw.PreferencesGroup()
+        group_auto.set_title("Automatic Backups")
+        group_auto.set_description("Automatically save a backup copy whenever Stilo Notes is closed")
+
+        auto_backup_switch = Adw.SwitchRow()
+        auto_backup_switch.set_title("Auto-Backup on Exit")
+        auto_backup_switch.set_subtitle("Save a timestamped snapshot when closing Stilo Notes")
+        auto_backup_switch.set_active(self.config_manager.get_auto_backup_folder_enabled() if self.config_manager else False)
+
+        def on_auto_backup_toggled(row, _param):
+            if self.config_manager:
+                self.config_manager.set_auto_backup_folder_enabled(row.get_active())
+
+        auto_backup_switch.connect("notify::active", on_auto_backup_toggled)
+        group_auto.add(auto_backup_switch)
+
+        folder_row = Adw.ActionRow()
+        folder_row.set_title("Backup Destination Folder")
+        cur_folder = self.config_manager.get_auto_backup_folder() if self.config_manager else ""
+        folder_row.set_subtitle(cur_folder if cur_folder else "No folder selected (Click to choose a destination folder)")
+
+        choose_folder_btn = Gtk.Button(label="Choose Folder…")
+        choose_folder_btn.set_valign(Gtk.Align.CENTER)
+
+        def on_choose_folder_clicked(_btn):
+            fd = Gtk.FileDialog()
+            fd.set_title("Select Backup Destination Folder")
+
+            def on_folder_finish(fd, res):
+                try:
+                    target = fd.select_folder_finish(res)
+                    if target:
+                        folder_path = target.get_path()
+                        if not folder_path:
+                            uri = target.get_uri() or ""
+                            if uri.startswith("file://"):
+                                folder_path = urllib.parse.unquote(uri[7:])
+                        if folder_path:
+                            if self.config_manager:
+                                self.config_manager.set_auto_backup_folder(folder_path)
+                            folder_row.set_subtitle(folder_path)
+                            if parent and hasattr(parent, "toast_overlay"):
+                                parent.toast_overlay.add_toast(Adw.Toast.new(f"Backup folder set to {os.path.basename(folder_path)}"))
+                except Exception as e:
+                    print("Folder chooser cancelled or failed:", e)
+
+            fd.select_folder(target_win, None, on_folder_finish)
+
+        choose_folder_btn.connect("clicked", on_choose_folder_clicked)
+        folder_row.add_suffix(choose_folder_btn)
+        folder_row.set_activatable_widget(choose_folder_btn)
+        group_auto.add(folder_row)
+
+        # Encrypted Auto-Backup
+        auto_enc_switch = Adw.SwitchRow()
+        auto_enc_switch.set_title("Encrypt Auto-Backups with Password")
+        auto_enc_switch.set_subtitle("Protect auto-backups with standalone GPG AES-256 encryption")
+        auto_enc_switch.set_active(self.config_manager.get_auto_backup_encrypted() if self.config_manager else False)
+
+        auto_pwd_row = Adw.PasswordEntryRow()
+        auto_pwd_row.set_title("Auto-Backup Password")
+        cur_pwd = self.config_manager.get_auto_backup_password() if self.config_manager else ""
+        auto_pwd_row.set_text(cur_pwd)
+        auto_pwd_row.set_sensitive(auto_enc_switch.get_active())
+
+        def on_auto_enc_toggled(row, _param):
+            is_active = row.get_active()
+            if self.config_manager:
+                self.config_manager.set_auto_backup_encrypted(is_active)
+            auto_pwd_row.set_sensitive(is_active)
+
+        def on_auto_pwd_changed(row, _param):
+            if self.config_manager:
+                self.config_manager.set_auto_backup_password(row.get_text())
+
+        auto_enc_switch.connect("notify::active", on_auto_enc_toggled)
+        auto_pwd_row.connect("notify::text", on_auto_pwd_changed)
+        group_auto.add(auto_enc_switch)
+        group_auto.add(auto_pwd_row)
+
+        page_backup.add(group_auto)
+        dialog.add(page_backup)
+
+        # ── Backup Button Callback ───────────────────────────────────────────
+        def on_backup_clicked(_btn):
+            if not self.db:
+                return
+
+            dlg = Adw.AlertDialog.new(
+                "Create Notes Backup",
+                "Export a full snapshot of your notes, categories, and attachments."
+            )
+            dlg.add_response("cancel", "Cancel")
+            dlg.add_response("continue", "Continue")
+            dlg.set_default_response("continue")
+            dlg.set_response_appearance("continue", Adw.ResponseAppearance.SUGGESTED)
+
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.set_margin_top(6)
+            box.set_margin_bottom(6)
+
+            pwd_group = Adw.PreferencesGroup()
+            enc_switch = Adw.SwitchRow()
+            enc_switch.set_title("Password Protect Backup")
+            enc_switch.set_subtitle("Encrypt backup file using GPG AES-256")
+            pwd_group.add(enc_switch)
+
+            pwd_entry = Adw.PasswordEntryRow()
+            pwd_entry.set_title("Password")
+            pwd_entry.set_visible(False)
+            pwd_group.add(pwd_entry)
+
+            pwd_confirm = Adw.PasswordEntryRow()
+            pwd_confirm.set_title("Confirm Password")
+            pwd_confirm.set_visible(False)
+            pwd_group.add(pwd_confirm)
+
+            def on_enc_switch_notify(sw, _param):
+                active = sw.get_active()
+                pwd_entry.set_visible(active)
+                pwd_confirm.set_visible(active)
+
+            enc_switch.connect("notify::active", on_enc_switch_notify)
+            box.append(pwd_group)
+            dlg.set_extra_child(box)
+
+            def on_dlg_response(_d, response):
+                if response != "continue":
+                    return
+
+                is_encrypted = enc_switch.get_active()
+                password = pwd_entry.get_text()
+                confirm = pwd_confirm.get_text()
+
+                if is_encrypted:
+                    if not password:
+                        err_d = Adw.AlertDialog.new("Password Required", "Please enter a password to protect the backup.")
+                        err_d.add_response("ok", "OK")
+                        err_d.present(parent or dialog)
+                        return
+                    if password != confirm:
+                        err_d = Adw.AlertDialog.new("Passwords Do Not Match", "The entered passwords do not match. Please try again.")
+                        err_d.add_response("ok", "OK")
+                        err_d.present(parent or dialog)
+                        return
+
+                file_dialog = Gtk.FileDialog()
+                file_dialog.set_title("Save Backup Database")
+                date_str = time.strftime("%Y-%m-%d")
+                ext = ".db.gpg" if is_encrypted else ".db"
+                file_dialog.set_initial_name(f"stilonotes_backup_{date_str}{ext}")
+
+                filters = Gio.ListStore.new(Gtk.FileFilter)
+                if is_encrypted:
+                    f_enc = Gtk.FileFilter()
+                    f_enc.set_name("Encrypted Stilo Notes Backup (*.db.gpg, *.gpg)")
+                    f_enc.add_pattern("*.db.gpg")
+                    f_enc.add_pattern("*.gpg")
+                    filters.append(f_enc)
+                    file_dialog.set_default_filter(f_enc)
+                else:
+                    f_db = Gtk.FileFilter()
+                    f_db.set_name("Stilo Notes Backup (*.db)")
+                    f_db.add_pattern("*.db")
+                    filters.append(f_db)
+                    file_dialog.set_default_filter(f_db)
+
+                f_all = Gtk.FileFilter()
+                f_all.set_name("All Files")
+                f_all.add_pattern("*")
+                filters.append(f_all)
+                file_dialog.set_filters(filters)
+
+                def on_save_finish(fd, res):
+                    try:
+                        target = fd.save_finish(res)
+                        if target:
+                            target_path = target.get_path()
+                            if not target_path:
+                                uri = target.get_uri() or ""
+                                if uri.startswith("file://"):
+                                    target_path = urllib.parse.unquote(uri[7:])
+                            if target_path:
+                                def save_worker():
+                                    try:
+                                        if is_encrypted:
+                                            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+                                                tmp_path = tmp.name
+                                            self.db.backup_to_file(tmp_path)
+                                            backup_encryption.encrypt_file(tmp_path, target_path, password)
+                                            try:
+                                                os.unlink(tmp_path)
+                                            except Exception:
+                                                pass
+                                        else:
+                                            self.db.backup_to_file(target_path)
+
+                                        now_str = time.strftime("%Y-%m-%d %H:%M")
+                                        if self.config_manager:
+                                            self.config_manager.set_last_local_backup(now_str)
+
+                                        def on_save_success():
+                                            backup_row.set_subtitle(f"Last backup: {now_str}")
+                                            if parent and hasattr(parent, "toast_overlay"):
+                                                enc_note = " (encrypted)" if is_encrypted else ""
+                                                parent.toast_overlay.add_toast(Adw.Toast.new(f"Backup saved to {os.path.basename(target_path)}{enc_note}"))
+                                        GLib.idle_add(on_save_success)
+                                    except Exception as e:
+                                        def on_save_err(err_msg):
+                                            err_dlg = Adw.AlertDialog.new("Backup Failed", err_msg)
+                                            err_dlg.add_response("ok", "OK")
+                                            err_dlg.present(parent or dialog)
+                                        GLib.idle_add(on_save_err, str(e))
+
+                                threading.Thread(target=save_worker, daemon=True).start()
+                    except Exception as e:
+                        print("Save dialog error or cancelled:", e)
+
+                file_dialog.save(target_win, None, on_save_finish)
+
+            dlg.connect("response", on_dlg_response)
+            dlg.present(parent or dialog)
+
+        backup_btn.connect("clicked", on_backup_clicked)
+
+        # ── Restore Button Callback ──────────────────────────────────────────
+        def on_restore_clicked(_btn):
+            if not self.db:
+                return
+
+            file_dialog = Gtk.FileDialog()
+            file_dialog.set_title("Select Backup File to Restore")
+
+            filter_any_backup = Gtk.FileFilter()
+            filter_any_backup.set_name("Stilo Notes Backups (*.db, *.db.gpg, *.gpg)")
+            filter_any_backup.add_pattern("*.db")
+            filter_any_backup.add_pattern("*.db.gpg")
+            filter_any_backup.add_pattern("*.gpg")
+
+            filter_all = Gtk.FileFilter()
+            filter_all.set_name("All Files")
+            filter_all.add_pattern("*")
+
+            filters = Gio.ListStore.new(Gtk.FileFilter)
+            filters.append(filter_any_backup)
+            filters.append(filter_all)
+            file_dialog.set_filters(filters)
+            file_dialog.set_default_filter(filter_any_backup)
+
+            def on_open_finish(fd, res):
+                try:
+                    target = fd.open_finish(res)
+                    if not target:
+                        return
+                    target_path = target.get_path()
+                    if not target_path:
+                        uri = target.get_uri() or ""
+                        if uri.startswith("file://"):
+                            target_path = urllib.parse.unquote(uri[7:])
+                    if not target_path or not os.path.isfile(target_path):
+                        return
+
+                    is_enc = backup_encryption.is_encrypted_file(target_path)
+                    basename = os.path.basename(target_path)
+
+                    if is_enc:
+                        pwd_dlg = Adw.AlertDialog.new(
+                            "Encrypted Backup",
+                            f"'{basename}' is protected with a password. Enter the password to decrypt and restore:"
+                        )
+                        pwd_dlg.add_response("cancel", "Cancel")
+                        pwd_dlg.add_response("restore", "Decrypt & Restore")
+                        pwd_dlg.set_response_appearance("restore", Adw.ResponseAppearance.DESTRUCTIVE)
+                        pwd_dlg.set_default_response("restore")
+
+                        restore_pwd_group = Adw.PreferencesGroup()
+                        restore_pwd_entry = Adw.PasswordEntryRow()
+                        restore_pwd_entry.set_title("Backup Password")
+                        restore_pwd_group.add(restore_pwd_entry)
+                        pwd_dlg.set_extra_child(restore_pwd_group)
+
+                        def on_pwd_response(_d, response):
+                            if response != "restore":
+                                return
+                            pwd = restore_pwd_entry.get_text()
+                            if not pwd:
+                                err_d = Adw.AlertDialog.new("Password Required", "Please enter the backup password.")
+                                err_d.add_response("ok", "OK")
+                                err_d.present(parent or dialog)
+                                return
+
+                            def restore_enc_worker():
+                                tmp_dec = None
+                                try:
+                                    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+                                        tmp_dec = tmp.name
+                                    backup_encryption.decrypt_file(target_path, tmp_dec, pwd)
+                                    self.db.restore_from_file(tmp_dec)
+                                    def on_success():
+                                        for win in self.get_windows():
+                                            if hasattr(win, "index_view"):
+                                                win.index_view.refresh(update_sidebar=True)
+                                        if parent and hasattr(parent, "toast_overlay"):
+                                            parent.toast_overlay.add_toast(Adw.Toast.new("Notes successfully restored from encrypted backup!"))
+                                    GLib.idle_add(on_success)
+                                except ValueError as ve:
+                                    def on_bad_pwd(msg):
+                                        err_dlg = Adw.AlertDialog.new("Decryption Failed", str(msg))
+                                        err_dlg.add_response("ok", "OK")
+                                        err_dlg.present(parent or dialog)
+                                    GLib.idle_add(on_bad_pwd, str(ve))
+                                except Exception as e:
+                                    def on_other_err(msg):
+                                        err_dlg = Adw.AlertDialog.new("Restore Failed", str(msg))
+                                        err_dlg.add_response("ok", "OK")
+                                        err_dlg.present(parent or dialog)
+                                    GLib.idle_add(on_other_err, str(e))
+                                finally:
+                                    if tmp_dec:
+                                        try:
+                                            os.unlink(tmp_dec)
+                                        except Exception:
+                                            pass
+
+                            threading.Thread(target=restore_enc_worker, daemon=True).start()
+
+                        pwd_dlg.connect("response", on_pwd_response)
+                        pwd_dlg.present(parent or dialog)
+
+                    else:
+                        confirm_dlg = Adw.AlertDialog.new(
+                            "Restore Notes from Backup?",
+                            f"Restoring from '{basename}' will replace your current notes with this snapshot. Are you sure you want to proceed?"
+                        )
+                        confirm_dlg.add_response("cancel", "Cancel")
+                        confirm_dlg.add_response("restore", "Restore Backup")
+                        confirm_dlg.set_response_appearance("restore", Adw.ResponseAppearance.DESTRUCTIVE)
+                        confirm_dlg.set_default_response("cancel")
+
+                        def on_confirm_response(_d, response):
+                            if response != "restore":
+                                return
+
+                            def restore_worker():
+                                try:
+                                    self.db.restore_from_file(target_path)
+                                    def on_success():
+                                        for win in self.get_windows():
+                                            if hasattr(win, "index_view"):
+                                                win.index_view.refresh(update_sidebar=True)
+                                        if parent and hasattr(parent, "toast_overlay"):
+                                            parent.toast_overlay.add_toast(Adw.Toast.new("Notes successfully restored from backup!"))
+                                    GLib.idle_add(on_success)
+                                except Exception as e:
+                                    def on_err(err_msg):
+                                        err_dlg = Adw.AlertDialog.new("Restore Failed", err_msg)
+                                        err_dlg.add_response("ok", "OK")
+                                        err_dlg.present(parent or dialog)
+                                    GLib.idle_add(on_err, str(e))
+
+                            threading.Thread(target=restore_worker, daemon=True).start()
+
+                        confirm_dlg.connect("response", on_confirm_response)
+                        confirm_dlg.present(parent or dialog)
+
+                except Exception as e:
+                    print("Restore selection cancelled or failed:", e)
+
+            file_dialog.open(target_win, None, on_open_finish)
+
+        restore_btn.connect("clicked", on_restore_clicked)
 
         dialog.present(parent)
 
