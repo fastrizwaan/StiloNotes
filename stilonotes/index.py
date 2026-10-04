@@ -31,6 +31,7 @@ class IndexView(Adw.Bin):
         self.active_category_name = ""
         self.search_query = ""
         self._search_debounce_id = None
+        self._private_unlocked = False
 
         self.sidebar = sidebar or Sidebar(self.db)
         self.sidebar.connect("filter-changed", self._on_sidebar_filter_changed)
@@ -101,6 +102,15 @@ class IndexView(Adw.Bin):
         self.select_btn.connect("clicked", lambda _b: self.enter_selection_mode())
         self.main_header.pack_end(self.select_btn)
 
+        # Private Notes Unlock / Lock button
+        self.private_unlock_btn = Gtk.Button()
+        self.private_unlock_btn.set_icon_name("channel-secure-symbolic")
+        self.private_unlock_btn.set_label("Unlock")
+        self.private_unlock_btn.set_tooltip_text("Unlock Private Notes")
+        self.private_unlock_btn.set_visible(False)
+        self.private_unlock_btn.connect("clicked", self._on_private_unlock_clicked)
+        self.main_header.pack_end(self.private_unlock_btn)
+
         self.header_stack.add_named(self.main_header, "main")
 
         # Search Headerbar
@@ -152,9 +162,11 @@ class IndexView(Adw.Bin):
 
         self.toolbar_view.add_top_bar(self.empty_trash_bar)
 
+
         # Notes List inside Toast Overlay
         self.toast_overlay = Adw.ToastOverlay()
         self.notes_list.connect("note-selected", lambda _nl, note: self.emit("note-opened", note, False))
+        self.notes_list.connect("locked-note-clicked", lambda _nl, note: self._prompt_unlock_private(target_note=note))
         self.notes_list.connect("new-note-requested", lambda _nl: self.emit("create-note"))
         self.notes_list.connect("note-pin-toggled", lambda _nl, _id: self.refresh())
         self.notes_list.connect("note-deleted", lambda _nl, nid: self._on_note_deleted(nid))
@@ -188,6 +200,7 @@ class IndexView(Adw.Bin):
         menu.append_section(None, s_theme)
 
         s_window = Gio.Menu()
+        s_window.append("Open…", "win.open-file")
         s_window.append("New Window", "app.new-window")
         menu.append_section(None, s_window)
 
@@ -237,6 +250,8 @@ class IndexView(Adw.Bin):
             self.window_title.set_title("Uncategorized")
         elif self.active_filter_type in ("pinned", "favorites"):
             self.window_title.set_title("Favorites")
+        elif self.active_filter_type in ("private", "locked"):
+            self.window_title.set_title("Private Notes")
         elif self.active_filter_type in ("todo", "todos"):
             self.window_title.set_title("Todos")
         elif self.active_filter_type in ("list", "lists"):
@@ -249,6 +264,27 @@ class IndexView(Adw.Bin):
             self.window_title.set_title(self.active_category_name or "Category")
         elif self.active_filter_type == "tag":
             self.window_title.set_title(f"#{self.active_category_name}")
+
+        is_private = (self.active_filter_type in ("private", "locked"))
+        is_private_locked = is_private and not self._private_unlocked
+        self.search_btn.set_visible(not is_private_locked)
+        self.select_btn.set_visible(not is_private_locked)
+        if is_private:
+            self.private_unlock_btn.set_visible(True)
+            if not self.db.has_private_password():
+                self.private_unlock_btn.set_label("Set Password")
+                self.private_unlock_btn.set_tooltip_text("Set Private Note Password")
+                self.private_unlock_btn.add_css_class("suggested-action")
+            elif self._private_unlocked:
+                self.private_unlock_btn.set_label("Lock")
+                self.private_unlock_btn.set_tooltip_text("Lock Private Notes")
+                self.private_unlock_btn.remove_css_class("suggested-action")
+            else:
+                self.private_unlock_btn.set_label("Unlock")
+                self.private_unlock_btn.set_tooltip_text("Unlock Private Notes")
+                self.private_unlock_btn.add_css_class("suggested-action")
+        else:
+            self.private_unlock_btn.set_visible(False)
 
         notes = self.db.get_notes(
             filter_type=self.active_filter_type,
@@ -263,7 +299,8 @@ class IndexView(Adw.Bin):
             notes,
             is_search=bool(self.search_query),
             active_filter_type=self.active_filter_type,
-            active_category_name=self.active_category_name
+            active_category_name=self.active_category_name,
+            is_private_unlocked=self._private_unlocked
         )
 
     def filter_by_tag(self, tag_name: str):
@@ -276,6 +313,14 @@ class IndexView(Adw.Bin):
         self.refresh()
 
     def _on_sidebar_filter_changed(self, _sb, filter_type: str, category_name: str):
+        if filter_type not in ("private", "locked"):
+            self._private_unlocked = False
+        else:
+            if getattr(self, "notes_list", None) and self.notes_list.selection_mode:
+                self.exit_selection_mode()
+            if getattr(self, "header_stack", None) and self.header_stack.get_visible_child_name() == "search":
+                self.exit_search()
+
         self.active_filter_type = filter_type
         self.active_category_name = category_name
 
@@ -288,6 +333,8 @@ class IndexView(Adw.Bin):
         self.refresh(update_sidebar=False)
 
     def enter_search(self):
+        if self.active_filter_type in ("private", "locked") and not self._private_unlocked:
+            return
         self.header_stack.set_visible_child_name("search")
         self.search_entry.grab_focus()
 
@@ -326,6 +373,8 @@ class IndexView(Adw.Bin):
         self.selection_header.set_selected_notes(checked)
 
     def enter_selection_mode(self):
+        if self.active_filter_type in ("private", "locked") and not self._private_unlocked:
+            return
         self.notes_list.set_selection_mode(True)
         cats = [c.name for c in self.db.get_categories()]
         self.selection_header.set_categories_model(cats)
@@ -341,11 +390,14 @@ class IndexView(Adw.Bin):
         checked = self.notes_list.get_checked_notes()
         if not checked:
             return
+        clean_cat = (new_category or "").strip()
+        if clean_cat.lower() == "uncategorized":
+            clean_cat = ""
         ids = [n.id for n in checked]
-        self.db.set_notes_category(ids, new_category)
+        self.db.set_notes_category(ids, clean_cat)
         self.exit_selection_mode()
         self.refresh()
-        msg = f"Changed category to '{new_category}' for {len(ids)} notes" if new_category else f"Removed category from {len(ids)} notes"
+        msg = f"Changed category to '{clean_cat}' for {len(ids)} notes" if clean_cat else f"Removed category from {len(ids)} notes"
         self.toast_overlay.add_toast(Adw.Toast.new(msg))
 
     def _on_selection_toggle_favourite(self, _shb):
@@ -417,3 +469,108 @@ class IndexView(Adw.Bin):
         self.config_manager.set_view_mode(new_mode)
         self.notes_list.set_view_mode(new_mode)
         self._update_view_toggle_button()
+
+    def _on_private_unlock_clicked(self, _btn):
+        if not self.db.has_private_password():
+            self._prompt_unlock_private()
+        elif self._private_unlocked:
+            if getattr(self, "notes_list", None) and self.notes_list.selection_mode:
+                self.exit_selection_mode()
+            if getattr(self, "header_stack", None) and self.header_stack.get_visible_child_name() == "search":
+                self.exit_search()
+            self._private_unlocked = False
+            self.refresh()
+            self.toast_overlay.add_toast(Adw.Toast.new("Private notes locked"))
+        else:
+            self._prompt_unlock_private()
+
+    def _prompt_unlock_private(self, target_note=None, on_unlocked=None):
+        window = self.get_root()
+        if not self.db.has_private_password():
+            dlg = Adw.AlertDialog.new(
+                "Set Private Note Password",
+                "Please set a master password to protect your private notes."
+            )
+            dlg.add_response("cancel", "Cancel")
+            dlg.add_response("save", "Set Password & Unlock")
+            dlg.set_default_response("save")
+            dlg.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.set_margin_top(6)
+            box.set_margin_bottom(6)
+            grp = Adw.PreferencesGroup()
+            pwd_row = Adw.PasswordEntryRow()
+            pwd_row.set_title("New Password")
+            grp.add(pwd_row)
+            conf_row = Adw.PasswordEntryRow()
+            conf_row.set_title("Confirm Password")
+            grp.add(conf_row)
+            box.append(grp)
+            dlg.set_extra_child(box)
+
+            def on_set_pwd_res(_d, resp):
+                if resp != "save":
+                    return
+                p1 = pwd_row.get_text()
+                p2 = conf_row.get_text()
+                if not p1.strip():
+                    err = Adw.AlertDialog.new("Password Required", "Password cannot be empty.")
+                    err.add_response("ok", "OK")
+                    err.present(window or self)
+                    return
+                if p1 != p2:
+                    err = Adw.AlertDialog.new("Passwords Do Not Match", "The entered passwords do not match.")
+                    err.add_response("ok", "OK")
+                    err.present(window or self)
+                    return
+                self.db.set_private_password(p1)
+                self._private_unlocked = True
+                self.refresh()
+                self.toast_overlay.add_toast(Adw.Toast.new("Private notes unlocked"))
+                if on_unlocked:
+                    on_unlocked()
+                elif target_note:
+                    self.emit("note-opened", target_note, False)
+
+            dlg.connect("response", on_set_pwd_res)
+            dlg.present(window or self)
+        else:
+            dlg = Adw.AlertDialog.new(
+                "Unlock Private Notes",
+                "Enter Private Note Password to view locked notes."
+            )
+            dlg.add_response("cancel", "Cancel")
+            dlg.add_response("unlock", "Unlock")
+            dlg.set_default_response("unlock")
+            dlg.set_response_appearance("unlock", Adw.ResponseAppearance.SUGGESTED)
+
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.set_margin_top(6)
+            box.set_margin_bottom(6)
+            grp = Adw.PreferencesGroup()
+            pwd_row = Adw.PasswordEntryRow()
+            pwd_row.set_title("Password")
+            grp.add(pwd_row)
+            box.append(grp)
+            dlg.set_extra_child(box)
+
+            def on_unlock_res(_d, resp):
+                if resp != "unlock":
+                    return
+                p = pwd_row.get_text()
+                if not self.db.verify_private_password(p):
+                    err = Adw.AlertDialog.new("Incorrect Password", "The password you entered is incorrect.")
+                    err.add_response("ok", "OK")
+                    err.present(window or self)
+                    return
+                self._private_unlocked = True
+                self.refresh()
+                self.toast_overlay.add_toast(Adw.Toast.new("Private notes unlocked"))
+                if on_unlocked:
+                    on_unlocked()
+                elif target_note:
+                    self.emit("note-opened", target_note, False)
+
+            dlg.connect("response", on_unlock_res)
+            dlg.present(window or self)

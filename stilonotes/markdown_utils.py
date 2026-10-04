@@ -389,7 +389,7 @@ def extract_categories(text: str) -> List[str]:
     # Check for HTML category badges first: <span class="stilo-category-badge" data-category="...">
     for c in RE_HTM_CAT_BADGE.findall(text):
         clean_c = c.strip()
-        if clean_c and clean_c not in seen:
+        if clean_c and clean_c.lower() != "uncategorized" and clean_c not in seen:
             seen.add(clean_c)
             result.append(clean_c)
 
@@ -402,7 +402,7 @@ def extract_categories(text: str) -> List[str]:
     for m in RE_CAT_SLASH.findall(clean):
         matches.append(m.strip())
     for c in matches:
-        if c and c not in seen:
+        if c and c.lower() != "uncategorized" and c not in seen:
             seen.add(c)
             result.append(c)
     return result

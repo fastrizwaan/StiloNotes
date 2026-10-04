@@ -20,6 +20,7 @@ class Note:
     is_archived: bool = False
     is_trashed: bool = False
     has_todo: bool = False
+    is_locked: bool = False
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -36,6 +37,7 @@ class Note:
             "is_archived": self.is_archived,
             "is_trashed": self.is_trashed,
             "has_todo": self.has_todo,
+            "is_locked": self.is_locked,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -65,6 +67,7 @@ class Note:
             is_archived=bool(row["is_archived"]),
             is_trashed=bool(row["is_trashed"]),
             has_todo=bool(row["has_todo"]),
+            is_locked=bool(row["is_locked"]) if "is_locked" in keys else False,
             created_at=float(row["created_at"] or time.time()),
             updated_at=float(row["updated_at"] or time.time()),
         )

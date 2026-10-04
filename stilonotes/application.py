@@ -234,6 +234,140 @@ class StiloApplication(Adw.Application):
             path_row.set_subtitle(str(self.db.db_path))
         group_storage.add(path_row)
         page_general.add(group_storage)
+
+        # Private Notes Security group
+        group_security = Adw.PreferencesGroup()
+        group_security.set_title("Private Notes")
+        group_security.set_description("Master password for locking notes and accessing private notes")
+
+        private_pwd_row = Adw.ActionRow()
+        private_pwd_row.set_title("Private Note Password")
+
+        private_pwd_btn = Gtk.Button()
+        private_pwd_btn.set_valign(Gtk.Align.CENTER)
+
+        private_pwd_clear_btn = Gtk.Button()
+        private_pwd_clear_btn.set_icon_name("edit-clear-symbolic")
+        private_pwd_clear_btn.set_tooltip_text("Clear Private Note Password")
+        private_pwd_clear_btn.add_css_class("flat")
+        private_pwd_clear_btn.set_valign(Gtk.Align.CENTER)
+
+        def update_private_pwd_ui():
+            has_pwd = bool(self.db and self.db.has_private_password())
+            private_pwd_row.set_subtitle("•••••••• (Password configured)" if has_pwd else "No password configured")
+            private_pwd_btn.set_label("Change…" if has_pwd else "Set Password…")
+            private_pwd_clear_btn.set_visible(has_pwd)
+
+        update_private_pwd_ui()
+
+        def on_private_pwd_btn_clicked(_btn):
+            has_pwd = bool(self.db and self.db.has_private_password())
+            dlg = Adw.AlertDialog.new(
+                "Change Private Note Password" if has_pwd else "Set Private Note Password",
+                "Enter your password to protect private notes."
+            )
+            dlg.add_response("cancel", "Cancel")
+            dlg.add_response("save", "Save")
+            dlg.set_default_response("save")
+            dlg.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.set_margin_top(6)
+            box.set_margin_bottom(6)
+
+            grp = Adw.PreferencesGroup()
+            curr_entry = None
+            if has_pwd:
+                curr_entry = Adw.PasswordEntryRow()
+                curr_entry.set_title("Current Password")
+                grp.add(curr_entry)
+
+            new_entry = Adw.PasswordEntryRow()
+            new_entry.set_title("New Password")
+            grp.add(new_entry)
+
+            confirm_entry = Adw.PasswordEntryRow()
+            confirm_entry.set_title("Confirm Password")
+            grp.add(confirm_entry)
+
+            box.append(grp)
+            dlg.set_extra_child(box)
+
+            def on_dlg_res(_d, resp):
+                if resp != "save":
+                    return
+                if has_pwd and curr_entry:
+                    curr_val = curr_entry.get_text()
+                    if not self.db.verify_private_password(curr_val):
+                        err_d = Adw.AlertDialog.new("Incorrect Password", "The current password entered is incorrect.")
+                        err_d.add_response("ok", "OK")
+                        err_d.present(parent or dialog)
+                        return
+
+                new_val = new_entry.get_text()
+                conf_val = confirm_entry.get_text()
+                if not new_val.strip():
+                    err_d = Adw.AlertDialog.new("Password Required", "Please enter a non-empty password.")
+                    err_d.add_response("ok", "OK")
+                    err_d.present(parent or dialog)
+                    return
+                if new_val != conf_val:
+                    err_d = Adw.AlertDialog.new("Passwords Do Not Match", "The entered passwords do not match.")
+                    err_d.add_response("ok", "OK")
+                    err_d.present(parent or dialog)
+                    return
+
+                self.db.set_private_password(new_val)
+                update_private_pwd_ui()
+                if parent and hasattr(parent, "toast_overlay"):
+                    parent.toast_overlay.add_toast(Adw.Toast.new("Private note password updated"))
+
+            dlg.connect("response", on_dlg_res)
+            dlg.present(parent or dialog)
+
+        def on_private_pwd_clear_clicked(_btn):
+            dlg = Adw.AlertDialog.new(
+                "Remove Private Note Password?",
+                "Enter your current password to remove private note password protection."
+            )
+            dlg.add_response("cancel", "Cancel")
+            dlg.add_response("remove", "Remove")
+            dlg.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.set_margin_top(6)
+            box.set_margin_bottom(6)
+            grp = Adw.PreferencesGroup()
+            curr_entry = Adw.PasswordEntryRow()
+            curr_entry.set_title("Current Password")
+            grp.add(curr_entry)
+            box.append(grp)
+            dlg.set_extra_child(box)
+
+            def on_clear_res(_d, resp):
+                if resp != "remove":
+                    return
+                curr_val = curr_entry.get_text()
+                if not self.db.verify_private_password(curr_val):
+                    err_d = Adw.AlertDialog.new("Incorrect Password", "The current password entered is incorrect.")
+                    err_d.add_response("ok", "OK")
+                    err_d.present(parent or dialog)
+                    return
+
+                self.db.clear_private_password()
+                update_private_pwd_ui()
+                if parent and hasattr(parent, "toast_overlay"):
+                    parent.toast_overlay.add_toast(Adw.Toast.new("Private note password removed"))
+
+            dlg.connect("response", on_clear_res)
+            dlg.present(parent or dialog)
+
+        private_pwd_btn.connect("clicked", on_private_pwd_btn_clicked)
+        private_pwd_clear_btn.connect("clicked", on_private_pwd_clear_clicked)
+        private_pwd_row.add_suffix(private_pwd_btn)
+        private_pwd_row.add_suffix(private_pwd_clear_btn)
+        group_security.add(private_pwd_row)
+        page_general.add(group_security)
         dialog.add(page_general)
 
         # ── Page 2: Typography ────────────────────────────────────────────────
@@ -470,24 +604,102 @@ class StiloApplication(Adw.Application):
         auto_enc_switch.set_subtitle("Protect auto-backups with standalone GPG AES-256 encryption")
         auto_enc_switch.set_active(self.config_manager.get_auto_backup_encrypted() if self.config_manager else False)
 
-        auto_pwd_row = Adw.PasswordEntryRow()
+        auto_pwd_row = Adw.ActionRow()
         auto_pwd_row.set_title("Auto-Backup Password")
-        cur_pwd = self.config_manager.get_auto_backup_password() if self.config_manager else ""
-        auto_pwd_row.set_text(cur_pwd)
-        auto_pwd_row.set_sensitive(auto_enc_switch.get_active())
+
+        auto_pwd_btn = Gtk.Button()
+        auto_pwd_btn.set_valign(Gtk.Align.CENTER)
+
+        auto_pwd_clear_btn = Gtk.Button()
+        auto_pwd_clear_btn.set_icon_name("edit-clear-symbolic")
+        auto_pwd_clear_btn.set_tooltip_text("Clear Auto-Backup Password")
+        auto_pwd_clear_btn.add_css_class("flat")
+        auto_pwd_clear_btn.set_valign(Gtk.Align.CENTER)
+
+        def update_auto_pwd_ui():
+            cur_pwd = self.config_manager.get_auto_backup_password() if self.config_manager else ""
+            has_pwd = bool(cur_pwd)
+            auto_pwd_row.set_subtitle("•••••••• (Password configured)" if has_pwd else "No password configured")
+            auto_pwd_btn.set_label("Change…" if has_pwd else "Set Password…")
+            auto_pwd_clear_btn.set_visible(has_pwd)
+            is_enc = auto_enc_switch.get_active()
+            auto_pwd_row.set_sensitive(is_enc)
+            auto_pwd_btn.set_sensitive(is_enc)
+            auto_pwd_clear_btn.set_sensitive(is_enc)
+
+        update_auto_pwd_ui()
+
+        def on_auto_pwd_btn_clicked(_btn):
+            cur_pwd = self.config_manager.get_auto_backup_password() if self.config_manager else ""
+            has_pwd = bool(cur_pwd)
+            dlg = Adw.AlertDialog.new(
+                "Change Auto-Backup Password" if has_pwd else "Set Auto-Backup Password",
+                "Enter a password to encrypt automated backups."
+            )
+            dlg.add_response("cancel", "Cancel")
+            dlg.add_response("save", "Save")
+            dlg.set_default_response("save")
+            dlg.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.set_margin_top(6)
+            box.set_margin_bottom(6)
+
+            grp = Adw.PreferencesGroup()
+            new_entry = Adw.PasswordEntryRow()
+            new_entry.set_title("New Password")
+            grp.add(new_entry)
+
+            confirm_entry = Adw.PasswordEntryRow()
+            confirm_entry.set_title("Confirm Password")
+            grp.add(confirm_entry)
+
+            box.append(grp)
+            dlg.set_extra_child(box)
+
+            def on_dlg_res(_d, resp):
+                if resp != "save":
+                    return
+                new_val = new_entry.get_text()
+                conf_val = confirm_entry.get_text()
+                if not new_val.strip():
+                    err_d = Adw.AlertDialog.new("Password Required", "Please enter a non-empty password.")
+                    err_d.add_response("ok", "OK")
+                    err_d.present(parent or dialog)
+                    return
+                if new_val != conf_val:
+                    err_d = Adw.AlertDialog.new("Passwords Do Not Match", "The entered passwords do not match.")
+                    err_d.add_response("ok", "OK")
+                    err_d.present(parent or dialog)
+                    return
+
+                if self.config_manager:
+                    self.config_manager.set_auto_backup_password(new_val)
+                update_auto_pwd_ui()
+                if parent and hasattr(parent, "toast_overlay"):
+                    parent.toast_overlay.add_toast(Adw.Toast.new("Auto-backup password updated"))
+
+            dlg.connect("response", on_dlg_res)
+            dlg.present(parent or dialog)
+
+        def on_auto_pwd_clear_clicked(_btn):
+            if self.config_manager:
+                self.config_manager.set_auto_backup_password("")
+            update_auto_pwd_ui()
+            if parent and hasattr(parent, "toast_overlay"):
+                parent.toast_overlay.add_toast(Adw.Toast.new("Auto-backup password cleared"))
 
         def on_auto_enc_toggled(row, _param):
             is_active = row.get_active()
             if self.config_manager:
                 self.config_manager.set_auto_backup_encrypted(is_active)
-            auto_pwd_row.set_sensitive(is_active)
-
-        def on_auto_pwd_changed(row, _param):
-            if self.config_manager:
-                self.config_manager.set_auto_backup_password(row.get_text())
+            update_auto_pwd_ui()
 
         auto_enc_switch.connect("notify::active", on_auto_enc_toggled)
-        auto_pwd_row.connect("notify::text", on_auto_pwd_changed)
+        auto_pwd_btn.connect("clicked", on_auto_pwd_btn_clicked)
+        auto_pwd_clear_btn.connect("clicked", on_auto_pwd_clear_clicked)
+        auto_pwd_row.add_suffix(auto_pwd_btn)
+        auto_pwd_row.add_suffix(auto_pwd_clear_btn)
         group_auto.add(auto_enc_switch)
         group_auto.add(auto_pwd_row)
 
@@ -513,6 +725,12 @@ class StiloApplication(Adw.Application):
             box.set_margin_bottom(6)
 
             pwd_group = Adw.PreferencesGroup()
+
+            exclude_switch = Adw.SwitchRow()
+            exclude_switch.set_title("Exclude private notes and password")
+            exclude_switch.set_subtitle("Omit locked private notes, attachments, and password hash")
+            pwd_group.add(exclude_switch)
+
             enc_switch = Adw.SwitchRow()
             enc_switch.set_title("Password Protect Backup")
             enc_switch.set_subtitle("Encrypt backup file using GPG AES-256")
@@ -541,6 +759,7 @@ class StiloApplication(Adw.Application):
                 if response != "continue":
                     return
 
+                exclude_private = exclude_switch.get_active()
                 is_encrypted = enc_switch.get_active()
                 password = pwd_entry.get_text()
                 confirm = pwd_confirm.get_text()
@@ -599,14 +818,14 @@ class StiloApplication(Adw.Application):
                                         if is_encrypted:
                                             with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
                                                 tmp_path = tmp.name
-                                            self.db.backup_to_file(tmp_path)
+                                            self.db.backup_to_file(tmp_path, exclude_private=exclude_private)
                                             backup_encryption.encrypt_file(tmp_path, target_path, password)
                                             try:
                                                 os.unlink(tmp_path)
                                             except Exception:
                                                 pass
                                         else:
-                                            self.db.backup_to_file(target_path)
+                                            self.db.backup_to_file(target_path, exclude_private=exclude_private)
 
                                         now_str = time.strftime("%Y-%m-%d %H:%M")
                                         if self.config_manager:
@@ -615,8 +834,13 @@ class StiloApplication(Adw.Application):
                                         def on_save_success():
                                             backup_row.set_subtitle(f"Last backup: {now_str}")
                                             if parent and hasattr(parent, "toast_overlay"):
-                                                enc_note = " (encrypted)" if is_encrypted else ""
-                                                parent.toast_overlay.add_toast(Adw.Toast.new(f"Backup saved to {os.path.basename(target_path)}{enc_note}"))
+                                                notes_info = []
+                                                if exclude_private:
+                                                    notes_info.append("private notes excluded")
+                                                if is_encrypted:
+                                                    notes_info.append("encrypted")
+                                                suffix_str = f" ({', '.join(notes_info)})" if notes_info else ""
+                                                parent.toast_overlay.add_toast(Adw.Toast.new(f"Backup saved to {os.path.basename(target_path)}{suffix_str}"))
                                         GLib.idle_add(on_save_success)
                                     except Exception as e:
                                         def on_save_err(err_msg):
@@ -712,6 +936,7 @@ class StiloApplication(Adw.Application):
                                     def on_success():
                                         for win in self.get_windows():
                                             if hasattr(win, "index_view"):
+                                                win.index_view._private_unlocked = False
                                                 win.index_view.refresh(update_sidebar=True)
                                         if parent and hasattr(parent, "toast_overlay"):
                                             parent.toast_overlay.add_toast(Adw.Toast.new("Notes successfully restored from encrypted backup!"))
@@ -760,6 +985,7 @@ class StiloApplication(Adw.Application):
                                     def on_success():
                                         for win in self.get_windows():
                                             if hasattr(win, "index_view"):
+                                                win.index_view._private_unlocked = False
                                                 win.index_view.refresh(update_sidebar=True)
                                         if parent and hasattr(parent, "toast_overlay"):
                                             parent.toast_overlay.add_toast(Adw.Toast.new("Notes successfully restored from backup!"))
@@ -813,6 +1039,13 @@ class StiloApplication(Adw.Application):
                 <property name="visible">True</property>
                 <property name="accelerator">&lt;Primary&gt;n</property>
                 <property name="title">Create new note</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;o</property>
+                <property name="title">Open note from file</property>
               </object>
             </child>
             <child>

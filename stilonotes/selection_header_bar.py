@@ -132,16 +132,21 @@ class SelectionHeaderBar(Adw.Bin):
         if not self._selected_notes:
             return
         # If all selected notes have the same category, prefill it
-        first_cat = self._selected_notes[0].category or ""
-        all_same = all((n.category or "") == first_cat for n in self._selected_notes)
+        first_cat = (self._selected_notes[0].category or "").strip()
+        if first_cat.lower() == "uncategorized":
+            first_cat = ""
+        all_same = all(((n.category or "").strip().lower() == first_cat.lower()) for n in self._selected_notes)
         initial_cat = first_cat if all_same else ""
 
         self._stack.set_visible_child_name("category")
         self._category_header_bar.activate(initial_cat)
 
     def _on_category_changed(self, _chb, new_category: str):
+        clean_cat = (new_category or "").strip()
+        if clean_cat.lower() == "uncategorized":
+            clean_cat = ""
         self._stack.set_visible_child_name("main")
-        self.emit("categories-changed", new_category)
+        self.emit("categories-changed", clean_cat)
 
     def _on_category_abort(self, _chb):
         self._stack.set_visible_child_name("main")

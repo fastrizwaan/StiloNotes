@@ -42,6 +42,10 @@
 - **Real-Time Note Statistics**: Instant word count, character count, paragraph count, and reading time estimate.
 - **Seamless Theme Sync**: Automatic synchronization with Libadwaita dark and light modes, with a manual quick-toggle.
 - **Local Database Backup & Standalone GPG Encryption**: Export clean, atomic SQLite database snapshots anytime, or protect them with AES-256 password encryption via standalone GPG (`.db.gpg`) without touching system keyrings. Supports one-click restore and optional automatic backups on exit to a chosen folder.
+- **Open & Import Files as Notes**: Load external Markdown (`.md`, `.markdown`) and plain text (`.txt`) files directly via <kbd>Ctrl+O</kbd>, with automatic title parsing, hashtag extraction, category matching, and checklist / bullet list detection.
+- **Private & Password-Secured Notes**: Protect confidential notes with PBKDF2-SHA256 salted encryption, session locking, dedicated sidebar section, hidden search/select states when locked, and an option to exclude private notes during database backups.
+- **Dynamic Category Popover**: Full-width category suggestions bar matching the exact entry width, with live filtering and keyboard navigation.
+- **Real-Time Split View Sidebar Sync**: Live updates of sidebar tags and count badges while actively writing in the editor.
 - **Multiple Export Formats**: Export notes cleanly to Markdown (`.md`), HTML (`.html` with bundled base64 images), or Plain Text (`.txt`).
 - **Cute Design & Mascot**: Includes custom Adwaita squircle SVG icon and symbolic icon featuring "Stilo" the stylus mascot.
 - **Robust Architecture**: Thread-safe background database saving, zero UI freezes, and clean lifecycle management with zero memory leaks.
@@ -116,6 +120,7 @@ flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNote
 | Shortcut | Action |
 | :--- | :--- |
 | <kbd>Ctrl</kbd> + <kbd>N</kbd> | Create a new note |
+| <kbd>Ctrl</kbd> + <kbd>O</kbd> | Open note from file (.md, .txt) |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> | Open a new window |
 | <kbd>Ctrl</kbd> + <kbd>F</kbd> | Search notes |
 | <kbd>Ctrl</kbd> + <kbd>G</kbd> | Toggle List / Grid view |

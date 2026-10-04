@@ -30,6 +30,21 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.7" date="2026-10-04">
+      <description>
+        <p>New features and improvements in Stilo Notes 0.7:</p>
+        <ul>
+          <li>Open and import external Markdown (.md, .markdown) and plain text (.txt) files directly into notes (Ctrl+O)</li>
+          <li>Automatic hashtag, category, checklist (Todos), and bullet list detection for imported and edited notes</li>
+          <li>Dynamic category dropdown popover that matches the full width of the category entry widget</li>
+          <li>Private and password-secured notes with PBKDF2-SHA256 salted encryption, dedicated sidebar entry, and on-lock content shielding</li>
+          <li>Option to exclude private notes and master password when exporting database backups</li>
+          <li>Real-time sidebar tag and note counts synchronization while editing in Split View</li>
+          <li>Direct tag pill insertion into note content and instant autocomplete synchronization</li>
+          <li>FlowBox card child sizing improvements to prevent category pill stretching</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6" date="2026-10-03">
       <description>
         <p>New features and improvements in Stilo Notes 0.6:</p>

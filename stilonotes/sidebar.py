@@ -244,6 +244,7 @@ class Sidebar(Adw.Bin):
         menu.append_section(None, s_theme)
 
         s_window = Gio.Menu()
+        s_window.append("Open…", "win.open-file")
         s_window.append("New Window", "app.new-window")
         menu.append_section(None, s_window)
 
@@ -276,8 +277,8 @@ class Sidebar(Adw.Bin):
             self._add_row("todos", "", "Todos", "checkbox-checked-symbolic", todo_count)
             list_count = counts.get("lists", counts.get("list", 0))
             self._add_row("lists", "", "Lists", "view-list-bullet-symbolic", list_count)
-            recent_count = counts.get("recent", 0)
-            self._add_row("recent", "", "Recent", "document-open-recent-symbolic", recent_count)
+            private_count = counts.get("private", counts.get("locked", 0))
+            self._add_row("private", "", "Private", "channel-secure-symbolic", private_count)
             self._add_row("uncategorized", "", "Uncategorized", "folder-open-symbolic",
                           counts.get("uncategorized", 0))
 
@@ -307,7 +308,9 @@ class Sidebar(Adw.Bin):
             self._add_separator()
             self._add_tags_header_row()
 
-            tags = self.db.get_all_tags()
+            root = self.get_root()
+            is_unlocked = getattr(getattr(root, "index_view", None), "_private_unlocked", False)
+            tags = self.db.get_all_tags(include_locked=is_unlocked)
             if tags:
                 for tag_name, cnt in tags:
                     self._add_row("tag", tag_name, f"#{tag_name}", "tag-symbolic", cnt, is_tag=True)
@@ -543,6 +546,8 @@ class Sidebar(Adw.Bin):
                     if root and hasattr(root, "editor") and getattr(root.editor, "current_note", None):
                         if root.editor.current_note.id == active_note_id:
                             root.editor.current_note.tags = new_tags
+                            if hasattr(root.editor, "insert_tag"):
+                                root.editor.insert_tag(clean)
         else:
             new_note = self.db.create_note(title="Untitled Note", tags=[clean])
             if root and hasattr(root, "_on_note_opened"):

@@ -110,8 +110,8 @@ class TestSidebarTreeAndCollapse(unittest.TestCase):
             if filter_type:
                 rows.append(filter_type)
 
-        # Expected order: all, favorites, todos, lists, recent, uncategorized
-        self.assertEqual(rows[:6], ["all", "favorites", "todos", "lists", "recent", "uncategorized"])
+        # Expected order: all, favorites, todos, lists, private, uncategorized
+        self.assertEqual(rows[:6], ["all", "favorites", "todos", "lists", "private", "uncategorized"])
 
     def test_todo_filtering_with_brackets(self):
         # Clean db notes
@@ -277,6 +277,9 @@ class TestToolbarPin(unittest.TestCase):
 
 class TestSidebarSplitterResizer(unittest.TestCase):
     def setUp(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
         self.db = NoteDatabase(":memory:")
         self.config = ConfigManager(self.db)
 
@@ -506,6 +509,45 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         # Should accept no args
         win.on_sidebar_filter_changed()
 
+        win.destroy()
+
+    def test_sidebar_refresh_updates_new_tags_and_counts(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.sidebar import Sidebar
+        note = self.db.create_note(title="App Note", tags=["initial_tag"])
+        sidebar = Sidebar(self.db)
+        sidebar.refresh()
+
+        self.assertIn("initial_tag", sidebar._tag_rows)
+        self.assertNotIn("my_apps", sidebar._tag_rows)
+
+        # Update note with new tag
+        self.db.save_note(note.id, tags=["initial_tag", "my_apps"])
+        sidebar.refresh()
+
+        self.assertIn("initial_tag", sidebar._tag_rows)
+        self.assertIn("my_apps", sidebar._tag_rows)
+
+    def test_window_on_note_updated_refreshes_sidebar(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.window import StiloWindow
+        win = StiloWindow()
+        note = win.db.create_note(title="Task Note", tags=["task"])
+        win.sidebar.refresh()
+        self.assertIn("task", win.sidebar._tag_rows)
+        self.assertNotIn("my_apps", win.sidebar._tag_rows)
+
+        # Simulate note updated from editor
+        win.db.save_note(note.id, tags=["task", "my_apps"])
+        win._on_note_updated(win.editor, note.id, "Task Note", "", "", "", ["task", "my_apps"], False)
+
+        self.assertIn("my_apps", win.sidebar._tag_rows)
         win.destroy()
 
 

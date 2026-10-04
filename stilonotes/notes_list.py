@@ -291,11 +291,12 @@ class BaseNoteCard(Gtk.FlowBoxChild):
         "toggled": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
     }
 
-    def __init__(self, note: Note, db=None, selection_mode: bool = False, show_category_pill: bool = True):
+    def __init__(self, note: Note, db=None, selection_mode: bool = False, show_category_pill: bool = True, is_private_locked: bool = False):
         super().__init__()
         self.note = note
         self.db = db
         self.show_category_pill = show_category_pill
+        self.is_private_locked = is_private_locked
         self.card_box: Optional[Gtk.Box] = None
         self.revealer: Optional[Gtk.Revealer] = None
         self.checkbox: Optional[Gtk.CheckButton] = None
@@ -386,6 +387,60 @@ class NoteGridCard(BaseNoteCard):
         self.card_box.set_vexpand(True)
         self.card_box.set_overflow(Gtk.Overflow.HIDDEN)
 
+        if self.is_private_locked:
+            self.card_box.add_css_class("locked-note-card")
+            top_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            top_box.set_hexpand(True)
+
+            self.revealer = Gtk.Revealer()
+            self.revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_RIGHT)
+            self.revealer.set_reveal_child(selection_mode)
+
+            self.checkbox = Gtk.CheckButton()
+            self.checkbox.set_valign(Gtk.Align.CENTER)
+            self.checkbox.connect("toggled", self._on_checkbox_toggled)
+            self.revealer.set_child(self.checkbox)
+            top_box.append(self.revealer)
+
+            lock_icon = Gtk.Image.new_from_icon_name("channel-secure-symbolic")
+            lock_icon.add_css_class("dimmed")
+            lock_icon.set_pixel_size(16)
+            top_box.append(lock_icon)
+
+            self.title_lbl = Gtk.Label(label="Locked Note")
+            self.title_lbl.add_css_class("note-grid-title")
+            self.title_lbl.set_halign(Gtk.Align.FILL)
+            self.title_lbl.set_hexpand(True)
+            self.title_lbl.set_xalign(0.0)
+            top_box.append(self.title_lbl)
+            self.card_box.append(top_box)
+
+            try:
+                dt = datetime.fromtimestamp(self.note.updated_at)
+                date_str = dt.strftime("%A, %d/%m %H:%M")
+            except Exception:
+                date_str = ""
+            if date_str:
+                self.date_lbl = Gtk.Label(label=date_str)
+                self.date_lbl.add_css_class("note-grid-date")
+                self.date_lbl.set_halign(Gtk.Align.FILL)
+                self.date_lbl.set_hexpand(True)
+                self.date_lbl.set_xalign(0.0)
+                self.date_lbl.set_lines(1)
+                self.card_box.append(self.date_lbl)
+
+            center_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            center_box.set_valign(Gtk.Align.CENTER)
+            center_box.set_halign(Gtk.Align.CENTER)
+            center_box.set_vexpand(True)
+            center_lock = Gtk.Image.new_from_icon_name("channel-secure-symbolic")
+            center_lock.set_pixel_size(24)
+            center_lock.add_css_class("dimmed")
+            center_box.append(center_lock)
+            self.card_box.append(center_box)
+            self.set_child(self.card_box)
+            return
+
         # 1. Top Row: Checkbox revealer + Dot + Title + (Pin/Todo Icons)
         top_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         top_box.set_hexpand(True)
@@ -405,8 +460,9 @@ class NoteGridCard(BaseNoteCard):
         dot.add_css_class("note-dot")
         dot.set_valign(Gtk.Align.CENTER)
         dot.set_halign(Gtk.Align.CENTER)
-        if self.note.category:
-            c_idx = abs(hash(self.note.category)) % 9
+        cat = (self.note.category or "").strip()
+        if cat and cat.lower() != "uncategorized":
+            c_idx = abs(hash(cat)) % 9
             dot.add_css_class(f"cat-{c_idx}")
         top_box.append(dot)
 
@@ -435,6 +491,13 @@ class NoteGridCard(BaseNoteCard):
             todo_icon.add_css_class("dimmed")
             todo_icon.set_pixel_size(14)
             top_box.append(todo_icon)
+
+        if self.note.is_locked:
+            lock_icon = Gtk.Image.new_from_icon_name("channel-secure-symbolic")
+            lock_icon.add_css_class("dimmed")
+            lock_icon.set_pixel_size(14)
+            lock_icon.set_tooltip_text("Private Note")
+            top_box.append(lock_icon)
 
         self.card_box.append(top_box)
 
@@ -510,12 +573,15 @@ class NoteGridCard(BaseNoteCard):
             if preview_words and all(w in all_table_words for w in preview_words):
                 preview_text = ""
 
+        cat = (self.note.category or "").strip()
+        has_category = bool(cat and cat.lower() != "uncategorized" and self.show_category_pill)
+
         self.body_lbl = Gtk.Label(label=preview_text)
         self.body_lbl.add_css_class("note-grid-body")
         self.body_lbl.set_wrap(True)
         self.body_lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self.body_lbl.set_ellipsize(Pango.EllipsizeMode.END)
-        self.body_lbl.set_lines(2 if has_media else 5)
+        self.body_lbl.set_lines(1 if has_media else (4 if has_category else 5))
         self.body_lbl.set_halign(Gtk.Align.FILL)
         self.body_lbl.set_hexpand(True)
         self.body_lbl.set_valign(Gtk.Align.START)
@@ -526,20 +592,26 @@ class NoteGridCard(BaseNoteCard):
         self.body_lbl.set_visible(bool(preview_text))
         self.card_box.append(self.body_lbl)
 
-        # 5. Bottom Row: Category pill (anchored to bottom)
+        # 5. Bottom Row: Category pill (anchored to bottom, expands up to card width)
         footer_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         footer_box.set_valign(Gtk.Align.END)
-        footer_box.set_halign(Gtk.Align.START)
+        footer_box.set_halign(Gtk.Align.FILL)
+        footer_box.set_hexpand(True)
         footer_box.set_vexpand(False)
 
-        if self.note.category and self.show_category_pill:
-            pill = Gtk.Label(label=self.note.category)
-            pill.add_css_class("index-category-pill")
-            pill.set_ellipsize(Pango.EllipsizeMode.END)
-            pill.set_lines(1)
-            pill.set_single_line_mode(True)
-            pill.set_max_width_chars(15)
-            footer_box.append(pill)
+        if has_category:
+            self.cat_pill = Gtk.Label(label=cat)
+            self.cat_pill.add_css_class("index-category-pill")
+            self.cat_pill.set_halign(Gtk.Align.START)
+            self.cat_pill.set_xalign(0.0)
+            self.cat_pill.set_ellipsize(Pango.EllipsizeMode.END)
+            self.cat_pill.set_lines(1)
+            self.cat_pill.set_single_line_mode(True)
+            self.cat_pill.set_max_width_chars(20)
+            self.cat_pill.set_tooltip_text(cat)
+            footer_box.append(self.cat_pill)
+        else:
+            self.cat_pill = None
 
         self.card_box.append(footer_box)
 
@@ -565,6 +637,52 @@ class NoteListRow(BaseNoteCard):
         self.card_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.card_box.add_css_class("note-list-card")
         self.card_box.set_hexpand(True)
+
+        if self.is_private_locked:
+            self.card_box.add_css_class("locked-note-card")
+            self.revealer = Gtk.Revealer()
+            self.revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_RIGHT)
+            self.revealer.set_reveal_child(selection_mode)
+            self.checkbox = Gtk.CheckButton()
+            self.checkbox.set_valign(Gtk.Align.CENTER)
+            self.checkbox.set_margin_end(8)
+            self.checkbox.connect("toggled", self._on_checkbox_toggled)
+            self.revealer.set_child(self.checkbox)
+            self.card_box.append(self.revealer)
+
+            text_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            text_vbox.set_hexpand(True)
+            text_vbox.set_valign(Gtk.Align.CENTER)
+
+            title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            lock_icon = Gtk.Image.new_from_icon_name("channel-secure-symbolic")
+            lock_icon.add_css_class("dimmed")
+            lock_icon.set_pixel_size(14)
+            title_box.append(lock_icon)
+
+            self.title_lbl = Gtk.Label(label="Locked Note")
+            self.title_lbl.add_css_class("title")
+            self.title_lbl.set_halign(Gtk.Align.FILL)
+            self.title_lbl.set_xalign(0.0)
+            self.title_lbl.set_hexpand(True)
+            title_box.append(self.title_lbl)
+            text_vbox.append(title_box)
+
+            try:
+                dt = datetime.fromtimestamp(self.note.updated_at)
+                date_str = dt.strftime("%A, %d/%m %H:%M")
+            except Exception:
+                date_str = ""
+            if date_str:
+                self.date_lbl = Gtk.Label(label=date_str)
+                self.date_lbl.add_css_class("subtitle")
+                self.date_lbl.set_halign(Gtk.Align.START)
+                self.date_lbl.set_xalign(0.0)
+                text_vbox.append(self.date_lbl)
+
+            self.card_box.append(text_vbox)
+            self.set_child(self.card_box)
+            return
 
         # Checkbox revealer for selection mode
         self.revealer = Gtk.Revealer()
@@ -604,6 +722,13 @@ class NoteListRow(BaseNoteCard):
             pin_icon.set_pixel_size(14)
             title_box.append(pin_icon)
 
+        if self.note.is_locked:
+            lock_icon = Gtk.Image.new_from_icon_name("channel-secure-symbolic")
+            lock_icon.add_css_class("dimmed")
+            lock_icon.set_pixel_size(14)
+            lock_icon.set_tooltip_text("Private Note")
+            title_box.append(lock_icon)
+
         text_vbox.append(title_box)
 
         # Subtitle Row: Excerpt + Category pill
@@ -623,15 +748,20 @@ class NoteListRow(BaseNoteCard):
         self.excerpt_lbl.set_max_width_chars(20)
         subtitle_box.append(self.excerpt_lbl)
 
-        if self.note.category and self.show_category_pill:
-            self.cat_pill = Gtk.Label(label=self.note.category)
+        cat = (self.note.category or "").strip()
+        if cat and cat.lower() != "uncategorized" and self.show_category_pill:
+            self.cat_pill = Gtk.Label(label=cat)
             self.cat_pill.add_css_class("index-category-pill")
             self.cat_pill.set_halign(Gtk.Align.END)
+            self.cat_pill.set_valign(Gtk.Align.CENTER)
             self.cat_pill.set_ellipsize(Pango.EllipsizeMode.END)
             self.cat_pill.set_lines(1)
             self.cat_pill.set_single_line_mode(True)
             self.cat_pill.set_max_width_chars(15)
+            self.cat_pill.set_tooltip_text(cat)
             subtitle_box.append(self.cat_pill)
+        else:
+            self.cat_pill = None
 
         text_vbox.append(subtitle_box)
         self.card_box.append(text_vbox)
@@ -657,6 +787,7 @@ class NotesList(Gtk.Box):
 
     __gsignals__ = {
         "note-selected": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        "locked-note-clicked": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "note-pin-toggled": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-deleted": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-duplicated": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
@@ -674,6 +805,7 @@ class NotesList(Gtk.Box):
         self.is_search = False
         self.active_filter_type = "all"
         self.active_category_name = ""
+        self.is_private_unlocked = False
 
         try:
             from stilonotes.config_manager import ConfigManager
@@ -802,7 +934,7 @@ class NotesList(Gtk.Box):
         flowbox.set_column_spacing(col_sp)
         flowbox.set_row_spacing(row_sp)
         flowbox.set_min_children_per_line(1)
-        flowbox.set_max_children_per_line(24 if self.view_mode == "grid" else 1)
+        flowbox.set_max_children_per_line(24 if self.view_mode == "grid" else 3)
         flowbox.set_valign(Gtk.Align.START)
         flowbox.set_halign(Gtk.Align.FILL)
         flowbox.set_hexpand(True)
@@ -845,7 +977,7 @@ class NotesList(Gtk.Box):
         if self.view_mode != mode:
             self.view_mode = mode
             col_sp, row_sp = self._get_spacing()
-            max_children = 24 if mode == "grid" else 1
+            max_children = 24 if mode == "grid" else 3
             for fb in self._get_all_flowboxes():
                 fb.set_column_spacing(col_sp)
                 fb.set_row_spacing(row_sp)
@@ -854,7 +986,8 @@ class NotesList(Gtk.Box):
                 self.current_notes,
                 is_search=self.is_search,
                 active_filter_type=self.active_filter_type,
-                active_category_name=self.active_category_name
+                active_category_name=self.active_category_name,
+                is_private_unlocked=self.is_private_unlocked
             )
 
     def _clear_flowbox(self, flowbox: Gtk.FlowBox):
@@ -865,12 +998,14 @@ class NotesList(Gtk.Box):
         notes: List[Note],
         is_search: bool = False,
         active_filter_type: str = "all",
-        active_category_name: str = ""
+        active_category_name: str = "",
+        is_private_unlocked: bool = False
     ):
         self.current_notes = notes
         self.is_search = is_search
         self.active_filter_type = active_filter_type
         self.active_category_name = active_category_name
+        self.is_private_unlocked = is_private_unlocked
         self._all_cards.clear()
 
         # Clear all section flowboxes
@@ -894,16 +1029,23 @@ class NotesList(Gtk.Box):
                     self.empty_page.set_description("")
                     self.empty_page.set_icon_name("user-trash-symbolic")
                     self.empty_new_btn.set_visible(False)
+                elif active_filter_type in ("private", "locked"):
+                    self.empty_page.set_title("No Private Notes")
+                    self.empty_page.set_description("Notes locked as private will appear here.")
+                    self.empty_page.set_icon_name("channel-secure-symbolic")
+                    self.empty_new_btn.set_label("New Private Note")
+                    self.empty_new_btn.set_visible(True)
                 else:
                     self.empty_page.set_title("Note List Empty")
                     self.empty_page.set_description("Capture your ideas, checklists, and notes in markdown.")
                     self.empty_page.set_icon_name("text-editor-symbolic")
+                    self.empty_new_btn.set_label("New Note")
                     self.empty_new_btn.set_visible(True)
                 self.stack.set_visible_child_name("empty")
             return
 
         self.stack.set_visible_child_name("list")
-        show_pill = (active_filter_type != "category")
+        show_pill = True
 
         if is_search:
             # Hide all date sections, populate search section
@@ -916,7 +1058,8 @@ class NotesList(Gtk.Box):
             self.search_section.set_visible(True)
 
             for note in notes:
-                card = self._create_card(note, show_category_pill=show_pill)
+                is_card_locked = bool(note.is_locked and not is_private_unlocked)
+                card = self._create_card(note, show_category_pill=show_pill, is_private_locked=is_card_locked)
                 self.search_flowbox.append(card)
             return
 
@@ -929,9 +1072,13 @@ class NotesList(Gtk.Box):
         week_start = (now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())).timestamp()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
 
-        # Favorites bucket
-        fav_notes = [n for n in notes if n.is_pinned]
-        non_fav_notes = [n for n in notes if not n.is_pinned]
+        # Favorites bucket: in All Notes, Recent, and Private views, do not show a separate Favorites section; sort all notes by date
+        if active_filter_type in ("all", "recent", "recents", "private", "locked", None, ""):
+            fav_notes = []
+            date_notes = notes
+        else:
+            fav_notes = [n for n in notes if n.is_pinned]
+            date_notes = [n for n in notes if not n.is_pinned]
 
         today_notes = []
         yesterday_notes = []
@@ -939,7 +1086,7 @@ class NotesList(Gtk.Box):
         month_notes = []
         earlier_notes = []
 
-        for n in non_fav_notes:
+        for n in date_notes:
             t = n.updated_at
             if t >= today_start:
                 today_notes.append(n)
@@ -965,16 +1112,17 @@ class NotesList(Gtk.Box):
             if n_list:
                 sec_widget.set_visible(True)
                 for note in n_list:
-                    card = self._create_card(note, show_category_pill=show_pill)
+                    is_card_locked = bool(note.is_locked and not is_private_unlocked)
+                    card = self._create_card(note, show_category_pill=show_pill, is_private_locked=is_card_locked)
                     flowbox.append(card)
             else:
                 sec_widget.set_visible(False)
 
-    def _create_card(self, note: Note, show_category_pill: bool = True) -> BaseNoteCard:
+    def _create_card(self, note: Note, show_category_pill: bool = True, is_private_locked: bool = False) -> BaseNoteCard:
         if self.view_mode == "grid":
-            card = NoteGridCard(note, db=self.db, selection_mode=self.selection_mode, show_category_pill=show_category_pill)
+            card = NoteGridCard(note, db=self.db, selection_mode=self.selection_mode, show_category_pill=show_category_pill, is_private_locked=is_private_locked)
         else:
-            card = NoteListRow(note, db=self.db, selection_mode=self.selection_mode, show_category_pill=show_category_pill)
+            card = NoteListRow(note, db=self.db, selection_mode=self.selection_mode, show_category_pill=show_category_pill, is_private_locked=is_private_locked)
 
         card.connect("pin-toggled", lambda _r, nid: self.emit("note-pin-toggled", nid))
         card.connect("duplicate", lambda _r, nid: self.emit("note-duplicated", nid))
@@ -1004,7 +1152,10 @@ class NotesList(Gtk.Box):
         if self.selection_mode:
             child.set_checked(not child.is_checked())
         else:
-            self.emit("note-selected", child.note)
+            if getattr(child, "is_private_locked", False):
+                self.emit("locked-note-clicked", child.note)
+            else:
+                self.emit("note-selected", child.note)
 
     def _on_row_activated(self, flowbox, child):
         """Alias for backward compatibility."""

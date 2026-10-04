@@ -3865,6 +3865,16 @@
 
     window.clearFormatting = doClearFormatting;
     window.applyHighlight = doApplyHighlight;
+
+    window.insertTag = function(tagName) {
+      if (!tagName) return;
+      const cleanTag = tagName.replace(/^#+/, '').trim().toLowerCase();
+      if (!cleanTag) return;
+      saveUndoState();
+      const tagHtml = `<span class="stilo-tag" data-tag="${cleanTag}">#${cleanTag}</span>&nbsp;`;
+      insertHtmlSafely(tagHtml);
+      notifyChange();
+    };
   </script>
 </body>
 </html>

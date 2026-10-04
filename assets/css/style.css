@@ -523,3 +523,13 @@ menubutton.sidebar-action-btn:hover > button {
   border-right: 1px solid var(--accent-bg-color, #3584e4);
 }
 
+/* Locked Note Cards */
+.locked-note-card {
+  opacity: 0.85;
+}
+.locked-note-card .note-grid-title,
+.locked-note-card .note-list-card .title {
+  font-style: italic;
+  color: alpha(currentColor, 0.75);
+}
+

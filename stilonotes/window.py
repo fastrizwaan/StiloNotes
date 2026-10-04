@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Mohammed Asif Ali Rizvan
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
+import urllib.parse
+from pathlib import Path
 from typing import Optional
 import gi
 gi.require_version('Gtk', '4.0')
@@ -211,6 +214,12 @@ class StiloWindow(Adw.ApplicationWindow):
         action_group.add_action(act_create)
         self.get_application().set_accels_for_action("win.create-note", ["<Control>n"])
 
+        # Open note from file
+        act_open = Gio.SimpleAction.new("open-file", None)
+        act_open.connect("activate", lambda _a, _p: self.open_file_dialog())
+        action_group.add_action(act_open)
+        self.get_application().set_accels_for_action("win.open-file", ["<Control>o"])
+
         # Search
         act_search = Gio.SimpleAction.new("search", None)
         act_search.connect("activate", lambda _a, _p: self.index_view.enter_search())
@@ -305,7 +314,12 @@ class StiloWindow(Adw.ApplicationWindow):
     def open_note(self, note: Note, immediate: bool = False):
         """Open a note in the editor and navigate to it."""
         full_note = self.db.get_note(note.id)
-        self.editor.load_note(full_note or note)
+        target = full_note or note
+        if getattr(target, "is_locked", False) and not getattr(self.index_view, "_private_unlocked", False):
+            self.index_view._prompt_unlock_private(target_note=target)
+            return
+
+        self.editor.load_note(target)
         self.config_manager.set_last_opened_note_id(note.id)
 
         visible_page = self.navigation.get_visible_page()
@@ -326,12 +340,91 @@ class StiloWindow(Adw.ApplicationWindow):
 
     def _on_create_note(self, _iv):
         category = self.index_view.active_category_name if self.index_view.active_filter_type == "category" else ""
-        note = self.db.create_note(title="Untitled Note", category=category, sender=self)
+        is_locked = (self.index_view.active_filter_type in ("private", "locked"))
+        if is_locked and not getattr(self.index_view, "_private_unlocked", False):
+            def create_after_unlock():
+                note = self.db.create_note(title="Untitled Note", category=category, is_locked=True, sender=self)
+                self.index_view.refresh()
+                full_note = self.db.get_note(note.id)
+                self.open_note(full_note or note, immediate=False)
+            self.index_view._prompt_unlock_private(on_unlocked=create_after_unlock)
+            return
+
+        note = self.db.create_note(title="Untitled Note", category=category, is_locked=is_locked, sender=self)
         self.index_view.refresh()
         full_note = self.db.get_note(note.id)
         self.open_note(full_note or note, immediate=False)
 
+    def open_file_dialog(self):
+        """Open a .md or .txt file and load it as a note."""
+        file_dialog = Gtk.FileDialog()
+        file_dialog.set_title("Open Note from File")
+
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+
+        f_notes = Gtk.FileFilter()
+        f_notes.set_name("Notes (*.md, *.txt, *.markdown)")
+        f_notes.add_pattern("*.md")
+        f_notes.add_pattern("*.txt")
+        f_notes.add_pattern("*.markdown")
+        filters.append(f_notes)
+
+        f_md = Gtk.FileFilter()
+        f_md.set_name("Markdown Files (*.md, *.markdown)")
+        f_md.add_pattern("*.md")
+        f_md.add_pattern("*.markdown")
+        filters.append(f_md)
+
+        f_txt = Gtk.FileFilter()
+        f_txt.set_name("Text Files (*.txt)")
+        f_txt.add_pattern("*.txt")
+        filters.append(f_txt)
+
+        f_all = Gtk.FileFilter()
+        f_all.set_name("All Files (*)")
+        f_all.add_pattern("*")
+        filters.append(f_all)
+
+        file_dialog.set_filters(filters)
+        file_dialog.set_default_filter(f_notes)
+
+        def on_open_finish(fd, res):
+            try:
+                gfile = fd.open_finish(res)
+                if not gfile:
+                    return
+                target_path = gfile.get_path()
+                if not target_path:
+                    uri = gfile.get_uri() or ""
+                    if uri.startswith("file://"):
+                        target_path = urllib.parse.unquote(uri[7:])
+                if target_path and os.path.exists(target_path):
+                    self.load_note_from_file(target_path)
+            except Exception as e:
+                print("Open file cancelled or failed:", e)
+
+        file_dialog.open(self, None, on_open_finish)
+
+    def load_note_from_file(self, file_path: str) -> Optional[Note]:
+        """Load a .md or .txt file into the database, refresh views and open in editor."""
+        note = self.db.import_note_from_file(file_path, sender=self)
+        self.index_view.refresh(update_sidebar=True)
+        if hasattr(self, "sidebar"):
+            self.sidebar.refresh()
+        full_note = self.db.get_note(note.id) or note
+        self.open_note(full_note)
+        if hasattr(self.index_view, "toast_overlay"):
+            p = Path(file_path)
+            self.index_view.toast_overlay.add_toast(
+                Adw.Toast.new(f"Loaded note '{note.title}' from {p.name}")
+            )
+        return full_note
+
     def _on_note_updated(self, _ed, note_id: str, title: str, excerpt: str, html: str, md: str, tags: list, has_todo: bool):
+        if hasattr(self, "sidebar"):
+            self.sidebar.refresh()
+        if hasattr(self, "editor"):
+            self.editor._sync_autocomplete_data()
         if self.navigation.get_visible_page() != self.editor_page:
             self.index_view.refresh(update_sidebar=False)
 
@@ -410,6 +503,15 @@ class StiloWindow(Adw.ApplicationWindow):
                     self.editor._update_star_btn(is_pinned)
             self.index_view.refresh(update_sidebar=True)
 
+        elif event_type == "note-lock-toggled":
+            locked_id = data.get("note_id")
+            if is_in_editor and curr_note_id == locked_id:
+                is_locked = data.get("is_locked")
+                if is_locked is not None:
+                    self.editor.current_note.is_locked = is_locked
+                    self.editor._update_lock_ui()
+            self.index_view.refresh(update_sidebar=True)
+
         elif event_type in ("category-changed", "categories-updated"):
             if is_in_editor and curr_note_id:
                 full = self.db.get_note(curr_note_id)
@@ -422,6 +524,8 @@ class StiloWindow(Adw.ApplicationWindow):
         elif event_type == "database-restored":
             if is_in_editor:
                 self._go_back()
+            if hasattr(self, "index_view"):
+                self.index_view._private_unlocked = False
             self.index_view.refresh(update_sidebar=True)
 
     def _on_editor_category_changed(self, _ed, note_id: str, new_category: str):
@@ -451,3 +555,4 @@ class StiloWindow(Adw.ApplicationWindow):
             if not self.split_view.get_collapsed():
                 self.split_view.set_show_sidebar(True)
             self.config_manager.set_last_opened_note_id("")
+            self.index_view.refresh(update_sidebar=True)

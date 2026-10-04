@@ -411,11 +411,20 @@ class NoteEditor(Gtk.Box):
         self.star_btn.add_css_class("flat")
         self.star_btn.connect("clicked", lambda _b: self._on_toggle_pin())
 
+        # 5. Lock / Private toggle indicator button
+        self.lock_btn = Gtk.Button()
+        self.lock_btn.set_icon_name("channel-secure-symbolic")
+        self.lock_btn.set_tooltip_text("Lock Private Notes")
+        self.lock_btn.add_css_class("flat")
+        self.lock_btn.connect("clicked", lambda _b: self._on_lock_clicked())
+        self.lock_btn.set_visible(False)
+
         # In GTK HeaderBar pack_end, the first widget packed is placed at the far right.
         self.main_header_bar.pack_end(self.more_btn)
         self.main_header_bar.pack_end(self.info_btn)
         self.main_header_bar.pack_end(self.format_btn)
         self.main_header_bar.pack_end(self.star_btn)
+        self.main_header_bar.pack_end(self.lock_btn)
 
         self.header_stack.add_named(self.main_header_bar, "main")
 
@@ -714,10 +723,13 @@ class NoteEditor(Gtk.Box):
         s2.append("Edit Title…",        "editor.rename-title")
         s2.append("Change Category…",   "editor.edit-category")
         s2.append("Pin to Favorites",   "editor.toggle-pin")
+        is_locked = bool(self.current_note and self.current_note.is_locked)
+        s2.append("Remove from Private Notes" if is_locked else "Move to Private Notes", "editor.toggle-lock")
         s2.append("Duplicate Note",     "editor.duplicate")
         menu.append_section(None, s2)
 
         s3 = Gio.Menu()
+        s3.append("Open…",                  "win.open-file")
         s3.append("Export as Markdown…",    "editor.export-md")
         s3.append("Export as HTML…",        "editor.export-html")
         s3.append("Export as Plain Text…",  "editor.export-txt")
@@ -750,6 +762,7 @@ class NoteEditor(Gtk.Box):
         act("rename-title",  lambda: self._on_title_clicked(None))
         act("edit-category", self.enter_edit_category)
         act("toggle-pin",    self._on_toggle_pin)
+        act("toggle-lock",   self._on_toggle_lock)
         act("duplicate",     self._on_duplicate)
         act("toggle-theme",  lambda: self.emit("toggle-app-theme"))
         act("show-stats",    lambda: self.info_btn.popup())
@@ -781,13 +794,20 @@ class NoteEditor(Gtk.Box):
         categories = [c.name for c in self.db.get_categories()]
         self.category_header_bar.set_categories(categories)
         self.header_stack.set_visible_child_name("category")
-        self.category_header_bar.activate(self.current_note.category or "")
+        curr_cat = (self.current_note.category or "").strip()
+        if curr_cat.lower() == "uncategorized":
+            curr_cat = ""
+        self.category_header_bar.activate(curr_cat)
 
     def _on_category_changed(self, _bar, new_category: str):
         if not self.current_note:
             return
-        clean_cat = new_category.strip()
+        clean_cat = (new_category or "").strip()
+        if clean_cat.lower() == "uncategorized":
+            clean_cat = ""
         self.current_note.category = clean_cat
+        if self._pending_save_data:
+            self._pending_save_data["category"] = clean_cat
         if clean_cat:
             self.db.create_category(clean_cat)
         self.db.save_note(note_id=self.current_note.id, category=clean_cat, sender=self)
@@ -826,6 +846,7 @@ class NoteEditor(Gtk.Box):
         self.title_label.set_text(note.title)
         self.status_label.set_text("Saved")
         self._update_star_btn(note.is_pinned)
+        self._update_lock_ui()
         self.latest_stats = compute_note_stats(note.content_html, note.content_markdown)
         self.update_stats_popover()
 
@@ -855,6 +876,7 @@ class NoteEditor(Gtk.Box):
 
         # Update star button state
         self._update_star_btn(note.is_pinned)
+        self._update_lock_ui()
 
         # Pre-compute statistics immediately so Note Statistics popover has accurate values
         self.latest_stats = compute_note_stats(note.content_html, note.content_markdown)
@@ -965,6 +987,9 @@ class NoteEditor(Gtk.Box):
 
             self.update_stats_popover()
 
+            curr_cat = (self.current_note.category or "").strip()
+            if curr_cat.lower() == "uncategorized":
+                curr_cat = ""
             self._pending_save_data = {
                 "note_id": self.current_note.id,
                 "title": new_title,
@@ -972,6 +997,7 @@ class NoteEditor(Gtk.Box):
                 "html": new_html,
                 "tags": tags,
                 "has_todo": has_todo,
+                "category": curr_cat,
             }
             self.status_label.set_text("Saving…")
             self._schedule_save()
@@ -1018,9 +1044,14 @@ class NoteEditor(Gtk.Box):
             val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
             cat_name = val.to_string() if hasattr(val, "to_string") else str(val)
             cat_name = cat_name.strip().strip("/")
-            if cat_name and self.current_note:
+            if cat_name.lower() == "uncategorized":
+                cat_name = ""
+            if self.current_note:
                 self.current_note.category = cat_name
-                self.db.create_category(cat_name)
+                if self._pending_save_data:
+                    self._pending_save_data["category"] = cat_name
+                if cat_name:
+                    self.db.create_category(cat_name)
                 self.db.save_note(self.current_note.id, category=cat_name, sender=self)
                 self.category_header_bar.set_category(cat_name)
                 self.emit("note-category-changed", self.current_note.id, cat_name)
@@ -1055,13 +1086,17 @@ class NoteEditor(Gtk.Box):
             def worker():
                 try:
                     md_content = html_to_markdown(data["html"])
-                    note_tags = data.get("tags") or None
+                    note_tags = data.get("tags")
+                    note_category = data.get("category", self.current_note.category if self.current_note else None)
+                    if note_category and note_category.lower() == "uncategorized":
+                        note_category = ""
                     self.db.save_note(
                         note_id=data["note_id"],
                         title=data["title"],
                         excerpt=data["excerpt"],
                         content_html=data["html"],
                         content_markdown=md_content,
+                        category=note_category,
                         tags=note_tags,
                         has_todo=data["has_todo"],
                         sender=self
@@ -1085,6 +1120,14 @@ class NoteEditor(Gtk.Box):
 
         self._save_timeout_id = GLib.timeout_add(250, do_save)
 
+    def insert_tag(self, tag_name: str):
+        """Insert a tag pill into the editor at cursor position."""
+        clean = tag_name.strip().lstrip("#").lower()
+        if not clean:
+            return
+        script = f"if (window.insertTag) {{ window.insertTag({json.dumps(clean)}); }}"
+        self.webview.evaluate_javascript(script, -1, None, None, None, None)
+
     def flush_save(self):
         """Synchronously commit any pending changes immediately."""
         if self._save_timeout_id:
@@ -1096,12 +1139,18 @@ class NoteEditor(Gtk.Box):
             self._pending_save_data = None
             try:
                 md = html_to_markdown(data["html"])
+                note_category = data.get("category", self.current_note.category if self.current_note else None)
+                if note_category and note_category.lower() == "uncategorized":
+                    note_category = ""
+                note_tags = data.get("tags")
                 self.db.save_note(
                     note_id=data["note_id"],
                     title=data["title"],
                     excerpt=data["excerpt"],
                     content_html=data["html"],
                     content_markdown=md,
+                    category=note_category,
+                    tags=note_tags,
                     has_todo=data["has_todo"],
                     sender=self
                 )
@@ -1109,7 +1158,7 @@ class NoteEditor(Gtk.Box):
                     self.current_note.content_markdown = md
                 self.hide_conflict_banner()
                 self.status_label.set_text("Saved")
-                self.emit("note-updated", data["note_id"], data["title"], data["excerpt"], data["html"], md, [], data["has_todo"])
+                self.emit("note-updated", data["note_id"], data["title"], data["excerpt"], data["html"], md, data.get("tags", []), data["has_todo"])
             except Exception as e:
                 print("Flush save error:", e)
 
@@ -1266,3 +1315,100 @@ class NoteEditor(Gtk.Box):
             script = "if (window.focusEditor) { window.focusEditor(); }"
             self.webview.evaluate_javascript(script, -1, None, None, None, None)
         return False
+
+    def _update_lock_ui(self):
+        is_locked = bool(self.current_note and self.current_note.is_locked)
+        if hasattr(self, "lock_btn"):
+            self.lock_btn.set_visible(is_locked)
+        if hasattr(self, "more_btn"):
+            self.more_btn.set_menu_model(self._create_more_menu())
+            more_popover = self.more_btn.get_popover()
+            if more_popover:
+                if hasattr(self, "theme_selector"):
+                    more_popover.add_child(self.theme_selector, "theme")
+                if hasattr(self, "font_size_selector"):
+                    more_popover.add_child(self.font_size_selector, "fontsize")
+
+    def _on_lock_clicked(self):
+        """Immediately lock private notes and exit back to notes view."""
+        top_win = self.get_root()
+        if top_win:
+            if hasattr(top_win, "index_view"):
+                if getattr(top_win.index_view, "notes_list", None) and top_win.index_view.notes_list.selection_mode:
+                    top_win.index_view.exit_selection_mode()
+                if getattr(top_win.index_view, "header_stack", None) and top_win.index_view.header_stack.get_visible_child_name() == "search":
+                    top_win.index_view.exit_search()
+                top_win.index_view._private_unlocked = False
+                top_win.index_view.refresh()
+            if hasattr(top_win, "_go_back"):
+                top_win._go_back()
+            if hasattr(top_win, "index_view") and hasattr(top_win.index_view, "toast_overlay"):
+                top_win.index_view.toast_overlay.add_toast(Adw.Toast.new("Private notes locked"))
+
+    def _set_current_note_locked(self, locked: bool):
+        if not self.current_note:
+            return
+        self.db.set_note_locked(self.current_note.id, locked, sender=self)
+        self.current_note.is_locked = locked
+        self._update_lock_ui()
+        top_win = self.get_root()
+        if top_win and hasattr(top_win, "index_view") and hasattr(top_win.index_view, "toast_overlay"):
+            msg = "Note locked as Private" if locked else "Removed from Private Notes"
+            top_win.index_view.toast_overlay.add_toast(Adw.Toast.new(msg))
+
+    def _on_toggle_lock(self):
+        if not self.current_note:
+            return
+
+        window = self.get_root()
+        is_currently_locked = bool(self.current_note.is_locked)
+
+        if not is_currently_locked:
+            if not self.db.has_private_password():
+                dlg = Adw.AlertDialog.new(
+                    "Set Private Note Password",
+                    "Please set a master password to protect your private notes."
+                )
+                dlg.add_response("cancel", "Cancel")
+                dlg.add_response("save", "Set Password & Lock")
+                dlg.set_default_response("save")
+                dlg.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+                box.set_margin_top(6)
+                box.set_margin_bottom(6)
+                grp = Adw.PreferencesGroup()
+                pwd_row = Adw.PasswordEntryRow()
+                pwd_row.set_title("New Password")
+                grp.add(pwd_row)
+                conf_row = Adw.PasswordEntryRow()
+                conf_row.set_title("Confirm Password")
+                grp.add(conf_row)
+                box.append(grp)
+                dlg.set_extra_child(box)
+
+                def on_set_pwd_res(_d, resp):
+                    if resp != "save":
+                        return
+                    p1 = pwd_row.get_text()
+                    p2 = conf_row.get_text()
+                    if not p1.strip():
+                        err = Adw.AlertDialog.new("Password Required", "Password cannot be empty.")
+                        err.add_response("ok", "OK")
+                        err.present(window or self)
+                        return
+                    if p1 != p2:
+                        err = Adw.AlertDialog.new("Passwords Do Not Match", "The entered passwords do not match.")
+                        err.add_response("ok", "OK")
+                        err.present(window or self)
+                        return
+                    self.db.set_private_password(p1)
+                    self._set_current_note_locked(True)
+
+                dlg.connect("response", on_set_pwd_res)
+                dlg.present(window or self)
+            else:
+                self._set_current_note_locked(True)
+        else:
+            # Already authenticated in unlocked session: remove lock without asking for password again
+            self._set_current_note_locked(False)

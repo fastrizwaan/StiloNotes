@@ -425,6 +425,286 @@ class TestNotesListAndCards(unittest.TestCase):
         for fb in notes_list._get_all_flowboxes():
             self.assertEqual(fb.get_halign(), Gtk.Align.FILL)
             self.assertTrue(fb.get_hexpand())
+            self.assertEqual(fb.get_max_children_per_line(), 3)
+
+    def test_category_pill_rendering(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        note_with_cat = Note(title="Personal Note", category="Personal")
+        note_uncat = Note(title="Uncat Note", category="")
+        note_explicit_uncat = Note(title="Uncat Note 2", category="Uncategorized")
+
+        # In Grid Card
+        grid_cat = NoteGridCard(note_with_cat, db=self.db)
+        self.assertIsNotNone(grid_cat.cat_pill)
+        self.assertEqual(grid_cat.cat_pill.get_text(), "Personal")
+        self.assertEqual(grid_cat.cat_pill.get_tooltip_text(), "Personal")
+        self.assertEqual(grid_cat.cat_pill.get_max_width_chars(), 20)
+
+        grid_nocat = NoteGridCard(note_uncat, db=self.db)
+        self.assertIsNone(grid_nocat.cat_pill)
+
+        grid_explicit_uncat = NoteGridCard(note_explicit_uncat, db=self.db)
+        self.assertIsNone(grid_explicit_uncat.cat_pill)
+
+        # In List Row
+        list_cat = NoteListRow(note_with_cat, db=self.db)
+        self.assertIsNotNone(list_cat.cat_pill)
+        self.assertEqual(list_cat.cat_pill.get_text(), "Personal")
+        self.assertEqual(list_cat.cat_pill.get_tooltip_text(), "Personal")
+        self.assertEqual(list_cat.cat_pill.get_max_width_chars(), 15)
+
+        list_nocat = NoteListRow(note_uncat, db=self.db)
+        self.assertIsNone(list_nocat.cat_pill)
+
+        list_explicit_uncat = NoteListRow(note_explicit_uncat, db=self.db)
+        self.assertIsNone(list_explicit_uncat.cat_pill)
+
+        # Test long category hierarchy expansion and tooltip
+        long_cat = "Science/Class 2nd/Natural Science/Chapter 3/section 3/paragraph 4"
+        note_long = Note(title="Long Cat Note", category=long_cat)
+        grid_long = NoteGridCard(note_long, db=self.db)
+        self.assertEqual(grid_long.cat_pill.get_text(), long_cat)
+        self.assertEqual(grid_long.cat_pill.get_tooltip_text(), long_cat)
+        self.assertEqual(grid_long.cat_pill.get_max_width_chars(), 20)
+
+        list_long = NoteListRow(note_long, db=self.db)
+        self.assertEqual(list_long.cat_pill.get_text(), long_cat)
+        self.assertEqual(list_long.cat_pill.get_tooltip_text(), long_cat)
+        self.assertEqual(list_long.cat_pill.get_max_width_chars(), 15)
+
+        # In NotesList with active_filter_type="category"
+        nl = NotesList(self.db, view_mode="list")
+        nl.set_notes([note_with_cat], active_filter_type="category", active_category_name="Personal")
+        self.assertEqual(len(nl._all_cards), 1)
+        self.assertIsNotNone(nl._all_cards[0].cat_pill)
+        self.assertEqual(nl._all_cards[0].cat_pill.get_text(), "Personal")
+
+    def test_all_notes_filter_does_not_show_favorites_section(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        import time
+        now = time.time()
+
+        pinned_note = Note(title="Pinned Note", is_pinned=True, updated_at=now - 60)
+        unpinned_note = Note(title="Unpinned Note", is_pinned=False, updated_at=now - 120)
+        notes = [pinned_note, unpinned_note]
+
+        # 1. Under "all" filter, fav_section is NOT visible; all notes are in date sections (today_flowbox)
+        nl_all = NotesList(self.db, view_mode="list")
+        nl_all.set_notes(notes, active_filter_type="all")
+        self.assertFalse(nl_all.fav_section.get_visible())
+        self.assertTrue(nl_all.today_section.get_visible())
+        # Both notes should be in today_flowbox
+        today_cards = []
+        child = nl_all.today_flowbox.get_first_child()
+        while child:
+            today_cards.append(child)
+            child = child.get_next_sibling()
+        self.assertEqual(len(today_cards), 2)
+
+        # 2. Under "favorites" filter, fav_section IS visible and holds pinned notes
+        nl_fav = NotesList(self.db, view_mode="list")
+        nl_fav.set_notes([pinned_note], active_filter_type="favorites")
+        self.assertTrue(nl_fav.fav_section.get_visible())
+
+    def test_locked_note_cards_masking(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        import time
+        now = time.time()
+        locked_note = Note(
+            title="Confidential Document",
+            content_markdown="Super secret confidential information",
+            excerpt="Super secret excerpt",
+            category="Finances",
+            is_locked=True,
+            updated_at=now
+        )
+
+        # 1. NoteGridCard with is_private_locked=True
+        grid_card = NoteGridCard(locked_note, db=self.db, is_private_locked=True)
+        self.assertTrue(grid_card.is_private_locked)
+        self.assertEqual(grid_card.title_lbl.get_text(), "Locked Note")
+        self.assertFalse(hasattr(grid_card, "body_lbl"))  # Body preview omitted
+        self.assertFalse(hasattr(grid_card, "cat_pill"))  # Category pill omitted
+        self.assertIsNotNone(grid_card.date_lbl)  # Date is shown
+
+        # 2. NoteListRow with is_private_locked=True
+        list_row = NoteListRow(locked_note, db=self.db, is_private_locked=True)
+        self.assertTrue(list_row.is_private_locked)
+        self.assertEqual(list_row.title_lbl.get_text(), "Locked Note")
+        self.assertFalse(hasattr(list_row, "excerpt_lbl"))  # Excerpt omitted
+        self.assertFalse(hasattr(list_row, "cat_pill"))  # Category pill omitted
+        self.assertIsNotNone(list_row.date_lbl)  # Date is shown
+
+    def test_locked_note_activated_signal(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        locked_note = Note(
+            title="Secret",
+            content_markdown="Secret",
+            is_locked=True
+        )
+        nl = NotesList(self.db, view_mode="list")
+        # Locked private notes view with is_private_unlocked=False
+        nl.set_notes([locked_note], active_filter_type="private", is_private_unlocked=False)
+        self.assertEqual(len(nl._all_cards), 1)
+        card = nl._all_cards[0]
+        self.assertTrue(card.is_private_locked)
+
+        received_locked = []
+        received_normal = []
+        nl.connect("locked-note-clicked", lambda _nl, n: received_locked.append(n.id))
+        nl.connect("note-selected", lambda _nl, n: received_normal.append(n.id))
+
+        nl._on_child_activated(nl.today_flowbox, card)
+        self.assertEqual(received_locked, [locked_note.id])
+        self.assertEqual(len(received_normal), 0)
+
+    def test_private_notes_favorites_bucket_bypassed(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        pinned_private_note = Note(
+            title="Pinned Secret",
+            is_pinned=True,
+            is_locked=True
+        )
+        nl = NotesList(self.db, view_mode="list")
+        nl.set_notes([pinned_private_note], active_filter_type="private")
+        # In private view, pinned notes should NOT be bucketed into Favorites section
+        self.assertFalse(nl.fav_section.get_visible())
+        self.assertTrue(nl.today_section.get_visible())
+
+    def test_notes_list_preserves_private_unlocked_on_view_toggle(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        locked_note = Note(
+            title="Secret",
+            is_locked=True
+        )
+        nl = NotesList(self.db, view_mode="list")
+        nl.set_notes([locked_note], active_filter_type="private", is_private_unlocked=True)
+        self.assertTrue(nl.is_private_unlocked)
+        self.assertFalse(nl._all_cards[0].is_private_locked)
+
+        # Toggle view mode to grid
+        nl.set_view_mode("grid")
+        self.assertTrue(nl.is_private_unlocked)
+        self.assertFalse(nl._all_cards[0].is_private_locked)
+
+    def test_index_view_private_unlock_states_and_banner_removal(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.index import IndexView
+        iv = IndexView(self.db)
+
+        # 1. Verify restart requirement: starts locked
+        self.assertFalse(iv._private_unlocked)
+
+        # 2. Verify duplicate banner was removed
+        self.assertFalse(hasattr(iv, "private_banner"))
+
+        # 3. Switch to private filter when NO password is set -> "Set Password"
+        iv.active_filter_type = "private"
+        iv.refresh(update_sidebar=False)
+        self.assertTrue(iv.private_unlock_btn.get_visible())
+        self.assertEqual(iv.private_unlock_btn.get_label(), "Set Password")
+        # In private notes, hide search and select notes buttons
+        self.assertFalse(iv.search_btn.get_visible())
+        self.assertFalse(iv.select_btn.get_visible())
+
+        # Attempting to enter search or selection mode in private notes is blocked
+        iv.enter_search()
+        self.assertEqual(iv.header_stack.get_visible_child_name(), "main")
+        iv.enter_selection_mode()
+        self.assertEqual(iv.header_stack.get_visible_child_name(), "main")
+
+        # 4. Set password but remain locked -> "Unlock"
+        self.db.set_private_password("MasterPass123!")
+        iv.refresh(update_sidebar=False)
+        self.assertEqual(iv.private_unlock_btn.get_label(), "Unlock")
+        self.assertFalse(iv.search_btn.get_visible())
+        self.assertFalse(iv.select_btn.get_visible())
+
+        # 5. Unlock -> "Lock"
+        iv._private_unlocked = True
+        iv.refresh(update_sidebar=False)
+        self.assertEqual(iv.private_unlock_btn.get_label(), "Lock")
+        self.assertTrue(iv.search_btn.get_visible())
+        self.assertTrue(iv.select_btn.get_visible())
+
+        # When unlocked in private notes, search and selection mode can be entered
+        iv.enter_search()
+        self.assertEqual(iv.header_stack.get_visible_child_name(), "search")
+        iv.exit_search()
+
+        iv.enter_selection_mode()
+        self.assertEqual(iv.header_stack.get_visible_child_name(), "selection")
+        iv.exit_selection_mode()
+
+        # 5b. Lock again via unlock button -> search & select hidden again
+        iv._on_private_unlock_clicked(None)
+        self.assertFalse(iv._private_unlocked)
+        self.assertFalse(iv.search_btn.get_visible())
+        self.assertFalse(iv.select_btn.get_visible())
+
+        # 6. Switch away to "all" -> _private_unlocked resets to False, unlock button hidden, search & select visible
+        iv._on_sidebar_filter_changed(None, "all", "")
+        self.assertFalse(iv._private_unlocked)
+        self.assertFalse(iv.private_unlock_btn.get_visible())
+        self.assertTrue(iv.search_btn.get_visible())
+        self.assertTrue(iv.select_btn.get_visible())
+
+    def test_unlocked_private_note_card_has_lock_icon(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        note = Note(title="Secret Note", is_locked=True)
+        # In unlocked mode:
+        grid_card = NoteGridCard(note, db=self.db, is_private_locked=False)
+        self.assertFalse(grid_card.is_private_locked)
+        # Title should be note's real title
+        self.assertEqual(grid_card.title_lbl.get_text(), "Secret Note")
+
+        list_row = NoteListRow(note, db=self.db, is_private_locked=False)
+        self.assertFalse(list_row.is_private_locked)
+        self.assertEqual(list_row.title_lbl.get_text(), "Secret Note")
+
+    def test_editor_lock_toggle_without_redundant_password(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Private Doc", is_locked=True)
+        editor.load_note(note)
+
+        # 1. More menu label must say "Remove from Private Notes"
+        menu = editor._create_more_menu()
+        self.assertTrue(editor.current_note.is_locked)
+
+        # 2. Removing from private notes toggles is_locked=False without password prompt
+        editor._on_toggle_lock()
+        self.assertFalse(editor.current_note.is_locked)
+        db_note = self.db.get_note(note.id)
+        self.assertFalse(db_note.is_locked)
 
 
 if __name__ == "__main__":

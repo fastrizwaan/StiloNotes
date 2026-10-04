@@ -124,5 +124,70 @@ class TestBackupAndEncryption(unittest.TestCase):
             self.db.remove_change_listener(listener)
 
 
+    def test_backup_exclude_private_notes_and_password(self):
+        # 1. Setup normal note and private note, both with attachments
+        normal_note = self.db.create_note(title="Public Work Note", initial_text="General notes", category="Work")
+        att_public = self.db.save_attachment(normal_note.id, "report.pdf", "application/pdf", b"PUBLIC_PDF_BLOB")
+
+        private_note = self.db.create_note(title="Secret Finances", initial_text="Financial details", category="Finance", is_locked=True)
+        att_private = self.db.save_attachment(private_note.id, "secrets.png", "image/png", b"CONFIDENTIAL_PNG_BLOB")
+
+        self.db.set_private_password("SuperSecretMaster123!")
+        self.assertTrue(self.db.has_private_password())
+
+        # 2. Perform backup with exclude_private=True
+        backup_file = Path(self.temp_dir.name) / "backup_excluded.db"
+        self.db.backup_to_file(str(backup_file), exclude_private=True)
+        self.assertTrue(backup_file.exists())
+
+        # 3. Restore to a new clean database
+        db_restored_path = Path(self.temp_dir.name) / "restored_excluded.db"
+        db_restored = NoteDatabase(str(db_restored_path))
+        try:
+            db_restored.restore_from_file(str(backup_file))
+
+            # Normal note and its attachment must exist
+            n_pub = db_restored.get_note(normal_note.id)
+            self.assertIsNotNone(n_pub)
+            self.assertEqual(n_pub.title, "Public Work Note")
+            self.assertEqual(db_restored.get_attachment(att_public)["data"], b"PUBLIC_PDF_BLOB")
+
+            # Private note must NOT exist in the restored database
+            self.assertIsNone(db_restored.get_note(private_note.id))
+            self.assertIsNone(db_restored.get_attachment(att_private))
+
+            # Master password must NOT exist in the restored database
+            self.assertFalse(db_restored.has_private_password())
+            self.assertFalse(db_restored.verify_private_password("SuperSecretMaster123!"))
+
+            # No private notes listed or counted
+            self.assertEqual(len(db_restored.get_notes(filter_type="private")), 0)
+            self.assertEqual(db_restored.get_counts().get("private", 0), 0)
+        finally:
+            db_restored.close()
+
+    def test_backup_include_private_notes_default(self):
+        private_note = self.db.create_note(title="Secret Note", initial_text="Secret text", is_locked=True)
+        att_id = self.db.save_attachment(private_note.id, "key.pem", "text/plain", b"PRIVATE_KEY_DATA")
+        self.db.set_private_password("MyPassword456!")
+
+        backup_file = Path(self.temp_dir.name) / "backup_included.db"
+        # Default exclude_private=False
+        self.db.backup_to_file(str(backup_file))
+
+        db_restored_path = Path(self.temp_dir.name) / "restored_included.db"
+        db_restored = NoteDatabase(str(db_restored_path))
+        try:
+            db_restored.restore_from_file(str(backup_file))
+
+            self.assertIsNotNone(db_restored.get_note(private_note.id))
+            self.assertEqual(db_restored.get_attachment(att_id)["data"], b"PRIVATE_KEY_DATA")
+            self.assertTrue(db_restored.has_private_password())
+            self.assertTrue(db_restored.verify_private_password("MyPassword456!"))
+            self.assertEqual(len(db_restored.get_notes(filter_type="private")), 1)
+        finally:
+            db_restored.close()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import base64
+import hashlib
 import json
 import os
 import re
+import secrets
 import sqlite3
 import threading
 import time
@@ -25,6 +27,8 @@ from stilonotes.markdown_utils import (
     check_has_list,
     markdown_to_html,
     html_to_markdown,
+    RE_TAG_EXTRACT,
+    RE_CAT_HASH,
 )
 
 class NoteDatabase:
@@ -139,10 +143,17 @@ class NoteDatabase:
                 is_archived INTEGER DEFAULT 0,
                 is_trashed INTEGER DEFAULT 0,
                 has_todo INTEGER DEFAULT 0,
+                is_locked INTEGER DEFAULT 0,
                 created_at REAL,
                 updated_at REAL
             )
             """)
+
+            # Ensure is_locked column exists for existing databases
+            cursor.execute("PRAGMA table_info(notes)")
+            existing_cols = [col["name"] for col in cursor.fetchall()]
+            if "is_locked" not in existing_cols:
+                cursor.execute("ALTER TABLE notes ADD COLUMN is_locked INTEGER DEFAULT 0")
 
             # Attachments table for storing images and media as binary blobs
             cursor.execute("""
@@ -184,6 +195,7 @@ class NoteDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_category ON notes (category)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_pinned_updated ON notes (is_trashed, is_pinned, updated_at DESC)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_cat ON notes (is_trashed, category)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_locked ON notes (is_locked)")
 
             # Migrate legacy notes if content_markdown is empty but content_html exists
             cursor.execute("""
@@ -201,6 +213,10 @@ class NoteDatabase:
             for r in cursor.fetchall():
                 if check_has_todo(r["content_markdown"]) or check_has_todo(r["content_html"]):
                     cursor.execute("UPDATE notes SET has_todo = 1 WHERE id = ?", (r["id"],))
+
+            # Ensure uncategorized is never in categories table or notes category field
+            cursor.execute("DELETE FROM categories WHERE LOWER(name) = 'uncategorized'")
+            cursor.execute("UPDATE notes SET category = '' WHERE LOWER(category) = 'uncategorized'")
 
             conn.commit()
 
@@ -277,7 +293,7 @@ Enjoy writing with Stilo Notes!
             # Scalability: Select only metadata needed for list rendering (no content blobs)
             query = """
             SELECT id, title, excerpt, category, tags, is_pinned, is_archived, is_trashed,
-                   has_todo, created_at, updated_at
+                   has_todo, is_locked, created_at, updated_at
             FROM notes WHERE 1=1
             """
             params: List[Any] = []
@@ -288,9 +304,18 @@ Enjoy writing with Stilo Notes!
             else:
                 query += " AND is_trashed = 0"
 
+            # Private / Locked filtering
+            if filter_type in ("private", "locked"):
+                query += " AND is_locked = 1"
+            elif filter_type != "trash":
+                # Non-private views exclude locked private notes
+                query += " AND is_locked = 0"
+
             # Category / Tab filters
             if filter_type in ("pinned", "favorites"):
                 query += " AND is_pinned = 1"
+            elif filter_type in ("private", "locked"):
+                pass  # already filtered by is_locked = 1
             elif filter_type in ("todo", "todos"):
                 query += " AND (has_todo = 1 OR has_todo_fn(content_markdown, content_html) = 1)"
             elif filter_type in ("list", "lists"):
@@ -317,8 +342,11 @@ Enjoy writing with Stilo Notes!
                 query += " AND (title LIKE ? OR excerpt LIKE ? OR content_markdown LIKE ?)"
                 params.extend([q, q, q])
 
-            # Pinned notes appear first, then sorted by updated_at descending
-            query += " ORDER BY is_pinned DESC, updated_at DESC"
+            # In All Notes, Private, and recent, sort strictly by updated_at descending; for others, pinned notes appear first
+            if filter_type in ("all", "recent", "recents", "private", "locked") or not filter_type:
+                query += " ORDER BY updated_at DESC"
+            else:
+                query += " ORDER BY is_pinned DESC, updated_at DESC"
 
             cursor.execute(query, params)
             return [Note.from_row(row) for row in cursor.fetchall()]
@@ -353,6 +381,7 @@ Enjoy writing with Stilo Notes!
         is_archived: Optional[bool] = None,
         is_trashed: Optional[bool] = None,
         has_todo: Optional[bool] = None,
+        is_locked: Optional[bool] = None,
         sender: Any = None,
     ) -> Note:
         """Save note with Markdown as the authoritative single source of truth."""
@@ -394,15 +423,19 @@ Enjoy writing with Stilo Notes!
 
                 extracted_cats = extract_categories(new_md or new_html)
                 if category is not None:
-                    new_category = category
+                    new_category = category.strip()
                 elif extracted_cats:
-                    new_category = extracted_cats[0]
-                    self._create_category_sync(conn, new_category)
+                    new_category = extracted_cats[0].strip()
+                    if new_category.lower() != "uncategorized":
+                        self._create_category_sync(conn, new_category)
                 else:
-                    new_category = existing.category
+                    new_category = (existing.category or "").strip()
+                if new_category.lower() == "uncategorized":
+                    new_category = ""
                 new_pinned = int(is_pinned if is_pinned is not None else existing.is_pinned)
                 new_archived = int(is_archived if is_archived is not None else existing.is_archived)
                 new_trashed = int(is_trashed if is_trashed is not None else existing.is_trashed)
+                new_locked = int(is_locked if is_locked is not None else getattr(existing, "is_locked", 0))
                 if has_todo or check_has_todo(new_md) or check_has_todo(new_html):
                     new_todo = 1
                 else:
@@ -420,6 +453,7 @@ Enjoy writing with Stilo Notes!
                     is_archived = ?,
                     is_trashed = ?,
                     has_todo = ?,
+                    is_locked = ?,
                     updated_at = ?
                 WHERE id = ?
                 """, (
@@ -433,6 +467,7 @@ Enjoy writing with Stilo Notes!
                     new_archived,
                     new_trashed,
                     new_todo,
+                    new_locked,
                     now,
                     note_id
                 ))
@@ -459,15 +494,19 @@ Enjoy writing with Stilo Notes!
                     new_tags = list(dict.fromkeys(tags + extracted_tags))
                 else:
                     new_tags = extracted_tags
-                new_category = category or ""
+                new_category = (category or "").strip()
                 if not new_category:
                     extracted_cats = extract_categories(new_md or new_html)
                     if extracted_cats:
-                        new_category = extracted_cats[0]
-                        self._create_category_sync(conn, new_category)
+                        new_category = extracted_cats[0].strip()
+                        if new_category.lower() != "uncategorized":
+                            self._create_category_sync(conn, new_category)
+                if new_category.lower() == "uncategorized":
+                    new_category = ""
                 new_pinned = int(is_pinned or 0)
                 new_archived = int(is_archived or 0)
                 new_trashed = int(is_trashed or 0)
+                new_locked = int(is_locked or 0)
                 if has_todo or check_has_todo(new_md) or check_has_todo(new_html):
                     new_todo = 1
                 else:
@@ -476,8 +515,8 @@ Enjoy writing with Stilo Notes!
                 cursor.execute("""
                 INSERT INTO notes (
                     id, title, content_html, content_markdown, excerpt, category,
-                    tags, is_pinned, is_archived, is_trashed, has_todo, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tags, is_pinned, is_archived, is_trashed, has_todo, is_locked, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     note_id,
                     new_title,
@@ -490,6 +529,7 @@ Enjoy writing with Stilo Notes!
                     new_archived,
                     new_trashed,
                     new_todo,
+                    new_locked,
                     now,
                     now
                 ))
@@ -524,6 +564,7 @@ Enjoy writing with Stilo Notes!
                 is_archived=bool(new_archived),
                 is_trashed=bool(new_trashed),
                 has_todo=bool(new_todo),
+                is_locked=bool(new_locked),
                 created_at=row["created_at"] if row else now,
                 updated_at=now,
             )
@@ -536,19 +577,24 @@ Enjoy writing with Stilo Notes!
         category: str = "",
         initial_text: str = "",
         tags: Optional[List[str]] = None,
+        is_locked: bool = False,
         sender: Any = None
     ) -> Note:
         """Create a new note."""
         note_id = str(uuid.uuid4())
+        clean_cat = (category or "").strip()
+        if clean_cat.lower() == "uncategorized":
+            clean_cat = ""
         md_content = initial_text or (f"# {title}\n\n" if title != "Untitled Note" else "")
         html_content = markdown_to_html(md_content) if md_content else f"<h1>{title}</h1><div><br></div>"
         return self.save_note(
             note_id=note_id,
             title=title,
-            category=category,
+            category=clean_cat,
             content_html=html_content,
             content_markdown=md_content,
             tags=tags,
+            is_locked=is_locked,
             sender=sender
         )
 
@@ -615,7 +661,9 @@ Enjoy writing with Stilo Notes!
 
     def set_note_category(self, note_id: str, category: str, sender: Any = None):
         """Set category for a single note."""
-        clean_cat = category.strip()
+        clean_cat = (category or "").strip()
+        if clean_cat.lower() == "uncategorized":
+            clean_cat = ""
         if clean_cat:
             self.create_category(clean_cat)
         with self.get_connection() as conn:
@@ -628,7 +676,9 @@ Enjoy writing with Stilo Notes!
         """Set category for multiple notes."""
         if not note_ids:
             return
-        clean_cat = category.strip()
+        clean_cat = (category or "").strip()
+        if clean_cat.lower() == "uncategorized":
+            clean_cat = ""
         if clean_cat:
             self.create_category(clean_cat)
         now = time.time()
@@ -681,6 +731,72 @@ Enjoy writing with Stilo Notes!
                 return bool(new_state)
         return False
 
+    def toggle_lock_note(self, note_id: str, sender: Any = None) -> bool:
+        """Toggle is_locked state for a note."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT is_locked FROM notes WHERE id = ?", (note_id,))
+            row = cursor.fetchone()
+            if row:
+                curr = bool(row["is_locked"]) if "is_locked" in row.keys() else False
+                new_val = 0 if curr else 1
+                now = time.time()
+                cursor.execute("UPDATE notes SET is_locked = ?, updated_at = ? WHERE id = ?", (new_val, now, note_id))
+                conn.commit()
+                self._notify_change("note-lock-toggled", {"note_id": note_id, "is_locked": bool(new_val)}, sender=sender)
+                return bool(new_val)
+        return False
+
+    def set_note_locked(self, note_id: str, is_locked: bool, sender: Any = None):
+        """Explicitly set is_locked state for a note."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            now = time.time()
+            cursor.execute("UPDATE notes SET is_locked = ?, updated_at = ? WHERE id = ?", (1 if is_locked else 0, now, note_id))
+            conn.commit()
+            self._notify_change("note-lock-toggled", {"note_id": note_id, "is_locked": bool(is_locked)}, sender=sender)
+
+    def set_private_password(self, password: str):
+        """Set or change the master password for private/locked notes (salted PBKDF2 hash)."""
+        clean = password.strip()
+        if not clean:
+            return
+        salt = secrets.token_hex(16)
+        pwd_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            clean.encode("utf-8"),
+            bytes.fromhex(salt),
+            100000
+        ).hex()
+        with self.get_connection() as conn:
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password_salt", salt))
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password_hash", pwd_hash))
+            conn.commit()
+
+    def verify_private_password(self, password: str) -> bool:
+        """Verify the master password for private notes against salted hash."""
+        salt = self.get_setting("private_note_password_salt", "")
+        pwd_hash = self.get_setting("private_note_password_hash", "")
+        if not salt or not pwd_hash:
+            return False
+        computed = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.strip().encode("utf-8"),
+            bytes.fromhex(salt),
+            100000
+        ).hex()
+        return secrets.compare_digest(computed, pwd_hash)
+
+    def has_private_password(self) -> bool:
+        """Check if a private notes master password has been configured."""
+        return bool(self.get_setting("private_note_password_hash", ""))
+
+    def clear_private_password(self):
+        """Remove the private notes master password and salt."""
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash')")
+            conn.commit()
+
     def duplicate_note(self, note_id: str) -> Optional[Note]:
         """Duplicate an existing note."""
         note = self.get_note(note_id)
@@ -707,6 +823,104 @@ Enjoy writing with Stilo Notes!
                     data=att["data"]
                 )
         return dup
+
+    def import_note_from_file(self, file_path: str, sender: Any = None) -> Note:
+        """Import a .md or .txt file as a new note, extracting metadata, hashtags, checklists, and updating categories."""
+        p = Path(file_path)
+        try:
+            raw_text = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raw_text = p.read_text(encoding="latin-1")
+
+        # 1. Parse YAML frontmatter if present
+        fm_title = None
+        fm_category = None
+        fm_tags = []
+        body_text = raw_text
+        fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', raw_text, re.DOTALL)
+        if fm_match:
+            fm_yaml = fm_match.group(1)
+            body_text = raw_text[fm_match.end():]
+            for line in fm_yaml.splitlines():
+                line = line.strip()
+                if line.lower().startswith("title:"):
+                    fm_title = line.split(":", 1)[1].strip().strip("\"'")
+                elif line.lower().startswith("category:"):
+                    fm_category = line.split(":", 1)[1].strip().strip("\"'")
+                elif line.lower().startswith("tags:"):
+                    raw_tags = line.split(":", 1)[1].strip()
+                    if raw_tags.startswith("[") and raw_tags.endswith("]"):
+                        raw_tags = raw_tags[1:-1]
+                    fm_tags = [t.strip().strip("\"'").lstrip("#").lower() for t in raw_tags.split(",") if t.strip()]
+
+        # 2. Extract title
+        if fm_title:
+            title = fm_title
+        else:
+            clean_for_title = RE_TAG_EXTRACT.sub('', body_text)
+            clean_for_title = RE_CAT_HASH.sub('', clean_for_title)
+            extracted_title, _ = extract_title_and_excerpt(clean_for_title)
+            if extracted_title and extracted_title != "Untitled Note":
+                title = extracted_title
+            else:
+                title = p.stem.replace("_", " ").strip() or "Untitled Note"
+
+        # Ensure content markdown has title heading if not already present
+        clean_body = body_text.strip()
+        if not clean_body.startswith("# "):
+            content_markdown = f"# {title}\n\n{clean_body}"
+        else:
+            content_markdown = clean_body
+
+        # 3. Extract hashtags
+        extracted_tags = extract_tags(content_markdown)
+        all_tags = list(dict.fromkeys(fm_tags + extracted_tags))
+
+        # 4. Check for checklist and list
+        has_todo = check_has_todo(content_markdown)
+
+        # 5. Extract / update category
+        category = (fm_category or "").strip()
+        if not category:
+            cat_candidates = extract_categories(content_markdown)
+            if cat_candidates:
+                category = cat_candidates[0].strip()
+
+        # Check for inline Category: <name> metadata line
+        if not category:
+            cat_line_match = re.search(r'^(?:Category|Folder):\s*(.+)$', content_markdown, re.MULTILINE | re.IGNORECASE)
+            if cat_line_match:
+                category = cat_line_match.group(1).strip()
+
+        # Match hashtags against existing categories
+        existing_cats = {c.name.lower(): c.name for c in self.get_categories()}
+        if not category and all_tags:
+            for t in all_tags:
+                if t.lower() in existing_cats:
+                    category = existing_cats[t.lower()]
+                    break
+
+        # If still no category and hashtags exist, use the first hashtag as category
+        if not category and all_tags:
+            first_tag = all_tags[0]
+            category = first_tag.title() if first_tag.islower() else first_tag
+
+        if category and category.lower() == "uncategorized":
+            category = ""
+
+        # Ensure category is created in database
+        if category:
+            self.create_category(category)
+
+        # 6. Create note in database
+        note = self.create_note(
+            title=title,
+            category=category,
+            initial_text=content_markdown,
+            tags=all_tags,
+            sender=sender
+        )
+        return note
 
     # ── Attachments API ───────────────────────────────────────────────────
 
@@ -836,13 +1050,13 @@ Enjoy writing with Stilo Notes!
         """Fetch categories with active note counts in that category and its subcategories."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, icon, color FROM categories ORDER BY name ASC")
+            cursor.execute("SELECT id, name, icon, color FROM categories WHERE LOWER(name) != 'uncategorized' ORDER BY name ASC")
             cat_rows = cursor.fetchall()
 
             # Note counts per category including subcategories (without counting subcategories as notes)
             cursor.execute(
                 "SELECT category, COUNT(*) as cnt FROM notes "
-                "WHERE is_trashed = 0 AND category != '' AND category IS NOT NULL "
+                "WHERE is_trashed = 0 AND is_locked = 0 AND category != '' AND category IS NOT NULL AND LOWER(category) != 'uncategorized' "
                 "GROUP BY category"
             )
             note_rows = cursor.fetchall()
@@ -869,7 +1083,7 @@ Enjoy writing with Stilo Notes!
     def create_category(self, name: str, icon: str = "folder-symbolic", color: str = "", sender: Any = None) -> bool:
         """Create a new category."""
         clean_name = name.strip()
-        if not clean_name:
+        if not clean_name or clean_name.lower() == "uncategorized":
             return False
         try:
             with self.get_connection() as conn:
@@ -932,30 +1146,29 @@ Enjoy writing with Stilo Notes!
         """Return counts for standard tabs plus per-category counts in 2 fast queries."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            recent_cutoff = time.time() - (7 * 86400)
             cursor.execute("""
             SELECT
-                COUNT(CASE WHEN is_trashed = 0 THEN 1 END) as all_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND is_pinned = 1 THEN 1 END) as pinned_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND (has_todo = 1 OR has_todo_fn(content_markdown, content_html) = 1) THEN 1 END) as todo_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND has_list_fn(content_markdown, content_html) = 1 THEN 1 END) as list_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND updated_at >= ? THEN 1 END) as recent_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND (category = '' OR category IS NULL) THEN 1 END) as uncat_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 THEN 1 END) as all_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND is_pinned = 1 THEN 1 END) as pinned_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND (has_todo = 1 OR has_todo_fn(content_markdown, content_html) = 1) THEN 1 END) as todo_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND has_list_fn(content_markdown, content_html) = 1 THEN 1 END) as list_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 1 THEN 1 END) as private_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND (category = '' OR category IS NULL) THEN 1 END) as uncat_cnt,
                 COUNT(CASE WHEN is_trashed = 1 THEN 1 END) as trash_cnt
             FROM notes
-            """, (recent_cutoff,))
+            """)
             counts_row = cursor.fetchone()
             all_cnt = counts_row["all_cnt"]
             pinned_cnt = counts_row["pinned_cnt"]
             todo_cnt = counts_row["todo_cnt"]
             list_cnt = counts_row["list_cnt"]
-            recent_cnt = counts_row["recent_cnt"]
+            private_cnt = counts_row["private_cnt"]
             uncat_cnt = counts_row["uncat_cnt"]
             trash_cnt = counts_row["trash_cnt"]
 
             cursor.execute(
                 "SELECT category, COUNT(*) as cnt FROM notes "
-                "WHERE is_trashed = 0 AND category != '' AND category IS NOT NULL "
+                "WHERE is_trashed = 0 AND is_locked = 0 AND category != '' AND category IS NOT NULL "
                 "GROUP BY category"
             )
             cat_rows = cursor.fetchall()
@@ -976,7 +1189,9 @@ Enjoy writing with Stilo Notes!
                 "todos": todo_cnt,
                 "list": list_cnt,
                 "lists": list_cnt,
-                "recent": recent_cnt,
+                "private": private_cnt,
+                "locked": private_cnt,
+                "recent": all_cnt,
                 "uncategorized": uncat_cnt,
                 "trash": trash_cnt,
             }
@@ -987,22 +1202,32 @@ Enjoy writing with Stilo Notes!
 
     def _create_category_sync(self, conn: sqlite3.Connection, full_name: str):
         """Helper to create category and missing ancestor categories within an existing transaction."""
-        parts = full_name.split("/")
+        clean = (full_name or "").strip()
+        if not clean or clean.lower() == "uncategorized":
+            return
+        parts = clean.split("/")
         now = time.time()
         for i in range(len(parts)):
-            sub = "/".join(parts[:i + 1])
+            sub = "/".join(parts[:i + 1]).strip()
+            if not sub or sub.lower() == "uncategorized":
+                continue
             conn.execute(
                 "INSERT OR IGNORE INTO categories (id, name, created_at) VALUES (?, ?, ?)",
                 (str(uuid.uuid4()), sub, now)
             )
 
-    def get_all_tags(self) -> List[Tuple[str, int]]:
+    def get_all_tags(self, include_locked: bool = False) -> List[Tuple[str, int]]:
         """Return list of (tag_name, count) for all tags in non-trashed notes, sorted by count."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT tags, content_markdown FROM notes WHERE is_trashed = 0"
-            )
+            if include_locked:
+                cursor.execute(
+                    "SELECT tags, content_markdown FROM notes WHERE is_trashed = 0"
+                )
+            else:
+                cursor.execute(
+                    "SELECT tags, content_markdown FROM notes WHERE is_trashed = 0 AND is_locked = 0"
+                )
             tag_counts: Dict[str, int] = {}
             for r in cursor.fetchall():
                 raw = r["tags"]
@@ -1120,7 +1345,7 @@ Enjoy writing with Stilo Notes!
         except Exception as e:
             print("Error saving setting:", e)
 
-    def backup_to_file(self, target_path: str):
+    def backup_to_file(self, target_path: str, exclude_private: bool = False):
         """Export a clean, atomic snapshot of this SQLite database to target_path."""
         target = Path(target_path)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1134,6 +1359,17 @@ Enjoy writing with Stilo Notes!
             dest_conn = sqlite3.connect(str(target))
             try:
                 src_conn.backup(dest_conn)
+                if exclude_private:
+                    cur = dest_conn.cursor()
+                    cur.execute("SELECT id FROM notes WHERE is_locked = 1")
+                    locked_ids = [row[0] for row in cur.fetchall()]
+                    if locked_ids:
+                        placeholders = ",".join("?" * len(locked_ids))
+                        cur.execute(f"DELETE FROM attachments WHERE note_id IN ({placeholders})", locked_ids)
+                        cur.execute("DELETE FROM notes WHERE is_locked = 1")
+                    cur.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash')")
+                    dest_conn.commit()
+                    dest_conn.execute("VACUUM")
             finally:
                 dest_conn.close()
 
