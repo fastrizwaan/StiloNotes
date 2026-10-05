@@ -50,7 +50,7 @@ class TestCategoryHeaderBar(unittest.TestCase):
     def test_set_categories_deduplication_and_no_uncategorized(self):
         self.bar.set_categories(["Personal", "personal", "Work", "Uncategorized", "uncategorized", "Personal/Reports"])
         items = [self.bar.list_store[i][0] for i in range(len(self.bar.list_store))]
-        self.assertEqual(items, ["Personal", "Personal/Reports", "Work"])
+        self.assertEqual(items, ["Personal", "Work", "Personal/Reports"])
         self.assertNotIn("Uncategorized", items)
         self.assertNotIn("uncategorized", items)
 

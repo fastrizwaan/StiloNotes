@@ -2142,6 +2142,16 @@
         return;
       }
 
+      // Print shortcut: Ctrl+P
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.printNote) {
+          window.webkit.messageHandlers.printNote.postMessage('');
+        }
+        return;
+      }
+
       // ArrowDown: navigate out of code blocks and tables to the line below
       if (e.key === 'ArrowDown') {
         const pre = getClosestElement('pre.stilo-code-block');
@@ -2901,6 +2911,98 @@
         mark.innerHTML = '&#8203;';
         range.insertNode(mark);
         setCursorAtStart(mark);
+        notifyChange();
+      }
+    }
+
+    function doApplyInlineCode() {
+      closeAllPopups();
+      saveUndoState();
+      let range = restoreSelectionIfNeeded();
+      const sel = window.getSelection();
+      if (!sel || !range) return;
+
+      range = normalizeTableRange(range);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      lastEditorRange = range.cloneRange();
+
+      // 1. If cursor or selection is already inside an inline code element, unwrap it (toggle off)
+      const existingCode = getClosestElement('code');
+      if (existingCode && !existingCode.closest('pre.stilo-code-block') && editor.contains(existingCode)) {
+        const parent = existingCode.parentNode;
+        while (existingCode.firstChild) {
+          parent.insertBefore(existingCode.firstChild, existingCode);
+        }
+        parent.removeChild(existingCode);
+        parent.normalize();
+        notifyChange();
+        return;
+      }
+
+      function wrapRangeWithCode(targetRange) {
+        const codeEl = document.createElement('code');
+        codeEl.className = 'stilo-inline-code';
+        try {
+          targetRange.surroundContents(codeEl);
+        } catch (_) {
+          const frag = targetRange.extractContents();
+          codeEl.appendChild(frag);
+          targetRange.insertNode(codeEl);
+        }
+        return codeEl;
+      }
+
+      if (!range.collapsed) {
+        const text = sel.toString();
+        if (text) {
+          const codeEl = wrapRangeWithCode(range);
+          if (codeEl) {
+            const newRange = document.createRange();
+            newRange.selectNodeContents(codeEl);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+            lastEditorRange = newRange.cloneRange();
+            notifyChange();
+          }
+        }
+      } else {
+        // Collapsed cursor: expand to current word under cursor if on a word
+        const node = range.startContainer;
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent;
+          const offset = range.startOffset;
+          let start = offset;
+          while (start > 0 && /\S/.test(text[start - 1])) start--;
+          let end = offset;
+          while (end < text.length && /\S/.test(text[end])) end++;
+
+          if (end > start) {
+            range.setStart(node, start);
+            range.setEnd(node, end);
+            const codeEl = wrapRangeWithCode(range);
+            if (codeEl) {
+              const newRange = document.createRange();
+              newRange.setStartAfter(codeEl);
+              newRange.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+              lastEditorRange = newRange.cloneRange();
+              notifyChange();
+              return;
+            }
+          }
+        }
+        // If not on a word, insert empty placeholder inline code
+        const codeEl = document.createElement('code');
+        codeEl.className = 'stilo-inline-code';
+        codeEl.textContent = 'code';
+        range.insertNode(codeEl);
+        const newRange = document.createRange();
+        newRange.selectNodeContents(codeEl);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+        lastEditorRange = newRange.cloneRange();
         notifyChange();
       }
     }
@@ -3849,9 +3951,10 @@
       else if (command === 'underline') applyFormat('underline');
       else if (command === 'strike') applyFormat('strikeThrough');
       else if (command === 'highlight') doApplyHighlight();
+      else if (command === 'inline-code' || command === 'inlineCode') doApplyInlineCode();
       else if (command === 'clear-format' || command === 'clearFormat' || command === 'removeFormat') doClearFormatting();
       else if (command === 'quote') insertQuote();
-      else if (command === 'code') insertCodeBlock();
+      else if (command === 'code' || command === 'codeBlock') insertCodeBlock();
       else if (command === 'table') doInsertCustomTable(3, 3, true);
       else if (command === 'table-add-row') doAddTableRow();
       else if (command === 'table-add-col') doAddTableColumn();
@@ -3865,6 +3968,7 @@
 
     window.clearFormatting = doClearFormatting;
     window.applyHighlight = doApplyHighlight;
+    window.applyInlineCode = doApplyInlineCode;
 
     window.insertTag = function(tagName) {
       if (!tagName) return;

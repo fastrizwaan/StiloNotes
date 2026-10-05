@@ -185,9 +185,16 @@ class NoteDatabase:
                 name TEXT UNIQUE,
                 icon TEXT DEFAULT 'folder-symbolic',
                 color TEXT DEFAULT '',
+                sort_order INTEGER DEFAULT 0,
                 created_at REAL
             )
             """)
+
+            # Ensure sort_order column exists for existing databases
+            cursor.execute("PRAGMA table_info(categories)")
+            cat_cols = [col["name"] for col in cursor.fetchall()]
+            if "sort_order" not in cat_cols:
+                cursor.execute("ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0")
 
             # App settings table
             cursor.execute("""
@@ -634,6 +641,8 @@ Enjoy writing with Stilo Notes!
         title: str = "Untitled Note",
         category: str = "",
         initial_text: str = "",
+        content_markdown: Optional[str] = None,
+        content_html: Optional[str] = None,
         tags: Optional[List[str]] = None,
         is_locked: bool = False,
         sender: Any = None
@@ -643,8 +652,11 @@ Enjoy writing with Stilo Notes!
         clean_cat = (category or "").strip()
         if clean_cat.lower() == "uncategorized":
             clean_cat = ""
-        md_content = initial_text or (f"# {title}\n\n" if title != "Untitled Note" else "")
-        html_content = markdown_to_html(md_content) if md_content else f"<h1>{title}</h1><div><br></div>"
+        md_content = content_markdown if content_markdown is not None else (initial_text or (f"# {title}\n\n" if title != "Untitled Note" else ""))
+        if content_html is not None:
+            html_content = content_html
+        else:
+            html_content = markdown_to_html(md_content) if md_content else f"<h1>{title}</h1><div><br></div>"
         return self.save_note(
             note_id=note_id,
             title=title,
@@ -1182,7 +1194,7 @@ Enjoy writing with Stilo Notes!
         """Fetch categories with active note counts in that category and its subcategories."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, icon, color FROM categories WHERE LOWER(name) != 'uncategorized' ORDER BY name ASC")
+            cursor.execute("SELECT id, name, icon, color, sort_order FROM categories WHERE LOWER(name) != 'uncategorized' ORDER BY sort_order ASC, name ASC")
             cat_rows = cursor.fetchall()
 
             # Note counts per category including subcategories (without counting subcategories as notes)
@@ -1207,7 +1219,8 @@ Enjoy writing with Stilo Notes!
                     name=row["name"],
                     icon=row["icon"] or "folder-symbolic",
                     color=row["color"] or "",
-                    count=cat_counts.get(row["name"], 0)
+                    count=cat_counts.get(row["name"], 0),
+                    sort_order=row["sort_order"] if "sort_order" in row.keys() else 0,
                 )
                 for row in cat_rows
             ]
@@ -1220,15 +1233,26 @@ Enjoy writing with Stilo Notes!
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                cursor.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM categories")
+                next_order = cursor.fetchone()["next_order"]
                 cursor.execute(
-                    "INSERT INTO categories (id, name, icon, color, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), clean_name, icon, color, time.time())
+                    "INSERT INTO categories (id, name, icon, color, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), clean_name, icon, color, next_order, time.time())
                 )
                 conn.commit()
             self._notify_change("categories-updated", {"category": clean_name}, sender=sender)
             return True
         except sqlite3.IntegrityError:
             return False
+
+    def reorder_categories(self, ordered_names: List[str], sender: Any = None):
+        """Update the sort_order of categories to match the provided list order."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for idx, name in enumerate(ordered_names):
+                cursor.execute("UPDATE categories SET sort_order = ? WHERE name = ?", (idx, name))
+            conn.commit()
+        self._notify_change("categories-updated", {"reordered": ordered_names}, sender=sender)
 
     def rename_category(self, old_name: str, new_name: str, sender: Any = None):
         """Rename a category and all its subcategories and update affected notes."""

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from typing import Optional
-from gi.repository import Adw, Gtk, Gio, GLib, GObject, Pango
+from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
 
 from stilonotes.database import NoteDatabase
 from stilonotes.config_manager import ConfigManager
@@ -13,7 +13,7 @@ def _build_category_tree(categories):
     """
     Given a flat list of Category objects whose names may contain '/' separators,
     return an ordered list of (full_name, depth, display_name, has_children) tuples that
-    represents a depth-first tree walk.
+    represents a depth-first tree walk preserving the user-defined category order.
     """
     # Build a prefix-tree from names
     tree = {}  # node: {child_name: subtree}
@@ -31,7 +31,7 @@ def _build_category_tree(categories):
     result = []
 
     def walk(node, prefix, depth):
-        for key in sorted(node.keys()):
+        for key in node.keys():
             full = f"{prefix}/{key}" if prefix else key
             has_children = len(node[key]) > 0
             result.append((full, depth, key, has_children))
@@ -648,6 +648,7 @@ class Sidebar(Adw.Bin):
                 box.append(arrow_btn)
 
             self._setup_category_context_menu(row, category_name)
+            self._setup_category_dnd(row, category_name, title, icon_name)
 
         if is_tag:
             row.add_css_class("sidebar-tag-row")
@@ -695,6 +696,97 @@ class Sidebar(Adw.Bin):
 
         gesture.connect("pressed", on_right_click)
         row.add_controller(gesture)
+
+    def _setup_category_dnd(self, row: Gtk.ListBoxRow, category_name: str, title: str, icon_name: str):
+        # 1. DragSource
+        drag_source = Gtk.DragSource.new()
+        drag_source.set_actions(Gdk.DragAction.MOVE)
+
+        def _on_drag_prepare(_src, _x, _y, cat_name=category_name):
+            val = GObject.Value(GObject.TYPE_STRING, cat_name)
+            return Gdk.ContentProvider.new_for_value(val)
+
+        def _on_drag_begin(_src, drag, cat_title=title, cat_icon=icon_name):
+            try:
+                drag_icon = Gtk.DragIcon.get_for_drag(drag)
+                preview = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+                preview.add_css_class("card")
+                preview.set_margin_start(4)
+                preview.set_margin_end(4)
+                img = Gtk.Image.new_from_icon_name(cat_icon)
+                img.set_pixel_size(16)
+                preview.append(img)
+                lbl = Gtk.Label(label=cat_title)
+                preview.append(lbl)
+                drag_icon.set_child(preview)
+            except Exception:
+                pass
+
+        drag_source.connect("prepare", _on_drag_prepare)
+        drag_source.connect("drag-begin", _on_drag_begin)
+        row.add_controller(drag_source)
+
+        # 2. DropTarget
+        drop_target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+
+        def _on_drop_motion(_target, _x, y, target_row=row):
+            h = target_row.get_height()
+            if y < h / 2:
+                target_row.add_css_class("category-drop-before")
+                target_row.remove_css_class("category-drop-after")
+            else:
+                target_row.add_css_class("category-drop-after")
+                target_row.remove_css_class("category-drop-before")
+            return Gdk.DragAction.MOVE
+
+        def _on_drop_leave(_target, target_row=row):
+            target_row.remove_css_class("category-drop-before")
+            target_row.remove_css_class("category-drop-after")
+
+        def _on_drop(_target, value, _x, y, target_cat=category_name, target_row=row):
+            target_row.remove_css_class("category-drop-before")
+            target_row.remove_css_class("category-drop-after")
+            if not isinstance(value, str):
+                return False
+            src_cat = value
+            h = target_row.get_height()
+            after = (y >= h / 2)
+            return self._on_reorder_category(src_cat, target_cat, after=after)
+
+        drop_target.connect("motion", _on_drop_motion)
+        drop_target.connect("leave", _on_drop_leave)
+        drop_target.connect("drop", _on_drop)
+        row.add_controller(drop_target)
+
+    def _on_reorder_category(self, src_name: str, target_name: str, after: bool = False) -> bool:
+        if not src_name or not target_name or src_name == target_name:
+            return False
+        # Do not allow dropping a parent category onto its own child/descendant
+        if target_name.startswith(src_name + "/"):
+            return False
+
+        cats = self.db.get_categories()
+        cat_names = [c.name for c in cats]
+        if src_name not in cat_names or target_name not in cat_names:
+            return False
+
+        group_to_move = [n for n in cat_names if n == src_name or n.startswith(src_name + "/")]
+        remaining = [n for n in cat_names if n not in group_to_move]
+        if target_name not in remaining:
+            return False
+
+        target_idx = remaining.index(target_name)
+        if after:
+            insert_idx = target_idx + 1
+            while insert_idx < len(remaining) and remaining[insert_idx].startswith(target_name + "/"):
+                insert_idx += 1
+        else:
+            insert_idx = target_idx
+
+        new_order = remaining[:insert_idx] + group_to_move + remaining[insert_idx:]
+        self.db.reorder_categories(new_order, sender=self)
+        self.refresh()
+        return True
 
     def _setup_tag_context_menu(self, row: Gtk.ListBoxRow, tag_name: str):
         gesture = Gtk.GestureClick.new()

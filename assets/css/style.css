@@ -551,3 +551,12 @@ menubutton.sidebar-action-btn:hover > button {
   color: alpha(currentColor, 0.75);
 }
 
+/* Category drag-and-drop reorder indicators */
+.category-drop-before {
+  border-top: 2px solid var(--accent-color, #3584e4);
+}
+
+.category-drop-after {
+  border-bottom: 2px solid var(--accent-color, #3584e4);
+}
+

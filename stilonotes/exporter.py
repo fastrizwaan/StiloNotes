@@ -360,25 +360,49 @@ class Printer(GObject.GObject):
         self.html = render_printable_html(note, db=db)
         setup_print_preview_settings()
         self.web_view = WebKit.WebView()
+        self._started = False
+        self._is_finished = False
+        self._operation = None
+
+    def _on_finished(self):
+        if not self._is_finished:
+            self._is_finished = True
+            self.emit("finished")
 
     def on_load_changed(self, webview: WebKit.WebView, event: WebKit.LoadEvent):
         # When html is fully loaded, launch WebKit.PrintOperation with print dialog
         if event == WebKit.LoadEvent.FINISHED:
-            operation = WebKit.PrintOperation.new(self.web_view)
-            operation.connect("finished", lambda _op: self.emit("finished"))
-            operation.connect("failed", lambda _op, _err: self.emit("finished"))
-            settings = Gtk.PrintSettings.new()
-            clean_title = re.sub(r'[\\/*?:"<>|]', "", self.note.title or "Untitled").strip() or "Untitled"
-            settings.set(Gtk.PRINT_SETTINGS_OUTPUT_BASENAME, clean_title)
-            operation.set_print_settings(settings)
-            parent = self.parent_window if isinstance(self.parent_window, Gtk.Window) else None
-            res = operation.run_dialog(parent)
-            if res == WebKit.PrintOperationResponse.CANCEL:
-                self.emit("finished")
+            if self._started:
+                return
+            self._started = True
+            try:
+                self.web_view.disconnect_by_func(self.on_load_changed)
+            except Exception:
+                pass
+
+            try:
+                self._operation = WebKit.PrintOperation.new(self.web_view)
+                self._operation.connect("finished", lambda _op: self._on_finished())
+                self._operation.connect("failed", lambda _op, _err: self._on_finished())
+                settings = Gtk.PrintSettings.new()
+                clean_title = re.sub(r'[\\/*?:"<>|]', "", self.note.title or "Untitled").strip() or "Untitled"
+                settings.set(Gtk.PRINT_SETTINGS_OUTPUT_BASENAME, clean_title)
+                self._operation.set_print_settings(settings)
+                parent = self.parent_window if isinstance(self.parent_window, Gtk.Window) else None
+                res = self._operation.run_dialog(parent)
+                if res == WebKit.PrintOperationResponse.CANCEL:
+                    self._on_finished()
+            except Exception as e:
+                print("Error during print operation:", e)
+                self._on_finished()
 
     def print(self):
-        self.web_view.connect("load-changed", self.on_load_changed)
-        self.web_view.load_html(self.html)
+        try:
+            self.web_view.connect("load-changed", self.on_load_changed)
+            self.web_view.load_html(self.html)
+        except Exception as e:
+            print("Error launching print webview:", e)
+            self._on_finished()
 
 
 def export_note_dialog(parent_window: Gtk.Window, note: Note, fmt: str = "md", on_complete: Optional[Callable[[str], None]] = None, db: Optional[Any] = None):

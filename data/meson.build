@@ -45,6 +45,7 @@ install_data(
   'icons/hicolor/symbolic/apps/view-continuous-symbolic.svg',
   'icons/hicolor/symbolic/apps/quotation-symbolic.svg',
   'icons/hicolor/symbolic/apps/code-symbolic.svg',
+  'icons/hicolor/symbolic/apps/code-block-symbolic.svg',
   'icons/hicolor/symbolic/apps/insert-table-symbolic.svg',
   'icons/hicolor/symbolic/apps/eye-open-negative-filled-symbolic.svg',
   install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', 'symbolic', 'apps')

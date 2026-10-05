@@ -152,6 +152,7 @@ class FormattingBar(Gtk.Box):
             ("format-text-strikethrough-symbolic", "Strikethrough",    "strike"),
             ("format-text-underline-symbolic",     "Underline",        "underline"),
             ("marker-symbolic",                    "Highlight",        "highlight"),
+            ("code-symbolic",                      "Inline Code",      "inline-code"),
             ("eraser-symbolic",                    "Clear Formatting", "clear-format"),
         ]:
             self._add_btn(flowbox, icon, tip, cmd)
@@ -167,7 +168,7 @@ class FormattingBar(Gtk.Box):
         # 4. Blocks & Markdown Elements
         for icon, tip, cmd in [
             ("quotation-symbolic",       "Blockquote",      "quote"),
-            ("code-symbolic",            "Code Block",      "code"),
+            ("code-block-symbolic",      "Code Block",      "code"),
             ("insert-link-symbolic",     "Insert Link",     "link"),
             ("view-continuous-symbolic", "Horizontal Rule", "divider"),
         ]:
@@ -345,6 +346,7 @@ class NoteEditor(Gtk.Box):
         self._page_loaded = False
         self._pending_load_note = None
         self._save_timeout_id = None
+        self._current_printer = None
         _register_attachment_scheme(self.db)
         self._build_ui()
 
@@ -400,7 +402,7 @@ class NoteEditor(Gtk.Box):
         self.print_btn.set_icon_name("printer-symbolic")
         self.print_btn.set_tooltip_text("Print Note (Ctrl+P)")
         self.print_btn.add_css_class("flat")
-        self.print_btn.connect("clicked", lambda _b: self._print_note(self.get_root()))
+        self.print_btn.set_action_name("editor.print")
 
         # 4. Format Toolbar Toggle button (controls toolbar pinning)
         self.format_btn = Gtk.ToggleButton()
@@ -644,6 +646,8 @@ class NoteEditor(Gtk.Box):
             ucm.connect("script-message-received::openNoteLink", self._on_js_open_note_link)
             ucm.register_script_message_handler("categorySelected")
             ucm.connect("script-message-received::categorySelected", self._on_js_category_selected)
+            ucm.register_script_message_handler("printNote")
+            ucm.connect("script-message-received::printNote", lambda _ucm, _msg: self._print_note(self.get_root()))
         except Exception as e:
             print("Message handler registration error:", e)
 
@@ -784,6 +788,16 @@ class NoteEditor(Gtk.Box):
 
         self.insert_action_group("editor", ag)
         self.print_btn.set_action_name("editor.print")
+
+        shortcut_ctrl = Gtk.ShortcutController.new()
+        shortcut_ctrl.set_scope(Gtk.ShortcutScope.LOCAL)
+        shortcut_ctrl.add_shortcut(
+            Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string("<Control>p"),
+                Gtk.NamedAction.new("editor.print")
+            )
+        )
+        self.add_controller(shortcut_ctrl)
 
         app = window.get_application()
         if app:
@@ -1183,12 +1197,14 @@ class NoteEditor(Gtk.Box):
         if self._toolbar_reveal_timeout:
             GLib.source_remove(self._toolbar_reveal_timeout)
             self._toolbar_reveal_timeout = None
+        if getattr(self, "_current_printer", None) is not None:
+            self._current_printer = None
         if hasattr(self, "webview") and self.webview:
             try:
                 ucm = self.webview.get_user_content_manager()
                 for handler in [
                     "contentChanged", "statsChanged", "pickImage",
-                    "uploadImage", "tagClicked", "openNoteLink", "categorySelected"
+                    "uploadImage", "tagClicked", "openNoteLink", "categorySelected", "printNote"
                 ]:
                     try:
                         ucm.unregister_script_message_handler(handler)
@@ -1317,15 +1333,22 @@ class NoteEditor(Gtk.Box):
             export_note_dialog(window, self.current_note, fmt, db=self.db)
 
     def _print_note(self, window: Optional[Gtk.Window] = None):
-        if self.current_note:
-            self.flush_save()
-            parent = window if isinstance(window, Gtk.Window) else self.get_root()
-            if not isinstance(parent, Gtk.Window):
-                parent = None
-            printer = Printer(self.current_note, db=self.db, parent_window=parent)
-            self._current_printer = printer
-            printer.connect("finished", lambda _p: setattr(self, "_current_printer", None))
+        if not self.current_note:
+            return
+        if getattr(self, "_current_printer", None) is not None:
+            return
+        self.flush_save()
+        parent = window if isinstance(window, Gtk.Window) else self.get_root()
+        if not isinstance(parent, Gtk.Window):
+            parent = None
+        printer = Printer(self.current_note, db=self.db, parent_window=parent)
+        self._current_printer = printer
+        printer.connect("finished", lambda _p: setattr(self, "_current_printer", None))
+        try:
             printer.print()
+        except Exception as e:
+            print("Failed to start printer:", e)
+            self._current_printer = None
 
     def grab_focus(self) -> bool:
         if hasattr(self, "webview") and self.webview:

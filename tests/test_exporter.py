@@ -152,6 +152,62 @@ class TestExporter(unittest.TestCase):
         self.assertTrue(hasattr(editor, "print_btn"))
         self.assertEqual(editor.print_btn.get_icon_name(), "printer-symbolic")
         self.assertIn("Print", editor.print_btn.get_tooltip_text())
+        self.assertEqual(editor.print_btn.get_action_name(), "editor.print")
+
+    def test_editor_print_concurrent_prevention(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Print Test", content_markdown="Some content")
+        editor.load_note(note)
+        # Mock active printer
+        editor._current_printer = "dummy_printer"
+        # Calling _print_note should return early and not replace _current_printer
+        editor._print_note()
+        self.assertEqual(editor._current_printer, "dummy_printer")
+
+    def test_printer_finished_emitted_once(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+        note = Note(
+            id="n-printer2",
+            title="Meeting Notes 2",
+            content_html="<h1>Notes</h1>",
+            content_markdown="# Notes",
+        )
+        printer = Printer(note, db=self.db)
+        emitted_count = 0
+        def on_finished(p):
+            nonlocal emitted_count
+            emitted_count += 1
+        printer.connect("finished", on_finished)
+        printer._on_finished()
+        printer._on_finished()
+        self.assertEqual(emitted_count, 1)
+
+    def test_editor_html_has_ctrl_p_shortcut(self):
+        from stilonotes.const import get_assets_path
+        html_path = get_assets_path() / "editor" / "editor.html"
+        self.assertTrue(html_path.exists())
+        content = html_path.read_text(encoding="utf-8")
+        self.assertIn("printNote", content)
+        self.assertIn("(e.key === 'p' || e.key === 'P')", content)
+
+    def test_window_has_print_action(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+        from stilonotes.window import StiloWindow
+        from stilonotes.application import StiloApplication
+        app = StiloApplication()
+        win = StiloWindow(application=app, db=self.db)
+        ag = win.get_action_group("win")
+        self.assertIsNotNone(ag)
+        self.assertTrue(ag.has_action("print"))
+        win.destroy()
 
 
 if __name__ == "__main__":

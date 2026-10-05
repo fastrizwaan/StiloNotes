@@ -80,3 +80,4 @@ class Category:
     color: str = ""
     count: int = 0
     is_system: bool = False
+    sort_order: int = 0

@@ -26,7 +26,7 @@ class ConfigManager:
     def get_default(cls, db=None) -> "ConfigManager":
         if cls._instance is None:
             cls._instance = ConfigManager(db)
-        elif db and cls._instance.db is None:
+        elif db is not None:
             cls._instance.db = db
         return cls._instance
 

@@ -342,7 +342,7 @@ class CategoryHeaderBar(Adw.Bin):
             self.list_store.clear()
             seen = set()
             clean_cats = []
-            for cat in sorted(categories or [], key=lambda s: s.lower()):
+            for cat in (categories or []):
                 if not cat:
                     continue
                 clean = cat.strip()

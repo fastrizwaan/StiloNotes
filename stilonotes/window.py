@@ -20,8 +20,9 @@ from stilonotes.const import APP_ID, IS_DEVEL
 class StiloWindow(Adw.ApplicationWindow):
     __gtype_name__ = "StiloWindow"
 
-    def __init__(self, app: Adw.Application, db: NoteDatabase):
-        super().__init__(application=app)
+    def __init__(self, app: Optional[Adw.Application] = None, db: Optional[NoteDatabase] = None, application: Optional[Adw.Application] = None, **kwargs):
+        effective_app = application if application is not None else app
+        super().__init__(application=effective_app, **kwargs)
         self.db = db
         self.config_manager = ConfigManager.get_default(db)
         self._pending_sidebar_width = None
@@ -250,7 +251,29 @@ class StiloWindow(Adw.ApplicationWindow):
         action_group.add_action(act_view_mode)
         self.get_application().set_accels_for_action("win.toggle-view-mode", ["<Control>g"])
 
+        # Print Note
+        act_print = Gio.SimpleAction.new("print", None)
+        act_print.connect("activate", lambda _a, _p: self._on_print())
+        action_group.add_action(act_print)
+        self.get_application().set_accels_for_action("win.print", ["<Control>p"])
+
         self.insert_action_group("win", action_group)
+
+    def insert_action_group(self, name: str, group: Optional[Gio.ActionGroup]):
+        if not hasattr(self, "_action_groups"):
+            self._action_groups = {}
+        if group is not None:
+            self._action_groups[name] = group
+        else:
+            self._action_groups.pop(name, None)
+        super().insert_action_group(name, group)
+
+    def get_action_group(self, name: str) -> Optional[Gio.ActionGroup]:
+        return getattr(self, "_action_groups", {}).get(name)
+
+    def _on_print(self):
+        if hasattr(self, "editor") and self.editor and self.editor.current_note:
+            self.editor._print_note(self)
 
     def _setup_theme(self):
         style_manager = Adw.StyleManager.get_default()

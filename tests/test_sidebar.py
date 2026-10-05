@@ -5,7 +5,7 @@ import unittest
 from stilonotes.database import NoteDatabase
 from stilonotes.config_manager import ConfigManager
 from stilonotes.models import Category
-from stilonotes.sidebar import _build_category_tree
+from stilonotes.sidebar import Sidebar, _build_category_tree
 
 
 class TestSidebarTreeAndCollapse(unittest.TestCase):
@@ -19,10 +19,10 @@ class TestSidebarTreeAndCollapse(unittest.TestCase):
     def test_build_category_tree_flat(self):
         cats = [Category(id="1", name="Work"), Category(id="2", name="Personal")]
         tree = _build_category_tree(cats)
-        # Should be sorted: Personal, Work
+        # Preserves user-defined category order
         self.assertEqual(len(tree), 2)
-        self.assertEqual(tree[0], ("Personal", 0, "Personal", False))
-        self.assertEqual(tree[1], ("Work", 0, "Work", False))
+        self.assertEqual(tree[0], ("Work", 0, "Work", False))
+        self.assertEqual(tree[1], ("Personal", 0, "Personal", False))
 
     def test_build_category_tree_nested(self):
         cats = [
@@ -553,6 +553,42 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
 
         self.assertIn("my_apps", win.sidebar._tag_rows)
         win.destroy()
+
+    def test_database_reorder_categories(self):
+        self.db.create_category("Alpha")
+        self.db.create_category("Beta")
+        self.db.create_category("Gamma")
+        cats = [c.name for c in self.db.get_categories() if c.name in ("Alpha", "Beta", "Gamma")]
+        self.assertEqual(cats, ["Alpha", "Beta", "Gamma"])
+
+        # Reorder Gamma, Alpha, Beta
+        all_cats = [c.name for c in self.db.get_categories()]
+        others = [c for c in all_cats if c not in ("Alpha", "Beta", "Gamma")]
+        self.db.reorder_categories(others + ["Gamma", "Alpha", "Beta"])
+        reordered = [c.name for c in self.db.get_categories() if c.name in ("Alpha", "Beta", "Gamma")]
+        self.assertEqual(reordered, ["Gamma", "Alpha", "Beta"])
+
+    def test_sidebar_on_reorder_category(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+        sidebar = Sidebar(self.db)
+        self.db.create_category("CatA")
+        self.db.create_category("CatB")
+        self.db.create_category("CatC")
+        sidebar.refresh()
+
+        # Drag CatC before CatA
+        res = sidebar._on_reorder_category("CatC", "CatA", after=False)
+        self.assertTrue(res)
+        cats = [c.name for c in self.db.get_categories() if c.name in ("CatA", "CatB", "CatC")]
+        self.assertEqual(cats, ["CatC", "CatA", "CatB"])
+
+        # Drag CatC after CatB
+        res = sidebar._on_reorder_category("CatC", "CatB", after=True)
+        self.assertTrue(res)
+        cats = [c.name for c in self.db.get_categories() if c.name in ("CatA", "CatB", "CatC")]
+        self.assertEqual(cats, ["CatA", "CatB", "CatC"])
 
 
 if __name__ == "__main__":

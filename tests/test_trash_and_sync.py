@@ -110,7 +110,7 @@ class TestTrashAndSync(unittest.TestCase):
         nl.set_notes([], is_search=False, active_filter_type="all")
         self.assertEqual(nl.empty_page.get_title(), "Note List Empty")
         self.assertEqual(nl.empty_page.get_description(), "Capture your ideas, checklists, and notes in markdown.")
-        self.assertEqual(nl.empty_page.get_icon_name(), "text-justify-fill-symbolic")
+        self.assertEqual(nl.empty_page.get_icon_name(), "text-editor-symbolic")
         self.assertTrue(nl.empty_new_btn.get_visible())
 
         # Trash empty state
