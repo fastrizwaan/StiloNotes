@@ -327,7 +327,19 @@ def setup_print_preview_settings():
         settings = Gtk.Settings.get_for_display(display)
         if not settings:
             return
-        if shutil.which("papers-previewer"):
+        # Prioritize xdg-open / gio open which work reliably across Flatpak sandboxes
+        # (via the XDG OpenURI desktop portal) and on the host system without crashing.
+        if shutil.which("xdg-open"):
+            settings.set_property(
+                "gtk-print-preview-command",
+                "xdg-open %f",
+            )
+        elif shutil.which("gio"):
+            settings.set_property(
+                "gtk-print-preview-command",
+                "gio open %f",
+            )
+        elif shutil.which("papers-previewer"):
             settings.set_property(
                 "gtk-print-preview-command",
                 "papers-previewer --unlink-tempfile --print-settings %s %f",

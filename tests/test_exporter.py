@@ -142,6 +142,14 @@ class TestExporter(unittest.TestCase):
         # Should execute safely even without display
         setup_print_preview_settings()
         self.assertEqual(os.environ.get("WEBKIT_USE_PORTAL"), "1")
+        from gi.repository import Gdk, Gtk
+        display = Gdk.Display.get_default()
+        if display is not None:
+            settings = Gtk.Settings.get_for_display(display)
+            if settings:
+                cmd = settings.get_property("gtk-print-preview-command")
+                self.assertIsNotNone(cmd)
+                self.assertIn("%f", cmd)
 
     def test_editor_print_button_and_action(self):
         from gi.repository import Gdk

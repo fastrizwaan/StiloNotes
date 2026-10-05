@@ -706,7 +706,7 @@ class NoteListRow(BaseNoteCard):
         self.title_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.title_lbl.set_lines(1)
         self.title_lbl.set_single_line_mode(True)
-        self.title_lbl.set_max_width_chars(45)
+        self.title_lbl.set_max_width_chars(25)
         title_box.append(self.title_lbl)
 
         if self.note.is_pinned:
@@ -738,7 +738,7 @@ class NoteListRow(BaseNoteCard):
         self.excerpt_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.excerpt_lbl.set_lines(1)
         self.excerpt_lbl.set_single_line_mode(True)
-        self.excerpt_lbl.set_max_width_chars(65)
+        self.excerpt_lbl.set_max_width_chars(20)
         subtitle_box.append(self.excerpt_lbl)
 
         cat = (self.note.category or "").strip()

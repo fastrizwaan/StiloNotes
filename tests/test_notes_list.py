@@ -101,8 +101,23 @@ class TestNotesListAndCards(unittest.TestCase):
 
         list_row = NoteListRow(note, db=self.db)
         self.assertEqual(list_row.get_size_request(), (300, 68))
-        self.assertEqual(list_row.title_lbl.get_max_width_chars(), 45)
-        self.assertEqual(list_row.excerpt_lbl.get_max_width_chars(), 65)
+        self.assertEqual(list_row.title_lbl.get_max_width_chars(), 25)
+        self.assertEqual(list_row.excerpt_lbl.get_max_width_chars(), 20)
+
+    def test_long_text_note_list_row_preserves_compact_width_constraints(self):
+        """Ensure long text titles and excerpts in list view cards stay capped at 25 and 20 chars to guarantee 3 columns fit."""
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        long_note = Note(
+            title="/var/home/rizvan/.var/app/org.popcorntime.PopcornTime): total 12K drwxr-xr-x. 8 rizvan",
+            excerpt="/var/home/rizvan/.var/app/org.popcorntime.PopcornTime): total 12K drwxr-xr-x. 8 rizvan rizvan 4.0K Jun 7 10:23 cache drwxr-xr-x...",
+            category="Science/Class 7th"
+        )
+        row = NoteListRow(long_note, db=self.db)
+        self.assertEqual(row.title_lbl.get_max_width_chars(), 25)
+        self.assertEqual(row.excerpt_lbl.get_max_width_chars(), 20)
 
     def test_selection_mode_and_checking(self):
         from gi.repository import Gdk
