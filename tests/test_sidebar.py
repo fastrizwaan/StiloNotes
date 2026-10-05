@@ -497,8 +497,10 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
+        from gi.repository import Adw
         from stilonotes.window import StiloWindow
-        win = StiloWindow()
+        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestSidebar")
+        win = StiloWindow(app, self.db)
 
         # Should accept 3 args (Gtk signal handler style: self, sender, filter_type, category_name)
         win.on_sidebar_filter_changed(win.sidebar, "category", "Personal")
@@ -536,8 +538,10 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
+        from gi.repository import Adw
         from stilonotes.window import StiloWindow
-        win = StiloWindow()
+        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestSidebar")
+        win = StiloWindow(app, self.db)
         note = win.db.create_note(title="Task Note", tags=["task"])
         win.sidebar.refresh()
         self.assertIn("task", win.sidebar._tag_rows)

@@ -6,7 +6,9 @@ import sys
 import threading
 import time
 import tempfile
+import urllib.parse
 from pathlib import Path
+from typing import Optional
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -42,6 +44,8 @@ class StiloApplication(Adw.Application):
         self._setup_icons()
         self._load_css()
         self._setup_actions()
+        from stilonotes.exporter import setup_print_preview_settings
+        setup_print_preview_settings()
 
     def _setup_icons(self):
         display = Gdk.Display.get_default()
@@ -1046,6 +1050,13 @@ class StiloApplication(Adw.Application):
                 <property name="visible">True</property>
                 <property name="accelerator">&lt;Primary&gt;o</property>
                 <property name="title">Open note from file</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;p</property>
+                <property name="title">Print note</property>
               </object>
             </child>
             <child>

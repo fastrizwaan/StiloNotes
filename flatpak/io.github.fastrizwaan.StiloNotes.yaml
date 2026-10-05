@@ -20,6 +20,67 @@ cleanup:
   - "/share/man"
 
 modules:
+  - name: pycparser
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app pycparser*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl
+        sha256: b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+        x-checker-data:
+          type: pypi
+          name: pycparser
+          packagetype: bdist_wheel
+
+  - name: cffi
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app cffi*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/e9/02/4e7d553a7ac4b4238b38b3c1b80d486e9d4436f8d2acbf87a0997fe3f402/cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: b0431303acaea1089ad4b3e9ce4e6518193def1118d4073ca848635ee4ea2e96
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: pypi
+          name: cffi
+          packagetype: bdist_wheel
+      - type: file
+        url: https://files.pythonhosted.org/packages/67/b8/b42132ca113dc567d37684437b46ca1dafc885902b02a110a02d5b511857/cffi-2.1.1-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
+        sha256: 58acb8ab8e295e6c5ea12f888cbb13cf21511ef2a3303a23f4325c29d17fe5c1
+        only-arches:
+          - aarch64
+        x-checker-data:
+          type: pypi
+          name: cffi
+          packagetype: bdist_wheel
+
+  - name: cryptography
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app cryptography*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/d3/69/2c833a049475e0a3444e94c7d0aca0aa51d166374a449b09e92ac98138de/cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl
+        sha256: 9dab55f57c74c3cad24c323bacbbd04be4705ba6eb0d92e920b1fc4837ed5079
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: pypi
+          name: cryptography
+          packagetype: bdist_wheel
+      - type: file
+        url: https://files.pythonhosted.org/packages/71/37/6202e488cc1eb625ea110c292c6bda92823176e023f427d8d5660ce8d632/cryptography-50.0.2-cp311-abi3-manylinux_2_34_aarch64.whl
+        sha256: 87e9ce85beb6b328ba370cc6e6aea483c92617b4c95b1d33a49297eb662bfb04
+        only-arches:
+          - aarch64
+        x-checker-data:
+          type: pypi
+          name: cryptography
+          packagetype: bdist_wheel
+
   - name: StiloNotes
     buildsystem: meson
     sources:

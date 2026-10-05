@@ -276,11 +276,25 @@ class CategoryHeaderBar(Adw.Bin):
         self.suggestions_popover.popdown()
         self._on_apply()
 
+    def _can_show_suggestions(self) -> bool:
+        """Popovers need a real toplevel and a mapped entry.
+
+        Calling popup() without one triggers Gdk criticals and can crash
+        (e.g. when the category bar was never inserted into a window, or when
+        set_category() runs while the bar is hidden behind another stack page).
+        """
+        return self.get_root() is not None and self.entry.get_mapped()
+
+    def _popup_suggestions(self):
+        """Show the suggestions popover only when it can be safely displayed."""
+        if self._can_show_suggestions():
+            self.suggestions_popover.popup()
+
     def _on_entry_clicked(self):
         show_all = self._is_text_fully_selected() or not self.entry.get_text()
         self._populate_suggestions(filter_text=self.entry.get_text(), show_all=show_all)
         self._update_popover_width()
-        self.suggestions_popover.popup()
+        self._popup_suggestions()
 
     def _on_icon_released(self, _entry, icon_pos):
         if icon_pos == Gtk.EntryIconPosition.SECONDARY:
@@ -288,13 +302,13 @@ class CategoryHeaderBar(Adw.Bin):
             self.entry.grab_focus()
             self._populate_suggestions(show_all=True)
             self._update_popover_width()
-            self.suggestions_popover.popup()
+            self._popup_suggestions()
         elif icon_pos == Gtk.EntryIconPosition.PRIMARY:
             self.entry.grab_focus()
             self.entry.select_region(0, -1)
             self._populate_suggestions(show_all=True)
             self._update_popover_width()
-            self.suggestions_popover.popup()
+            self._popup_suggestions()
 
     def _on_text_changed(self, _entry, _pspec):
         self._update_clear_icon()
@@ -307,9 +321,9 @@ class CategoryHeaderBar(Adw.Bin):
             self._populate_suggestions(show_all=True)
         else:
             self._populate_suggestions(filter_text=text, show_all=False)
-        if self.get_realized() and self.entry.get_realized():
+        if self._can_show_suggestions():
             self._update_popover_width()
-            self.suggestions_popover.popup()
+            self._popup_suggestions()
 
     def _update_clear_icon(self):
         text = self.entry.get_text()
@@ -365,13 +379,17 @@ class CategoryHeaderBar(Adw.Bin):
         self.entry.select_region(0, -1)
         GLib.idle_add(self._show_all_suggestions)
 
-    def _show_all_suggestions(self):
+    def _show_all_suggestions(self, _retried: bool = False):
         """Display the suggestions popover with all categories and keep text selected."""
-        if not self.get_realized() or not self.entry.get_realized():
+        if not self._can_show_suggestions():
+            # A freshly shown header page may not be mapped yet; retry once on the
+            # next idle cycle, but never popup without a toplevel.
+            if not _retried and self.get_root() is not None:
+                GLib.idle_add(self._show_all_suggestions, True)
             return False
         self._populate_suggestions(show_all=True)
         self._update_popover_width()
-        self.suggestions_popover.popup()
+        self._popup_suggestions()
         self.entry.grab_focus()
         self.entry.select_region(0, -1)
         return False
@@ -389,7 +407,7 @@ class CategoryHeaderBar(Adw.Bin):
             if not self.suggestions_popover.get_visible():
                 self._populate_suggestions(show_all=self._is_text_fully_selected())
                 self._update_popover_width()
-                self.suggestions_popover.popup()
+                self._popup_suggestions()
             first = self.categories_listbox.get_first_child()
             if first:
                 self.categories_listbox.select_row(first)

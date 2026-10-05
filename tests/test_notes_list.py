@@ -207,7 +207,9 @@ class TestNotesListAndCards(unittest.TestCase):
         )
         card = NoteGridCard(note_img, db=self.db)
         self.assertIsNotNone(card.thumb)
-        self.assertEqual(card.body_lbl.get_lines(), 2)
+        # Image cards reserve their space for the thumbnail, so the body
+        # excerpt is capped to a single caption line (v0.7 card sizing).
+        self.assertEqual(card.body_lbl.get_lines(), 1)
 
     def test_multiple_images_primary_only(self):
         """Verify that when a note has multiple images, only the top-most primary image is shown."""
@@ -512,6 +514,17 @@ class TestNotesListAndCards(unittest.TestCase):
         nl_fav.set_notes([pinned_note], active_filter_type="favorites")
         self.assertTrue(nl_fav.fav_section.get_visible())
 
+        # 3. Under "todos" and "lists" filters, fav_section is NOT visible; notes are in date sections
+        nl_todo = NotesList(self.db, view_mode="list")
+        nl_todo.set_notes(notes, active_filter_type="todos")
+        self.assertFalse(nl_todo.fav_section.get_visible())
+        self.assertTrue(nl_todo.today_section.get_visible())
+
+        nl_list = NotesList(self.db, view_mode="list")
+        nl_list.set_notes(notes, active_filter_type="lists")
+        self.assertFalse(nl_list.fav_section.get_visible())
+        self.assertTrue(nl_list.today_section.get_visible())
+
     def test_locked_note_cards_masking(self):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:
@@ -706,6 +719,29 @@ class TestNotesListAndCards(unittest.TestCase):
         db_note = self.db.get_note(note.id)
         self.assertFalse(db_note.is_locked)
 
+    def test_editor_menu_has_print_action(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Printable Doc", content_markdown="Some text to print")
+        editor.load_note(note)
+
+        menu = editor._create_more_menu()
+        found_print = False
+        for s_idx in range(menu.get_n_items()):
+            section = menu.get_item_link(s_idx, "section")
+            if section:
+                for i in range(section.get_n_items()):
+                    action = section.get_item_attribute_value(i, "action")
+                    if action and action.get_string() == "editor.print":
+                        found_print = True
+                        break
+        self.assertTrue(found_print, "editor.print action should be present in editor menu")
+
 
 if __name__ == "__main__":
     unittest.main()
+

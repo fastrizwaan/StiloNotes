@@ -5,11 +5,15 @@ import base64
 import unittest
 from stilonotes.database import NoteDatabase
 from stilonotes.models import Note
+import os
 from stilonotes.exporter import (
     bundle_attachments_in_html,
     bundle_attachments_in_markdown,
     resolve_attachment_to_data_uri,
     get_plain_text,
+    render_printable_html,
+    setup_print_preview_settings,
+    Printer,
 )
 
 class TestExporter(unittest.TestCase):
@@ -88,5 +92,68 @@ class TestExporter(unittest.TestCase):
         self.assertNotIn("#", plain)
         self.assertNotIn("**", plain)
 
+    def test_render_printable_html(self):
+        png_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        att_id = self.db.save_attachment(
+            note_id="n-print",
+            filename="diagram.png",
+            mime_type="image/png",
+            data=png_data,
+        )
+
+        note = Note(
+            id="n-print",
+            title="Project Architecture",
+            content_html=(
+                '<h1>Project Architecture</h1>'
+                '<p contenteditable="true">Here is the architecture:</p>'
+                f'<img src="attachment://{att_id}">'
+                '<div class="table-handle" contenteditable="false"></div>'
+            ),
+            content_markdown="# Project Architecture\n\nHere is the architecture:",
+        )
+
+        html_out = render_printable_html(note, db=self.db)
+        self.assertIn("<!DOCTYPE html>", html_out)
+        self.assertIn("<title>Project Architecture</title>", html_out)
+        self.assertIn("@media print", html_out)
+        self.assertIn("@page", html_out)
+        self.assertIn("data:image/png;base64,", html_out)
+        self.assertNotIn("table-handle", html_out)
+        self.assertNotIn('contenteditable="true"', html_out)
+
+    def test_printer_instantiation(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+        note = Note(
+            id="n-printer",
+            title="Meeting Notes",
+            content_html="<h1>Meeting Notes</h1><p>Action items here.</p>",
+            content_markdown="# Meeting Notes\n\nAction items here.",
+        )
+        printer = Printer(note, db=self.db)
+        self.assertIsNotNone(printer.web_view)
+        self.assertIn("Meeting Notes", printer.html)
+        self.assertEqual(printer.note.id, "n-printer")
+
+
+    def test_setup_print_preview_settings(self):
+        # Should execute safely even without display
+        setup_print_preview_settings()
+        self.assertEqual(os.environ.get("WEBKIT_USE_PORTAL"), "1")
+
+    def test_editor_print_button_and_action(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        self.assertTrue(hasattr(editor, "print_btn"))
+        self.assertEqual(editor.print_btn.get_icon_name(), "printer-symbolic")
+        self.assertIn("Print", editor.print_btn.get_tooltip_text())
+
+
 if __name__ == "__main__":
     unittest.main()
+

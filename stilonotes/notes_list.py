@@ -561,17 +561,10 @@ class NoteGridCard(BaseNoteCard):
         if has_media and preview_text == "Type text here...":
             preview_text = ""
 
-        # Suppress duplicate table excerpt when table preview banner is shown
-        if self.table_preview and table_data and preview_text:
-            all_table_words = set(
-                word.lower()
-                for row in table_data
-                for cell in row
-                for word in re.findall(r'\w+', cell)
-            )
-            preview_words = [w.lower() for w in re.findall(r'\w+', preview_text)]
-            if preview_words and all(w in all_table_words for w in preview_words):
-                preview_text = ""
+        # Suppress the body excerpt when a table preview banner is shown, so the
+        # banner is the only thing displayed for a table-only card.
+        if self.table_preview and preview_text:
+            preview_text = ""
 
         cat = (self.note.category or "").strip()
         has_category = bool(cat and cat.lower() != "uncategorized" and self.show_category_pill)
@@ -588,7 +581,7 @@ class NoteGridCard(BaseNoteCard):
         self.body_lbl.set_xalign(0.0)
         self.body_lbl.set_yalign(0.0)
         self.body_lbl.set_vexpand(True)
-        self.body_lbl.set_max_width_chars(30)
+        self.body_lbl.set_max_width_chars(42)
         self.body_lbl.set_visible(bool(preview_text))
         self.card_box.append(self.body_lbl)
 
@@ -713,7 +706,7 @@ class NoteListRow(BaseNoteCard):
         self.title_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.title_lbl.set_lines(1)
         self.title_lbl.set_single_line_mode(True)
-        self.title_lbl.set_max_width_chars(25)
+        self.title_lbl.set_max_width_chars(45)
         title_box.append(self.title_lbl)
 
         if self.note.is_pinned:
@@ -745,7 +738,7 @@ class NoteListRow(BaseNoteCard):
         self.excerpt_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.excerpt_lbl.set_lines(1)
         self.excerpt_lbl.set_single_line_mode(True)
-        self.excerpt_lbl.set_max_width_chars(20)
+        self.excerpt_lbl.set_max_width_chars(65)
         subtitle_box.append(self.excerpt_lbl)
 
         cat = (self.note.category or "").strip()
@@ -1072,8 +1065,8 @@ class NotesList(Gtk.Box):
         week_start = (now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())).timestamp()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
 
-        # Favorites bucket: in All Notes, Recent, and Private views, do not show a separate Favorites section; sort all notes by date
-        if active_filter_type in ("all", "recent", "recents", "private", "locked", None, ""):
+        # Favorites bucket: in All Notes, Recent, Private, Todos, and Lists views, do not show a separate Favorites section; sort all notes by date
+        if active_filter_type in ("all", "recent", "recents", "private", "locked", "todo", "todos", "list", "lists", None, ""):
             fav_notes = []
             date_notes = notes
         else:

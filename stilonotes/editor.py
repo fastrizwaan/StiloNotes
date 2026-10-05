@@ -21,7 +21,7 @@ from stilonotes.font_size_selector import FontSizeSelector
 from stilonotes.models import Note
 from stilonotes.editor_html import get_editor_html_page
 from stilonotes.markdown_utils import compute_note_stats, format_relative_date, html_to_markdown, markdown_to_html
-from stilonotes.exporter import export_note_dialog
+from stilonotes.exporter import export_note_dialog, Printer
 from stilonotes.const import get_assets_path
 
 _GLOBAL_DB = None
@@ -395,7 +395,14 @@ class NoteEditor(Gtk.Box):
         self.info_btn.set_tooltip_text("Note Statistics")
         self.info_btn.set_popover(self.stats_popover)
 
-        # 3. Format Toolbar Toggle button (controls toolbar pinning)
+        # 3. Print button
+        self.print_btn = Gtk.Button()
+        self.print_btn.set_icon_name("printer-symbolic")
+        self.print_btn.set_tooltip_text("Print Note (Ctrl+P)")
+        self.print_btn.add_css_class("flat")
+        self.print_btn.connect("clicked", lambda _b: self._print_note(self.get_root()))
+
+        # 4. Format Toolbar Toggle button (controls toolbar pinning)
         self.format_btn = Gtk.ToggleButton()
         self.format_btn.set_icon_name("format-text-bold-symbolic")
         self.format_btn.set_tooltip_text("Toggle Formatting Bar (Ctrl+Shift+F)")
@@ -404,14 +411,14 @@ class NoteEditor(Gtk.Box):
         self.format_btn.set_active(self._is_toolbar_pinned)
         self.format_btn.connect("toggled", self._on_format_btn_toggled)
 
-        # 4. Star / Favorites toggle button
+        # 5. Star / Favorites toggle button
         self.star_btn = Gtk.Button()
         self.star_btn.set_icon_name("non-starred-symbolic")
         self.star_btn.set_tooltip_text("Pin to Favorites")
         self.star_btn.add_css_class("flat")
         self.star_btn.connect("clicked", lambda _b: self._on_toggle_pin())
 
-        # 5. Lock / Private toggle indicator button
+        # 6. Lock / Private toggle indicator button
         self.lock_btn = Gtk.Button()
         self.lock_btn.set_icon_name("channel-secure-symbolic")
         self.lock_btn.set_tooltip_text("Lock Private Notes")
@@ -422,6 +429,7 @@ class NoteEditor(Gtk.Box):
         # In GTK HeaderBar pack_end, the first widget packed is placed at the far right.
         self.main_header_bar.pack_end(self.more_btn)
         self.main_header_bar.pack_end(self.info_btn)
+        self.main_header_bar.pack_end(self.print_btn)
         self.main_header_bar.pack_end(self.format_btn)
         self.main_header_bar.pack_end(self.star_btn)
         self.main_header_bar.pack_end(self.lock_btn)
@@ -730,6 +738,7 @@ class NoteEditor(Gtk.Box):
 
         s3 = Gio.Menu()
         s3.append("Open…",                  "win.open-file")
+        s3.append("Print…",                 "editor.print")
         s3.append("Export as Markdown…",    "editor.export-md")
         s3.append("Export as HTML…",        "editor.export-html")
         s3.append("Export as Plain Text…",  "editor.export-txt")
@@ -766,6 +775,7 @@ class NoteEditor(Gtk.Box):
         act("duplicate",     self._on_duplicate)
         act("toggle-theme",  lambda: self.emit("toggle-app-theme"))
         act("show-stats",    lambda: self.info_btn.popup())
+        act("print",         lambda: self._print_note(window))
         act("export-md",     lambda: self._export_note("md",   window))
         act("export-html",   lambda: self._export_note("html", window))
         act("export-txt",    lambda: self._export_note("txt",  window))
@@ -773,6 +783,7 @@ class NoteEditor(Gtk.Box):
         act("delete",        self._on_delete)
 
         self.insert_action_group("editor", ag)
+        self.print_btn.set_action_name("editor.print")
 
         app = window.get_application()
         if app:
@@ -785,6 +796,7 @@ class NoteEditor(Gtk.Box):
             app.set_accels_for_action("editor.reset-font-size", ["<Control>0"])
             app.set_accels_for_action("editor.toggle-sidebar", ["<Control>backslash", "F11"])
             app.set_accels_for_action("editor.toggle-format-toolbar", ["<Control><Shift>f"])
+            app.set_accels_for_action("editor.print", ["<Control>p"])
 
     # ── Category editing ──────────────────────────────────────────────────
 
@@ -1303,6 +1315,17 @@ class NoteEditor(Gtk.Box):
         if self.current_note:
             self.flush_save()
             export_note_dialog(window, self.current_note, fmt, db=self.db)
+
+    def _print_note(self, window: Optional[Gtk.Window] = None):
+        if self.current_note:
+            self.flush_save()
+            parent = window if isinstance(window, Gtk.Window) else self.get_root()
+            if not isinstance(parent, Gtk.Window):
+                parent = None
+            printer = Printer(self.current_note, db=self.db, parent_window=parent)
+            self._current_printer = printer
+            printer.connect("finished", lambda _p: setattr(self, "_current_printer", None))
+            printer.print()
 
     def grab_focus(self) -> bool:
         if hasattr(self, "webview") and self.webview:

@@ -22,6 +22,18 @@
     ],
     "modules": [
         {
+            "name": "python3-cryptography",
+            "buildsystem": "simple",
+            "build-options": {
+                "build-args": [
+                    "--share=network"
+                ]
+            },
+            "build-commands": [
+                "pip3 install --prefix=/app cryptography"
+            ]
+        },
+        {
             "name": "StiloNotes",
             "buildsystem": "meson",
             "sources": [

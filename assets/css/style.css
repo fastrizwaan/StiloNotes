@@ -424,6 +424,24 @@ menubutton.sidebar-action-btn:hover > button {
 .sidebar-section-header-row label.section-title {
   font-weight: normal;
   font-size: inherit;
+  color: inherit;
+}
+
+.sidebar-section-header-row image {
+  color: inherit;
+}
+
+/* Sidebar Tag Rows */
+.sidebar-tag-row {
+  border-radius: 6px;
+}
+
+.sidebar-tag-row label {
+  color: inherit;
+}
+
+.sidebar-tag-row image {
+  color: inherit;
 }
 
 /* Empty Trash Bar below HeaderBar */

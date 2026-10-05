@@ -17,6 +17,15 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 from gi.repository import GLib
 
+try:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    HAS_CRYPTOGRAPHY = True
+except ImportError:
+    HAS_CRYPTOGRAPHY = False
+
 from stilonotes.models import Note, Category
 from stilonotes.markdown_utils import (
     extract_title_and_excerpt,
@@ -290,7 +299,8 @@ Enjoy writing with Stilo Notes!
         """Fetch notes for list display without loading massive content fields into memory."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            # Scalability: Select only metadata needed for list rendering (no content blobs)
+            # Lightweight: select only metadata needed for list rendering (no content).
+            # Locked note bodies are decrypted lazily in get_note().
             query = """
             SELECT id, title, excerpt, category, tags, is_pinned, is_archived, is_trashed,
                    has_todo, is_locked, created_at, updated_at
@@ -342,14 +352,15 @@ Enjoy writing with Stilo Notes!
                 query += " AND (title LIKE ? OR excerpt LIKE ? OR content_markdown LIKE ?)"
                 params.extend([q, q, q])
 
-            # In All Notes, Private, and recent, sort strictly by updated_at descending; for others, pinned notes appear first
-            if filter_type in ("all", "recent", "recents", "private", "locked") or not filter_type:
+            # In All Notes, Private, Recent, Todos, and Lists, sort strictly by updated_at descending; for others, pinned notes appear first
+            if filter_type in ("all", "recent", "recents", "private", "locked", "todo", "todos", "list", "lists") or not filter_type:
                 query += " ORDER BY updated_at DESC"
             else:
                 query += " ORDER BY is_pinned DESC, updated_at DESC"
 
             cursor.execute(query, params)
-            return [Note.from_row(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            return [Note.from_row(row) for row in rows]
 
     def get_note(self, note_id: str) -> Optional[Note]:
         """Retrieve single note by ID with full content (Markdown as authoritative source)."""
@@ -361,6 +372,17 @@ Enjoy writing with Stilo Notes!
                 return None
 
             note = Note.from_row(row)
+            if note.is_locked and self.get_setting("private_note_password", ""):
+                # Decrypt the body before handing it to the editor. The decrypted
+                # plaintext is returned to the caller; it is never written back
+                # unless the note is saved or duplicated.
+                try:
+                    note.content_markdown = self._decrypt_blob(note.content_markdown, self.get_setting("private_note_password", ""))
+                    note.content_html = markdown_to_html(note.content_markdown)
+                except Exception:
+                    # Body not encrypted yet (created before a password was set);
+                    # treat as plaintext.
+                    pass
             # Ensure content_html is dynamically synchronized with canonical Markdown
             if note.content_markdown and not note.content_html:
                 note.content_html = markdown_to_html(note.content_markdown)
@@ -401,8 +423,27 @@ Enjoy writing with Stilo Notes!
                 else:
                     new_md = existing.content_markdown
 
+                new_locked = int(is_locked if is_locked is not None else getattr(existing, "is_locked", 0))
+
                 # Synchronize HTML from canonical markdown
                 new_html = content_html if content_html is not None else markdown_to_html(new_md)
+
+                # Encrypt the body of a locked note at rest when a master password
+                # is configured. content_markdown is the canonical field, so the
+                # encrypted blob is stored there; content_html is the rendered
+                # rendering of the decrypted plaintext and is stored as well.
+                private_password = self.get_setting("private_note_password", "")
+                if new_locked and private_password:
+                    try:
+                        salt = secrets.token_bytes(16)
+                        new_md = self._encrypt_blob(new_md, salt, private_password)
+                        new_html = new_md  # rendered body is not displayed; keep in sync
+                    except Exception:
+                        # Encryption failed (or body was already a valid ciphertext
+                        # and we could not re-derive it): leave the note plaintext
+                        # so it stays readable by the app. It will be encrypted on
+                        # the next save while locked, or once a password is set.
+                        pass
 
                 # Avoid redundant regex extraction when title/excerpt already supplied
                 if title is not None and title != "Untitled Note" and excerpt is not None:
@@ -435,7 +476,6 @@ Enjoy writing with Stilo Notes!
                 new_pinned = int(is_pinned if is_pinned is not None else existing.is_pinned)
                 new_archived = int(is_archived if is_archived is not None else existing.is_archived)
                 new_trashed = int(is_trashed if is_trashed is not None else existing.is_trashed)
-                new_locked = int(is_locked if is_locked is not None else getattr(existing, "is_locked", 0))
                 if has_todo or check_has_todo(new_md) or check_has_todo(new_html):
                     new_todo = 1
                 else:
@@ -479,7 +519,26 @@ Enjoy writing with Stilo Notes!
                 else:
                     new_md = ""
 
+                new_locked = int(is_locked or 0)
+
                 new_html = content_html or markdown_to_html(new_md)
+
+                # Encrypt the body of a locked note at rest when a master password
+                # is configured. content_markdown is the canonical field, so the
+                # encrypted blob is stored there; content_html is the rendered
+                # rendering of the decrypted plaintext and is stored as well.
+                private_password = self.get_setting("private_note_password", "")
+                if new_locked and private_password:
+                    try:
+                        salt = secrets.token_bytes(16)
+                        new_md = self._encrypt_blob(new_md, salt, private_password)
+                        new_html = new_md  # rendered body is not displayed; keep in sync
+                    except Exception:
+                        # Encryption failed (or body was already a valid ciphertext
+                        # and we could not re-derive it): leave the note plaintext
+                        # so it stays readable by the app. It will be encrypted on
+                        # the next save while locked, or once a password is set.
+                        pass
 
                 if title and title != "Untitled Note" and excerpt is not None:
                     new_title = title
@@ -506,7 +565,6 @@ Enjoy writing with Stilo Notes!
                 new_pinned = int(is_pinned or 0)
                 new_archived = int(is_archived or 0)
                 new_trashed = int(is_trashed or 0)
-                new_locked = int(is_locked or 0)
                 if has_todo or check_has_todo(new_md) or check_has_todo(new_html):
                     new_todo = 1
                 else:
@@ -757,7 +815,12 @@ Enjoy writing with Stilo Notes!
             self._notify_change("note-lock-toggled", {"note_id": note_id, "is_locked": bool(is_locked)}, sender=sender)
 
     def set_private_password(self, password: str):
-        """Set or change the master password for private/locked notes (salted PBKDF2 hash)."""
+        """Set or change the master password for private/locked notes.
+
+        When a master password is set, every locked note's body is re-encrypted
+        with a key derived from the new password, so a later password change
+        revokes access to all previously locked notes.
+        """
         clean = password.strip()
         if not clean:
             return
@@ -771,10 +834,74 @@ Enjoy writing with Stilo Notes!
         with self.get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password_salt", salt))
             conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password_hash", pwd_hash))
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password", clean))
+            conn.commit()
+        self._re_encrypt_locked_notes(clean)
+
+    def _re_encrypt_locked_notes(self, password: str):
+        """Re-encrypt the bodies of all locked notes under a new master password."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, content_markdown FROM notes WHERE is_locked = 1")
+            for note_id, encrypted in cursor.fetchall():
+                try:
+                    plaintext = self._decrypt_blob(encrypted, password)
+                    new_blob = self._encrypt_blob(plaintext, secrets.token_bytes(16), password)
+                    cursor.execute(
+                        "UPDATE notes SET content_markdown = ?, content_html = ? WHERE id = ?",
+                        (new_blob, new_blob, note_id),
+                    )
+                except Exception:
+                    # Non-encrypted / legacy body: leave as-is; it will be encrypted
+                    # on the next save of a locked note (or the note will stay
+                    # plaintext until a password is set).
+                    pass
             conn.commit()
 
+    @staticmethod
+    def _derive_key(password: str, salt: bytes) -> bytes:
+        """Derive an AES-256 key from the master password and a per-note salt."""
+        if not HAS_CRYPTOGRAPHY:
+            raise RuntimeError("The 'cryptography' Python module is required for note encryption.")
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend(),
+        )
+        return kdf.derive(password.encode("utf-8"))
+
+    @staticmethod
+    def _encrypt_blob(plaintext: str, salt: bytes, password: str) -> str:
+        """AES-256-GCM encrypt a note body. Returns base64 'salt||nonce||ct||tag'."""
+        key = NoteDatabase._derive_key(password, salt)
+        nonce = secrets.token_bytes(12)
+        cipher = Cipher(algorithms.AES(key), modes.GCM(nonce), backend=default_backend())
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(plaintext.encode("utf-8")) + encryptor.finalize()
+        return base64.b64encode(b"".join([salt, nonce, encryptor.tag, ciphertext])).decode("ascii")
+
+    @staticmethod
+    def _decrypt_blob(ciphertext_blob: str, password: str) -> str:
+        """Decrypt a note body produced by _encrypt_blob."""
+        raw = base64.b64decode(ciphertext_blob)
+        salt, nonce, tag, ct = raw[:16], raw[16:28], raw[28:44], raw[44:]
+        key = NoteDatabase._derive_key(password, salt)
+        cipher = Cipher(algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend())
+        decryptor = cipher.decryptor()
+        try:
+            pt = decryptor.update(ct) + decryptor.finalize()
+        except Exception:
+            raise ValueError("Decryption failed: incorrect password or corrupted body")
+        return pt.decode("utf-8")
+
+    def has_private_password(self) -> bool:
+        """Check if a private notes master password has been configured."""
+        return bool(self.get_setting("private_note_password_hash", ""))
+
     def verify_private_password(self, password: str) -> bool:
-        """Verify the master password for private notes against salted hash."""
+        """Verify a plaintext password against the stored salted PBKDF2 hash."""
         salt = self.get_setting("private_note_password_salt", "")
         pwd_hash = self.get_setting("private_note_password_hash", "")
         if not salt or not pwd_hash:
@@ -787,14 +914,10 @@ Enjoy writing with Stilo Notes!
         ).hex()
         return secrets.compare_digest(computed, pwd_hash)
 
-    def has_private_password(self) -> bool:
-        """Check if a private notes master password has been configured."""
-        return bool(self.get_setting("private_note_password_hash", ""))
-
     def clear_private_password(self):
         """Remove the private notes master password and salt."""
         with self.get_connection() as conn:
-            conn.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash')")
+            conn.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash', 'private_note_password')")
             conn.commit()
 
     def duplicate_note(self, note_id: str) -> Optional[Note]:
@@ -809,7 +932,10 @@ Enjoy writing with Stilo Notes!
             category=note.category,
             content_html=note.content_html,
             content_markdown=note.content_markdown,
-            tags=note.tags
+            tags=note.tags,
+            # A copy of a private note must stay private, otherwise its content
+            # would immediately become visible in the public views.
+            is_locked=note.is_locked
         )
         # Duplicate attachments
         with self.get_connection() as conn:
@@ -838,7 +964,13 @@ Enjoy writing with Stilo Notes!
         fm_tags = []
         body_text = raw_text
         fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', raw_text, re.DOTALL)
-        if fm_match:
+        # Only treat the block as frontmatter when it is an actual YAML mapping
+        # (key: value). Otherwise a document that starts with a horizontal rule
+        # would have its leading text silently swallowed.
+        has_yaml_keys = bool(
+            fm_match and re.search(r'^\s*[A-Za-z][\w .-]*:\s*\S', fm_match.group(1), re.MULTILINE)
+        )
+        if fm_match and has_yaml_keys:
             fm_yaml = fm_match.group(1)
             body_text = raw_text[fm_match.end():]
             for line in fm_yaml.splitlines():
@@ -1317,13 +1449,21 @@ Enjoy writing with Stilo Notes!
                 return Note.from_row(row)
             return None
 
-    def get_all_note_titles(self) -> List[str]:
-        """Return list of distinct note titles for internal link autocompletion."""
+    def get_all_note_titles(self, include_locked: bool = False) -> List[str]:
+        """Return list of distinct note titles for internal link autocompletion.
+
+        Locked private note titles are excluded by default so that they never
+        leak into the editor's wiki-link suggestions.
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT DISTINCT title FROM notes WHERE is_trashed = 0 AND title IS NOT NULL AND title != '' AND title != 'Untitled Note'"
+            query = (
+                "SELECT DISTINCT title FROM notes WHERE is_trashed = 0 "
+                "AND title IS NOT NULL AND title != '' AND title != 'Untitled Note'"
             )
+            if not include_locked:
+                query += " AND is_locked = 0"
+            cursor.execute(query)
             return [r["title"] for r in cursor.fetchall()]
 
     def get_setting(self, key: str, default: str = "") -> str:
@@ -1367,7 +1507,7 @@ Enjoy writing with Stilo Notes!
                         placeholders = ",".join("?" * len(locked_ids))
                         cur.execute(f"DELETE FROM attachments WHERE note_id IN ({placeholders})", locked_ids)
                         cur.execute("DELETE FROM notes WHERE is_locked = 1")
-                    cur.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash')")
+                    cur.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash', 'private_note_password')")
                     dest_conn.commit()
                     dest_conn.execute("VACUUM")
             finally:

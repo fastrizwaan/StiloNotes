@@ -204,7 +204,8 @@ class TestThemeAndFont(unittest.TestCase):
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
         from stilonotes.window import StiloWindow
-        win = StiloWindow()
+        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestTheme")
+        win = StiloWindow(app, self.db)
 
         # Window structure: split_view is root, holding navigation
         self.assertIsInstance(win.get_content(), Adw.OverlaySplitView)

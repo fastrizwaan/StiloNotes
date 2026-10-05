@@ -10,3 +10,6 @@ flatpak/build-dir/
 .cache/
 .vscode/
 .idea/
+*.bak
+.freebuff/
+flatpak/modules.yaml

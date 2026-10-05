@@ -650,6 +650,7 @@ class Sidebar(Adw.Bin):
             self._setup_category_context_menu(row, category_name)
 
         if is_tag:
+            row.add_css_class("sidebar-tag-row")
             self._tag_rows[category_name] = row
             row.set_visible(self._tags_expanded)
             self._setup_tag_context_menu(row, category_name)

@@ -6,9 +6,18 @@ import html
 import mimetypes
 import os
 import re
+import shutil
 import urllib.parse
 from typing import Any, Callable, List, Optional
-from gi.repository import Gtk, Gio, GLib
+import gi
+try:
+    gi.require_version('WebKit', '6.0')
+except ValueError:
+    pass
+from gi.repository import Gtk, Gdk, Gio, GLib, GObject, WebKit
+
+# Ensure portal print dialog with preview is used by WebKit
+os.environ.setdefault("WEBKIT_USE_PORTAL", "1")
 
 from stilonotes.models import Note
 from stilonotes.markdown_utils import html_to_markdown
@@ -164,6 +173,214 @@ def bundle_attachments_in_markdown(md_str: str, db: Optional[Any] = None, note_i
     )
     return pattern.sub(_replace_md, md_str)
 
+def render_printable_html(note: Note, db: Optional[Any] = None) -> str:
+    """Render a standalone, beautifully styled HTML document for printing or HTML export."""
+    clean_html = note.content_html or ""
+    if not clean_html and note.content_markdown:
+        from stilonotes.markdown_utils import markdown_to_html
+        clean_html = markdown_to_html(note.content_markdown)
+
+    # Strip contenteditable attributes from elements
+    clean_html = re.sub(r'\s*contenteditable=(["\'])?(?:true|false)\1', '', clean_html)
+    # Strip resize handles or editor UI artifacts
+    clean_html = re.sub(
+        r'<div[^>]*class=["\'][^"\']*(?:table-handle|image-handle|col-resize-handle)[^"\']*["\'][^>]*>.*?</div>',
+        '',
+        clean_html
+    )
+    bundled_html = bundle_attachments_in_html(clean_html, db=db, note_id=note.id)
+
+    title = html.escape(note.title or "Untitled Note")
+    has_h1 = bool(re.search(r'<h1[^>]*>', bundled_html, re.IGNORECASE))
+    title_heading = f"<h1>{title}</h1>\n" if not has_h1 else ""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+@page {{
+  margin: 15mm 20mm;
+}}
+body {{
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Cantarell, "Helvetica Neue", Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.6;
+  color: #111;
+  background: #fff;
+  max-width: 760px;
+  margin: 40px auto;
+  padding: 0 20px;
+}}
+@media print {{
+  body {{
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+  }}
+}}
+h1, h2, h3, h4, h5, h6 {{
+  color: #111;
+  font-weight: 600;
+  page-break-after: avoid;
+  break-after: avoid;
+}}
+h1 {{ font-size: 1.8em; margin: 0 0 16px 0; }}
+h2 {{ font-size: 1.4em; margin: 20px 0 12px 0; }}
+h3 {{ font-size: 1.2em; margin: 16px 0 8px 0; }}
+h4 {{ font-size: 1.1em; margin: 14px 0 6px 0; }}
+h5 {{ font-size: 1.05em; margin: 14px 0 6px 0; }}
+h6 {{ font-size: 1.0em; margin: 12px 0 4px 0; color: #666; }}
+p {{ margin: 0 0 12px 0; }}
+pre {{
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5pt;
+}}
+code {{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5pt;
+  background: #f0f2f5;
+  padding: 2px 4px;
+  border-radius: 4px;
+}}
+pre code {{
+  background: none;
+  padding: 0;
+}}
+blockquote {{
+  border-left: 4px solid #d0d7de;
+  margin: 16px 0;
+  padding: 4px 16px;
+  color: #57606a;
+}}
+table {{
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}}
+th, td {{
+  border: 1px solid #d0d7de;
+  padding: 8px 12px;
+  text-align: left;
+}}
+th {{
+  background-color: #f6f8fa;
+}}
+.stilo-img-wrapper {{
+  display: inline-block;
+  max-width: 100%;
+  margin: 12px 0;
+}}
+.stilo-img, img {{
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}}
+.stilo-task {{
+  display: flex;
+  align-items: baseline;
+  margin: 4px 0;
+}}
+.stilo-checkbox, input[type="checkbox"] {{
+  margin-right: 8px;
+}}
+sub {{ font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; bottom: -0.25em; }}
+sup {{ font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; top: -0.5em; }}
+mark {{ background-color: #fef08a; padding: 1px 3px; border-radius: 3px; }}
+del {{ text-decoration: line-through; opacity: 0.75; }}
+hr {{ border: none; border-top: 1px solid #d0d7de; margin: 20px 0; }}
+dl {{ margin: 14px 0; }}
+dt {{ font-weight: 600; margin-top: 10px; }}
+dd {{ margin-left: 24px; margin-bottom: 6px; }}
+.stilo-footnotes {{ margin-top: 28px; font-size: 0.9em; border-top: 1px solid #ddd; padding-top: 14px; }}
+.stilo-footnote-ref {{ font-size: 0.75em; vertical-align: super; font-weight: 600; }}
+.stilo-footnote-backref {{ text-decoration: none; margin-left: 6px; }}
+</style>
+</head>
+<body>
+{title_heading}
+{bundled_html}
+</body>
+</html>"""
+
+
+def setup_print_preview_settings():
+    """Ensure GTK Settings is configured with the available print preview command."""
+    try:
+        display = Gdk.Display.get_default()
+        if not display:
+            return
+        settings = Gtk.Settings.get_for_display(display)
+        if not settings:
+            return
+        if shutil.which("papers-previewer"):
+            settings.set_property(
+                "gtk-print-preview-command",
+                "papers-previewer --unlink-tempfile --print-settings %s %f",
+            )
+        elif shutil.which("evince-previewer"):
+            settings.set_property(
+                "gtk-print-preview-command",
+                "evince-previewer --unlink-tempfile --print-settings %s %f",
+            )
+        elif shutil.which("evince"):
+            settings.set_property(
+                "gtk-print-preview-command",
+                "evince --unlink-tempfile --preview --print-settings %s %f",
+            )
+    except Exception:
+        pass
+
+
+class Printer(GObject.GObject):
+    __gtype_name__ = "StiloPrinter"
+    __gsignals__ = {
+        "finished": (GObject.SignalFlags.ACTION, None, ()),
+    }
+
+    def __init__(self, note: Note, db: Optional[Any] = None, parent_window: Optional[Gtk.Window] = None):
+        super().__init__()
+        self.note = note
+        self.db = db
+        self.parent_window = parent_window
+        self.html = render_printable_html(note, db=db)
+        setup_print_preview_settings()
+        self.web_view = WebKit.WebView()
+
+    def on_load_changed(self, webview: WebKit.WebView, event: WebKit.LoadEvent):
+        # When html is fully loaded, launch WebKit.PrintOperation with print dialog
+        if event == WebKit.LoadEvent.FINISHED:
+            operation = WebKit.PrintOperation.new(self.web_view)
+            operation.connect("finished", lambda _op: self.emit("finished"))
+            operation.connect("failed", lambda _op, _err: self.emit("finished"))
+            settings = Gtk.PrintSettings.new()
+            clean_title = re.sub(r'[\\/*?:"<>|]', "", self.note.title or "Untitled").strip() or "Untitled"
+            settings.set(Gtk.PRINT_SETTINGS_OUTPUT_BASENAME, clean_title)
+            operation.set_print_settings(settings)
+            parent = self.parent_window if isinstance(self.parent_window, Gtk.Window) else None
+            res = operation.run_dialog(parent)
+            if res == WebKit.PrintOperationResponse.CANCEL:
+                self.emit("finished")
+
+    def print(self):
+        self.web_view.connect("load-changed", self.on_load_changed)
+        self.web_view.load_html(self.html)
+
+
 def export_note_dialog(parent_window: Gtk.Window, note: Note, fmt: str = "md", on_complete: Optional[Callable[[str], None]] = None, db: Optional[Any] = None):
     """Present a file save dialog to export note to file."""
     dialog = Gtk.FileDialog()
@@ -205,104 +422,7 @@ def export_note_dialog(parent_window: Gtk.Window, note: Note, fmt: str = "md", o
                     raw_content = note.content_markdown or html_to_markdown(note.content_html)
                     content = bundle_attachments_in_markdown(raw_content, db=database, note_id=note.id)
                 elif extension == "html":
-                    clean_html = note.content_html or ""
-                    # Strip contenteditable attributes from elements
-                    clean_html = re.sub(r'\s*contenteditable=(["\'])?(?:true|false)\1', '', clean_html)
-                    # Strip resize handles or editor UI artifacts
-                    clean_html = re.sub(
-                        r'<div[^>]*class=["\'][^"\']*(?:table-handle|image-handle|col-resize-handle)[^"\']*["\'][^>]*>.*?</div>',
-                        '',
-                        clean_html
-                    )
-                    bundled_html = bundle_attachments_in_html(clean_html, db=database, note_id=note.id)
-                    content = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(note.title or "Untitled Note")}</title>
-<style>
-body {{
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Cantarell, Inter, sans-serif;
-  max-width: 760px;
-  margin: 40px auto;
-  padding: 0 20px;
-  line-height: 1.6;
-  color: #222;
-}}
-pre {{
-  background: #f4f4f4;
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-}}
-code {{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.9em;
-  background: #f0f0f0;
-  padding: 2px 4px;
-  border-radius: 4px;
-}}
-pre code {{
-  background: none;
-  padding: 0;
-}}
-blockquote {{
-  border-left: 4px solid #ddd;
-  margin: 16px 0;
-  padding-left: 14px;
-  color: #555;
-}}
-table {{
-  border-collapse: collapse;
-  width: 100%;
-  margin: 16px 0;
-}}
-th, td {{
-  border: 1px solid #ddd;
-  padding: 8px 12px;
-}}
-th {{
-  background: #f8f8f8;
-  text-align: left;
-}}
-.stilo-img-wrapper {{
-  display: inline-block;
-  max-width: 100%;
-  margin: 12px 0;
-}}
-.stilo-img, img {{
-  max-width: 100%;
-  height: auto;
-  border-radius: 6px;
-  display: block;
-}}
-.stilo-task {{
-  display: flex;
-  align-items: baseline;
-  margin: 4px 0;
-}}
-.stilo-checkbox {{
-  margin-right: 8px;
-}}
-h5 {{ font-size: 1.1em; font-weight: 600; margin: 14px 0 6px; }}
-h6 {{ font-size: 1.0em; font-weight: 600; margin: 12px 0 4px; color: #666; }}
-sub {{ font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; bottom: -0.25em; }}
-sup {{ font-size: 75%; line-height: 0; position: relative; vertical-align: baseline; top: -0.5em; }}
-mark {{ background-color: #fef08a; padding: 1px 3px; border-radius: 3px; }}
-del {{ text-decoration: line-through; opacity: 0.75; }}
-dl {{ margin: 14px 0; }}
-dt {{ font-weight: 600; margin-top: 10px; }}
-dd {{ margin-left: 24px; margin-bottom: 6px; }}
-.stilo-footnotes {{ margin-top: 28px; font-size: 0.9em; border-top: 1px solid #ddd; padding-top: 14px; }}
-.stilo-footnote-ref {{ font-size: 0.75em; vertical-align: super; font-weight: 600; }}
-.stilo-footnote-backref {{ text-decoration: none; margin-left: 6px; }}
-</style>
-</head>
-<body>
-{bundled_html}
-</body>
-</html>"""
+                    content = render_printable_html(note, db=database)
                 else:
                     content = get_plain_text(note)
 

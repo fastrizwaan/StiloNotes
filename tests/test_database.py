@@ -365,6 +365,51 @@ class TestDatabase(unittest.TestCase):
         self.assertIn("marketing", imported.tags)
 
 
+    def test_duplicate_private_note_stays_private(self):
+        self.db.set_private_password("MasterPass123!")
+        note = self.db.create_note(title="Secrets", initial_text="# Secrets\n\nPIN 1234", is_locked=True)
+
+        dup = self.db.duplicate_note(note.id)
+        self.assertIsNotNone(dup)
+        self.assertTrue(dup.is_locked)
+        # The copy must not become visible in the public views
+        self.assertNotIn(dup.id, [n.id for n in self.db.get_notes(filter_type="all")])
+        self.assertIn(dup.id, [n.id for n in self.db.get_notes(filter_type="private")])
+
+    def test_note_titles_autocomplete_excludes_locked(self):
+        self.db.create_note(title="Public Document")
+        self.db.create_note(title="Confidential Document", is_locked=True)
+
+        titles = self.db.get_all_note_titles()
+        self.assertIn("Public Document", titles)
+        self.assertNotIn("Confidential Document", titles)
+
+        all_titles = self.db.get_all_note_titles(include_locked=True)
+        self.assertIn("Confidential Document", all_titles)
+
+    def test_import_yaml_frontmatter_still_parsed(self):
+        md_file = os.path.join(self.test_dir, "report.md")
+        with open(md_file, "w", encoding="utf-8") as f:
+            f.write(
+                "---\ntitle: Quarterly Report\ntags: [finance, q3]\n"
+                "category: Work/Reports\n---\n\n# Report Heading\n\nBody text.\n"
+            )
+
+        imported = self.db.import_note_from_file(md_file)
+        self.assertEqual(imported.title, "Quarterly Report")
+        self.assertEqual(imported.category, "Work/Reports")
+        self.assertIn("finance", imported.tags)
+        self.assertIn("q3", imported.tags)
+
+    def test_import_leading_thematic_break_is_not_frontmatter(self):
+        md_file = os.path.join(self.test_dir, "intro.md")
+        with open(md_file, "w", encoding="utf-8") as f:
+            f.write("---\nSome intro text\n---\n\nMore text\n")
+
+        imported = self.db.import_note_from_file(md_file)
+        self.assertIn("Some intro text", imported.content_markdown)
+        self.assertIn("More text", imported.content_markdown)
+
     def test_get_all_tags_include_locked(self):
         note1 = self.db.create_note(title="Public Note", tags=["public_tag"])
         note2 = self.db.create_note(title="Private Note", tags=["secret_tag"], is_locked=True)
@@ -389,6 +434,54 @@ class TestDatabase(unittest.TestCase):
         all_tags = dict(self.db.get_all_tags())
         self.assertIn("my_apps", all_tags)
         self.assertEqual(all_tags["my_apps"], 1)
+
+    def test_todo_and_list_sorting_strictly_by_date(self):
+        import time
+        now = time.time()
+        # Older note but pinned
+        n1 = self.db.create_note(title="Pinned Older Todo", initial_text="- [ ] Todo 1")
+        self.db.save_note(n1.id, is_pinned=True, has_todo=True)
+        # Manually set older updated_at
+        with self.db.get_connection() as conn:
+            conn.cursor().execute("UPDATE notes SET updated_at = ? WHERE id = ?", (now - 1000, n1.id))
+
+        # Newer note, unpinned
+        n2 = self.db.create_note(title="Newer Unpinned Todo", initial_text="- [ ] Todo 2")
+        self.db.save_note(n2.id, is_pinned=False, has_todo=True)
+        with self.db.get_connection() as conn:
+            conn.cursor().execute("UPDATE notes SET updated_at = ? WHERE id = ?", (now, n2.id))
+
+        # Under category view, pinned notes come first
+        cat_notes = self.db.get_notes(filter_type="uncategorized")
+        # In uncategorized, n1 is pinned so comes first
+        self.assertEqual(cat_notes[0].id, n1.id)
+
+        # Under todos view, notes must be sorted strictly by date descending
+        todo_notes = self.db.get_notes(filter_type="todos")
+        todo_ids = [n.id for n in todo_notes]
+        self.assertIn(n1.id, todo_ids)
+        self.assertIn(n2.id, todo_ids)
+        # Even though n1 is pinned, n2 is newer so n2 must appear before n1
+        self.assertLess(todo_ids.index(n2.id), todo_ids.index(n1.id))
+
+        # Older note but pinned with list
+        l1 = self.db.create_note(title="Pinned Older List", initial_text="1. Item 1\n2. Item 2")
+        self.db.save_note(l1.id, is_pinned=True)
+        with self.db.get_connection() as conn:
+            conn.cursor().execute("UPDATE notes SET updated_at = ? WHERE id = ?", (now - 1000, l1.id))
+
+        # Newer note with list, unpinned
+        l2 = self.db.create_note(title="Newer Unpinned List", initial_text="1. Item A\n2. Item B")
+        self.db.save_note(l2.id, is_pinned=False)
+        with self.db.get_connection() as conn:
+            conn.cursor().execute("UPDATE notes SET updated_at = ? WHERE id = ?", (now, l2.id))
+
+        list_notes = self.db.get_notes(filter_type="lists")
+        list_ids = [n.id for n in list_notes]
+        self.assertIn(l1.id, list_ids)
+        self.assertIn(l2.id, list_ids)
+        # Even though l1 is pinned, l2 is newer so l2 must appear before l1
+        self.assertLess(list_ids.index(l2.id), list_ids.index(l1.id))
 
 
 if __name__ == "__main__":
