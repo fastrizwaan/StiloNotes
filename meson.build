@@ -3,7 +3,7 @@
 
 project(
   'stilonotes',
-  version: '0.7',
+  version: '0.8',
   meson_version: '>= 0.62.0',
   license: 'GPL-3.0-or-later'
 )

@@ -56,7 +56,7 @@ class StiloWindow(Adw.ApplicationWindow):
         from stilonotes.sidebar import Sidebar
         self.sidebar = Sidebar(self.db)
         self.sidebar.connect("filter-changed", self.on_sidebar_filter_changed)
-        self.sidebar.connect("close-requested", lambda _sb: self.split_view.set_show_sidebar(False))
+        self.sidebar.connect("close-requested", lambda _sb: GLib.idle_add(self.split_view.set_show_sidebar, False))
         self.sidebar.connect("width-dragged", self._on_sidebar_width_dragged)
         self.sidebar.connect("width-drag-ended", self._on_sidebar_width_drag_ended)
         self.split_view.set_sidebar(self.sidebar)
@@ -200,7 +200,7 @@ class StiloWindow(Adw.ApplicationWindow):
         if self.navigation.get_visible_page() == self.editor_page:
             self._go_back()
         if self.split_view.get_collapsed():
-            self.split_view.set_show_sidebar(False)
+            GLib.idle_add(self.split_view.set_show_sidebar, False)
 
     def apply_card_size(self, size: str):
         if hasattr(self, "index_view") and hasattr(self.index_view, "notes_list"):
@@ -257,6 +257,12 @@ class StiloWindow(Adw.ApplicationWindow):
         action_group.add_action(act_print)
         self.get_application().set_accels_for_action("win.print", ["<Control>p"])
 
+        # Page Setup
+        act_page_setup = Gio.SimpleAction.new("page-setup", None)
+        act_page_setup.connect("activate", lambda _a, _p: self._on_page_setup())
+        action_group.add_action(act_page_setup)
+        self.get_application().set_accels_for_action("win.page-setup", ["<Control><Shift>p"])
+
         self.insert_action_group("win", action_group)
 
     def insert_action_group(self, name: str, group: Optional[Gio.ActionGroup]):
@@ -274,6 +280,10 @@ class StiloWindow(Adw.ApplicationWindow):
     def _on_print(self):
         if hasattr(self, "editor") and self.editor and self.editor.current_note:
             self.editor._print_note(self)
+
+    def _on_page_setup(self):
+        if hasattr(self, "editor") and self.editor:
+            self.editor._on_page_setup(self)
 
     def _setup_theme(self):
         style_manager = Adw.StyleManager.get_default()
@@ -334,7 +344,7 @@ class StiloWindow(Adw.ApplicationWindow):
         self.config_manager.set_window_maximized(self.is_maximized())
         return False
 
-    def open_note(self, note: Note, immediate: bool = False):
+    def open_note(self, note: Note, immediate: bool = False, is_new: bool = False):
         """Open a note in the editor and navigate to it."""
         full_note = self.db.get_note(note.id)
         target = full_note or note
@@ -342,7 +352,7 @@ class StiloWindow(Adw.ApplicationWindow):
             self.index_view._prompt_unlock_private(target_note=target)
             return
 
-        self.editor.load_note(target)
+        self.editor.load_note(target, is_new=is_new)
         self.config_manager.set_last_opened_note_id(note.id)
 
         visible_page = self.navigation.get_visible_page()
@@ -359,24 +369,24 @@ class StiloWindow(Adw.ApplicationWindow):
                 self.split_view.set_show_sidebar(True)
 
     def _on_note_opened(self, _iv, note: Note, immediate: bool):
-        self.open_note(note, immediate)
+        self.open_note(note, immediate, is_new=False)
 
     def _on_create_note(self, _iv):
         category = self.index_view.active_category_name if self.index_view.active_filter_type == "category" else ""
         is_locked = (self.index_view.active_filter_type in ("private", "locked"))
         if is_locked and not getattr(self.index_view, "_private_unlocked", False):
             def create_after_unlock():
-                note = self.db.create_note(title="Untitled Note", category=category, is_locked=True, sender=self)
+                note = self.db.create_note(category=category, is_locked=True, sender=self)
                 self.index_view.refresh()
                 full_note = self.db.get_note(note.id)
-                self.open_note(full_note or note, immediate=False)
+                self.open_note(full_note or note, immediate=False, is_new=True)
             self.index_view._prompt_unlock_private(on_unlocked=create_after_unlock)
             return
 
-        note = self.db.create_note(title="Untitled Note", category=category, is_locked=is_locked, sender=self)
+        note = self.db.create_note(category=category, is_locked=is_locked, sender=self)
         self.index_view.refresh()
         full_note = self.db.get_note(note.id)
-        self.open_note(full_note or note, immediate=False)
+        self.open_note(full_note or note, immediate=False, is_new=True)
 
     def open_file_dialog(self):
         """Open a .md or .txt file and load it as a note."""

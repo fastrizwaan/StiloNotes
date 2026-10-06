@@ -30,6 +30,21 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8" date="2026-10-06">
+      <description>
+        <p>New features and improvements in Stilo Notes 0.8:</p>
+        <ul>
+          <li>Read-only note protection: existing notes open in view-only mode to prevent accidental edits, with a one-click Edit button (Ctrl+E) to unlock</li>
+          <li>Sequential untitled note numbering: automatic sequential counter (Untitled Note 1, 2, 3...) that avoids duplicates and reuses deleted indices</li>
+          <li>Page Setup dialog (Ctrl+Shift+P) with standard paper sizes (A4, US Letter, Legal, etc.), orientation, and configurable margins (inches, mm, cm, pt)</li>
+          <li>High-performance materialized database columns for checklists (Todos) and lists for instantaneous sidebar counts and filtering</li>
+          <li>SQLite composite indexing on note status and timestamps for ultra-fast note list loading</li>
+          <li>Security and privacy hardening: lazy-loaded cryptographic dependencies, removal of persistent plaintext backup passwords, and XSS sanitization</li>
+          <li>Clean WebKit script message handler lifecycle management preventing memory leaks</li>
+          <li>Resolved GTK4 theme parser and Libadwaita active state accounting warnings</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7" date="2026-10-04">
       <description>
         <p>New features and improvements in Stilo Notes 0.7:</p>

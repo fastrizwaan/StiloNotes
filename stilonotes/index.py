@@ -324,12 +324,6 @@ class IndexView(Adw.Bin):
         self.active_filter_type = filter_type
         self.active_category_name = category_name
 
-        root = self.get_root()
-        if root and hasattr(root, "on_sidebar_filter_changed"):
-            root.on_sidebar_filter_changed(_sb, filter_type, category_name)
-        elif root and hasattr(root, "split_view") and root.split_view.get_collapsed():
-            root.split_view.set_show_sidebar(False)
-
         self.refresh(update_sidebar=False)
 
     def enter_search(self):

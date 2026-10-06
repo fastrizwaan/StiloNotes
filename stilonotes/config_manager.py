@@ -437,3 +437,96 @@ class ConfigManager:
     def set_last_local_backup(self, timestamp_str: str):
         if self.db:
             self.db.set_setting("last_local_backup_time", timestamp_str)
+
+    # ── Page Setup Settings ──────────────────────────────────────────────
+
+    def get_page_setup_paper(self) -> str:
+        if self.db:
+            val = self.db.get_setting("page_setup_paper", "iso_a4")
+            if val in ("A4", "iso_a4"):
+                return "iso_a4"
+            elif val in ("US Letter", "Letter", "na_letter"):
+                return "na_letter"
+            elif val in ("Legal", "na_legal"):
+                return "na_legal"
+            elif val in ("A3", "iso_a3"):
+                return "iso_a3"
+            elif val in ("A5", "iso_a5"):
+                return "iso_a5"
+            return val
+        return "iso_a4"
+
+    def set_page_setup_paper(self, paper: str):
+        if self.db:
+            self.db.set_setting("page_setup_paper", paper)
+
+    def get_page_setup_orientation(self) -> str:
+        if self.db:
+            return self.db.get_setting("page_setup_orientation", "portrait")
+        return "portrait"
+
+    def set_page_setup_orientation(self, orientation: str):
+        if self.db:
+            self.db.set_setting("page_setup_orientation", orientation)
+
+    def get_page_setup_margins_points(self) -> Tuple[float, float, float, float]:
+        """Return (top, right, bottom, left) margins in points."""
+        if self.db:
+            raw = self.db.get_setting("page_setup_margins", "72.0,72.0,72.0,72.0")
+            try:
+                parts = [float(x.strip()) for x in raw.split(",")]
+                if len(parts) == 4:
+                    return (parts[0], parts[1], parts[2], parts[3])
+            except Exception:
+                pass
+        return (72.0, 72.0, 72.0, 72.0)
+
+    def set_page_setup_margins_points(self, top: float, right: float, bottom: float, left: float):
+        if self.db:
+            self.db.set_setting("page_setup_margins", f"{top:.2f},{right:.2f},{bottom:.2f},{left:.2f}")
+
+    def get_page_setup_unit(self) -> str:
+        if self.db:
+            return self.db.get_setting("page_setup_unit", "in")
+        return "in"
+
+    def set_page_setup_unit(self, unit: str):
+        if self.db:
+            self.db.set_setting("page_setup_unit", unit)
+
+    def get_page_setup(self):
+        """Create and return a Gtk.PageSetup initialized from stored configuration."""
+        import gi
+        gi.require_version('Gtk', '4.0')
+        from gi.repository import Gtk
+        page_setup = Gtk.PageSetup.new()
+        paper_name = self.get_page_setup_paper()
+        paper_size = Gtk.PaperSize.new(paper_name)
+        page_setup.set_paper_size(paper_size)
+        orient = Gtk.PageOrientation.LANDSCAPE if self.get_page_setup_orientation() == "landscape" else Gtk.PageOrientation.PORTRAIT
+        page_setup.set_orientation(orient)
+        top, right, bottom, left = self.get_page_setup_margins_points()
+        page_setup.set_top_margin(top, Gtk.Unit.POINTS)
+        page_setup.set_right_margin(right, Gtk.Unit.POINTS)
+        page_setup.set_bottom_margin(bottom, Gtk.Unit.POINTS)
+        page_setup.set_left_margin(left, Gtk.Unit.POINTS)
+        return page_setup
+
+    def set_page_setup(self, page_setup, unit: str = "in"):
+        """Save a Gtk.PageSetup configuration."""
+        if not page_setup:
+            return
+        import gi
+        gi.require_version('Gtk', '4.0')
+        from gi.repository import Gtk
+        paper_size = page_setup.get_paper_size()
+        if paper_size:
+            self.set_page_setup_paper(paper_size.get_name())
+        orient = "landscape" if page_setup.get_orientation() == Gtk.PageOrientation.LANDSCAPE else "portrait"
+        self.set_page_setup_orientation(orient)
+        top = page_setup.get_top_margin(Gtk.Unit.POINTS)
+        right = page_setup.get_right_margin(Gtk.Unit.POINTS)
+        bottom = page_setup.get_bottom_margin(Gtk.Unit.POINTS)
+        left = page_setup.get_left_margin(Gtk.Unit.POINTS)
+        self.set_page_setup_margins_points(top, right, bottom, left)
+        self.set_page_setup_unit(unit)

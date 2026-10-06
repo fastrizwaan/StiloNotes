@@ -1103,6 +1103,13 @@ class StiloApplication(Adw.Application):
             <child>
               <object class="GtkShortcutsShortcut">
                 <property name="visible">True</property>
+                <property name="accelerator">&lt;Primary&gt;e</property>
+                <property name="title">Edit note / Toggle read-only mode</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="visible">True</property>
                 <property name="accelerator">&lt;Primary&gt;b</property>
                 <property name="title">Bold text</property>
               </object>

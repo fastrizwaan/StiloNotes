@@ -17,14 +17,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 from gi.repository import GLib
 
-try:
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-    from cryptography.hazmat.backends import default_backend
-    HAS_CRYPTOGRAPHY = True
-except ImportError:
-    HAS_CRYPTOGRAPHY = False
+HAS_CRYPTOGRAPHY = None  # Lazy-checked on first use
 
 from stilonotes.models import Note, Category
 from stilonotes.markdown_utils import (
@@ -36,6 +29,7 @@ from stilonotes.markdown_utils import (
     check_has_list,
     markdown_to_html,
     html_to_markdown,
+    is_untitled_title,
     RE_TAG_EXTRACT,
     RE_CAT_HASH,
 )
@@ -54,6 +48,7 @@ class NoteDatabase:
         self._lock = threading.RLock()
         self._conn: Optional[sqlite3.Connection] = None
         self._change_listeners = []
+        self._session_password: Optional[str] = None
 
         self._init_db()
 
@@ -163,6 +158,8 @@ class NoteDatabase:
             existing_cols = [col["name"] for col in cursor.fetchall()]
             if "is_locked" not in existing_cols:
                 cursor.execute("ALTER TABLE notes ADD COLUMN is_locked INTEGER DEFAULT 0")
+            if "has_list" not in existing_cols:
+                cursor.execute("ALTER TABLE notes ADD COLUMN has_list INTEGER DEFAULT 0")
 
             # Attachments table for storing images and media as binary blobs
             cursor.execute("""
@@ -212,6 +209,8 @@ class NoteDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_pinned_updated ON notes (is_trashed, is_pinned, updated_at DESC)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_cat ON notes (is_trashed, category)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_locked ON notes (is_locked)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_locked_updated ON notes (is_trashed, is_locked, updated_at DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_has_list ON notes (has_list)")
 
             # Migrate legacy notes if content_markdown is empty but content_html exists
             cursor.execute("""
@@ -229,6 +228,12 @@ class NoteDatabase:
             for r in cursor.fetchall():
                 if check_has_todo(r["content_markdown"]) or check_has_todo(r["content_html"]):
                     cursor.execute("UPDATE notes SET has_todo = 1 WHERE id = ?", (r["id"],))
+
+            # Ensure notes with list items have has_list set to 1
+            cursor.execute("SELECT id, content_markdown, content_html FROM notes WHERE has_list IS NULL OR has_list = 0")
+            for r in cursor.fetchall():
+                if check_has_list(r["content_markdown"]) or check_has_list(r["content_html"]):
+                    cursor.execute("UPDATE notes SET has_list = 1 WHERE id = ?", (r["id"],))
 
             # Ensure uncategorized is never in categories table or notes category field
             cursor.execute("DELETE FROM categories WHERE LOWER(name) = 'uncategorized'")
@@ -334,9 +339,9 @@ Enjoy writing with Stilo Notes!
             elif filter_type in ("private", "locked"):
                 pass  # already filtered by is_locked = 1
             elif filter_type in ("todo", "todos"):
-                query += " AND (has_todo = 1 OR has_todo_fn(content_markdown, content_html) = 1)"
+                query += " AND has_todo = 1"
             elif filter_type in ("list", "lists"):
-                query += " AND has_list_fn(content_markdown, content_html) = 1"
+                query += " AND has_list = 1"
             elif filter_type in ("recent", "recents"):
                 recent_cutoff = time.time() - (7 * 86400)
                 query += " AND updated_at >= ?"
@@ -379,12 +384,12 @@ Enjoy writing with Stilo Notes!
                 return None
 
             note = Note.from_row(row)
-            if note.is_locked and self.get_setting("private_note_password", ""):
+            if note.is_locked and self._get_session_password():
                 # Decrypt the body before handing it to the editor. The decrypted
                 # plaintext is returned to the caller; it is never written back
                 # unless the note is saved or duplicated.
                 try:
-                    note.content_markdown = self._decrypt_blob(note.content_markdown, self.get_setting("private_note_password", ""))
+                    note.content_markdown = self._decrypt_blob(note.content_markdown, self._get_session_password())
                     note.content_html = markdown_to_html(note.content_markdown)
                 except Exception:
                     # Body not encrypted yet (created before a password was set);
@@ -439,7 +444,7 @@ Enjoy writing with Stilo Notes!
                 # is configured. content_markdown is the canonical field, so the
                 # encrypted blob is stored there; content_html is the rendered
                 # rendering of the decrypted plaintext and is stored as well.
-                private_password = self.get_setting("private_note_password", "")
+                private_password = self._get_session_password()
                 if new_locked and private_password:
                     try:
                         salt = secrets.token_bytes(16)
@@ -453,13 +458,14 @@ Enjoy writing with Stilo Notes!
                         pass
 
                 # Avoid redundant regex extraction when title/excerpt already supplied
-                if title is not None and title != "Untitled Note" and excerpt is not None:
+                if title is not None and not is_untitled_title(title) and excerpt is not None:
                     new_title = title
                     new_excerpt = excerpt
                 else:
                     extracted_title, extracted_excerpt = extract_title_and_excerpt(new_md, new_html)
-                    new_title = title if (title is not None and title != "Untitled Note") else (
-                        extracted_title or existing.title or "Untitled Note"
+                    new_title = title if (title is not None and not is_untitled_title(title)) else (
+                        extracted_title if (extracted_title and not is_untitled_title(extracted_title))
+                        else (title or existing.title or self.get_next_untitled_title())
                     )
                     new_excerpt = excerpt if excerpt is not None else extracted_excerpt
 
@@ -487,6 +493,7 @@ Enjoy writing with Stilo Notes!
                     new_todo = 1
                 else:
                     new_todo = 0
+                new_has_list = 1 if (check_has_list(new_md) or check_has_list(new_html)) else 0
 
                 cursor.execute("""
                 UPDATE notes SET
@@ -500,6 +507,7 @@ Enjoy writing with Stilo Notes!
                     is_archived = ?,
                     is_trashed = ?,
                     has_todo = ?,
+                    has_list = ?,
                     is_locked = ?,
                     updated_at = ?
                 WHERE id = ?
@@ -514,6 +522,7 @@ Enjoy writing with Stilo Notes!
                     new_archived,
                     new_trashed,
                     new_todo,
+                    new_has_list,
                     new_locked,
                     now,
                     note_id
@@ -534,7 +543,7 @@ Enjoy writing with Stilo Notes!
                 # is configured. content_markdown is the canonical field, so the
                 # encrypted blob is stored there; content_html is the rendered
                 # rendering of the decrypted plaintext and is stored as well.
-                private_password = self.get_setting("private_note_password", "")
+                private_password = self._get_session_password()
                 if new_locked and private_password:
                     try:
                         salt = secrets.token_bytes(16)
@@ -547,12 +556,15 @@ Enjoy writing with Stilo Notes!
                         # the next save while locked, or once a password is set.
                         pass
 
-                if title and title != "Untitled Note" and excerpt is not None:
+                if title and not is_untitled_title(title) and excerpt is not None:
                     new_title = title
                     new_excerpt = excerpt
                 else:
                     extracted_title, extracted_excerpt = extract_title_and_excerpt(new_md, new_html)
-                    new_title = title if (title and title != "Untitled Note") else (extracted_title or "Untitled Note")
+                    new_title = title if (title and not is_untitled_title(title)) else (
+                        extracted_title if (extracted_title and not is_untitled_title(extracted_title))
+                        else (title or self.get_next_untitled_title())
+                    )
                     new_excerpt = excerpt if excerpt is not None else extracted_excerpt
 
                 extracted_tags = extract_tags(new_md or new_html)
@@ -576,12 +588,13 @@ Enjoy writing with Stilo Notes!
                     new_todo = 1
                 else:
                     new_todo = 0
+                new_has_list = 1 if (check_has_list(new_md) or check_has_list(new_html)) else 0
 
                 cursor.execute("""
                 INSERT INTO notes (
                     id, title, content_html, content_markdown, excerpt, category,
-                    tags, is_pinned, is_archived, is_trashed, has_todo, is_locked, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tags, is_pinned, is_archived, is_trashed, has_todo, has_list, is_locked, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     note_id,
                     new_title,
@@ -594,6 +607,7 @@ Enjoy writing with Stilo Notes!
                     new_archived,
                     new_trashed,
                     new_todo,
+                    new_has_list,
                     new_locked,
                     now,
                     now
@@ -629,6 +643,7 @@ Enjoy writing with Stilo Notes!
                 is_archived=bool(new_archived),
                 is_trashed=bool(new_trashed),
                 has_todo=bool(new_todo),
+                has_list=bool(new_has_list),
                 is_locked=bool(new_locked),
                 created_at=row["created_at"] if row else now,
                 updated_at=now,
@@ -636,9 +651,31 @@ Enjoy writing with Stilo Notes!
             self._notify_change("note-saved", {"note_id": note_id, "note": saved_note}, sender=sender)
             return saved_note
 
+    def get_next_untitled_title(self) -> str:
+        """Generate the next unique untitled note title with a counter (e.g. Untitled Note 1, 2, 3)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT title FROM notes WHERE is_trashed = 0 AND (title = 'Untitled Note' OR title LIKE 'Untitled Note %')"
+            )
+            rows = cursor.fetchall()
+
+        used_numbers = set()
+        for r in rows:
+            t = (r["title"] or "").strip()
+            m = re.match(r"^Untitled Note\s+(\d+)$", t, re.IGNORECASE)
+            if m:
+                used_numbers.add(int(m.group(1)))
+
+        num = 1
+        while num in used_numbers:
+            num += 1
+
+        return f"Untitled Note {num}"
+
     def create_note(
         self,
-        title: str = "Untitled Note",
+        title: Optional[str] = None,
         category: str = "",
         initial_text: str = "",
         content_markdown: Optional[str] = None,
@@ -652,7 +689,11 @@ Enjoy writing with Stilo Notes!
         clean_cat = (category or "").strip()
         if clean_cat.lower() == "uncategorized":
             clean_cat = ""
-        md_content = content_markdown if content_markdown is not None else (initial_text or (f"# {title}\n\n" if title != "Untitled Note" else ""))
+
+        if not title or title.strip() == "" or title.strip() == "Untitled Note":
+            title = self.get_next_untitled_title()
+
+        md_content = content_markdown if content_markdown is not None else (initial_text or (f"# {title}\n\n" if not is_untitled_title(title) else ""))
         if content_html is not None:
             html_content = content_html
         else:
@@ -846,8 +887,12 @@ Enjoy writing with Stilo Notes!
         with self.get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password_salt", salt))
             conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password_hash", pwd_hash))
-            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ("private_note_password", clean))
+            # Security: never persist the plaintext password to the database.
+            # Remove any previously stored plaintext password from older versions.
+            conn.execute("DELETE FROM app_settings WHERE key = 'private_note_password'")
             conn.commit()
+        # Keep the password in memory only for the current session
+        self._session_password = clean
         self._re_encrypt_locked_notes(clean)
 
     def _re_encrypt_locked_notes(self, password: str):
@@ -873,8 +918,19 @@ Enjoy writing with Stilo Notes!
     @staticmethod
     def _derive_key(password: str, salt: bytes) -> bytes:
         """Derive an AES-256 key from the master password and a per-note salt."""
+        global HAS_CRYPTOGRAPHY
+        if HAS_CRYPTOGRAPHY is None:
+            try:
+                from cryptography.hazmat.primitives import hashes as _hashes
+                from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC as _PBKDF2HMAC
+                HAS_CRYPTOGRAPHY = True
+            except ImportError:
+                HAS_CRYPTOGRAPHY = False
         if not HAS_CRYPTOGRAPHY:
             raise RuntimeError("The 'cryptography' Python module is required for note encryption.")
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.backends import default_backend
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
@@ -887,6 +943,8 @@ Enjoy writing with Stilo Notes!
     @staticmethod
     def _encrypt_blob(plaintext: str, salt: bytes, password: str) -> str:
         """AES-256-GCM encrypt a note body. Returns base64 'salt||nonce||ct||tag'."""
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.backends import default_backend
         key = NoteDatabase._derive_key(password, salt)
         nonce = secrets.token_bytes(12)
         cipher = Cipher(algorithms.AES(key), modes.GCM(nonce), backend=default_backend())
@@ -897,6 +955,8 @@ Enjoy writing with Stilo Notes!
     @staticmethod
     def _decrypt_blob(ciphertext_blob: str, password: str) -> str:
         """Decrypt a note body produced by _encrypt_blob."""
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.backends import default_backend
         raw = base64.b64decode(ciphertext_blob)
         salt, nonce, tag, ct = raw[:16], raw[16:28], raw[28:44], raw[44:]
         key = NoteDatabase._derive_key(password, salt)
@@ -924,10 +984,24 @@ Enjoy writing with Stilo Notes!
             bytes.fromhex(salt),
             100000
         ).hex()
-        return secrets.compare_digest(computed, pwd_hash)
+        if secrets.compare_digest(computed, pwd_hash):
+            # Cache the verified password in memory for encryption/decryption
+            self._session_password = password.strip()
+            return True
+        return False
+
+    def _get_session_password(self) -> str:
+        """Return the in-memory session password for note encryption/decryption.
+
+        The password is only available after a successful verify_private_password()
+        or set_private_password() call during this session. It is never read from
+        the database.
+        """
+        return self._session_password or ""
 
     def clear_private_password(self):
         """Remove the private notes master password and salt."""
+        self._session_password = None
         with self.get_connection() as conn:
             conn.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash', 'private_note_password')")
             conn.commit()
@@ -1138,7 +1212,14 @@ Enjoy writing with Stilo Notes!
         elif url.startswith("file://") or (url.startswith("/") and os.path.isabs(url)):
             local_path = url[len("file://"):] if url.startswith("file://") else url
             local_path = urllib.parse.unquote(local_path)
-            if os.path.isfile(local_path):
+            # Security: only allow reading files from known safe directories
+            safe_prefixes = (
+                str(Path(GLib.get_user_data_dir())),
+                str(Path(GLib.get_user_cache_dir())),
+                "/tmp/",
+            )
+            resolved = str(Path(local_path).resolve())
+            if os.path.isfile(local_path) and any(resolved.startswith(p) for p in safe_prefixes):
                 try:
                     with open(local_path, "rb") as f:
                         return f.read()
@@ -1306,8 +1387,8 @@ Enjoy writing with Stilo Notes!
             SELECT
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 THEN 1 END) as all_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND is_pinned = 1 THEN 1 END) as pinned_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND (has_todo = 1 OR has_todo_fn(content_markdown, content_html) = 1) THEN 1 END) as todo_cnt,
-                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND has_list_fn(content_markdown, content_html) = 1 THEN 1 END) as list_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND has_todo = 1 THEN 1 END) as todo_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND has_list = 1 THEN 1 END) as list_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 1 THEN 1 END) as private_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND (category = '' OR category IS NULL) THEN 1 END) as uncat_cnt,
                 COUNT(CASE WHEN is_trashed = 1 THEN 1 END) as trash_cnt
@@ -1376,29 +1457,32 @@ Enjoy writing with Stilo Notes!
         """Return list of (tag_name, count) for all tags in non-trashed notes, sorted by count."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            if include_locked:
-                cursor.execute(
-                    "SELECT tags, content_markdown FROM notes WHERE is_trashed = 0"
-                )
-            else:
-                cursor.execute(
-                    "SELECT tags, content_markdown FROM notes WHERE is_trashed = 0 AND is_locked = 0"
-                )
+            cond = "" if include_locked else " AND is_locked = 0"
+            # Fast path: query only the tags column without loading large content fields
+            cursor.execute(f"SELECT tags FROM notes WHERE is_trashed = 0{cond} AND tags IS NOT NULL AND tags != '' AND tags != '[]'")
             tag_counts: Dict[str, int] = {}
             for r in cursor.fetchall():
                 raw = r["tags"]
-                t_list = []
-                if raw:
-                    try:
-                        t_list = json.loads(raw)
-                    except Exception:
-                        t_list = [x.strip() for x in str(raw).split(",") if x.strip()]
-                if not t_list and r["content_markdown"]:
-                    t_list = extract_tags(r["content_markdown"])
+                if not raw:
+                    continue
+                try:
+                    t_list = json.loads(raw)
+                except Exception:
+                    t_list = [x.strip() for x in str(raw).split(",") if x.strip()]
                 for t in t_list:
                     t_clean = t.strip().lstrip("#").lower()
                     if t_clean:
                         tag_counts[t_clean] = tag_counts.get(t_clean, 0) + 1
+
+            # Fallback only for unmigrated notes that have hashtags but no tags column value
+            cursor.execute(f"SELECT content_markdown FROM notes WHERE is_trashed = 0{cond} AND (tags IS NULL OR tags = '' OR tags = '[]') AND content_markdown LIKE '%#%'")
+            for r in cursor.fetchall():
+                if r["content_markdown"]:
+                    for t in extract_tags(r["content_markdown"]):
+                        t_clean = t.strip().lstrip("#").lower()
+                        if t_clean:
+                            tag_counts[t_clean] = tag_counts.get(t_clean, 0) + 1
+
             return sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
 
     def delete_tag(self, tag_name: str):
@@ -1483,7 +1567,7 @@ Enjoy writing with Stilo Notes!
             cursor = conn.cursor()
             query = (
                 "SELECT DISTINCT title FROM notes WHERE is_trashed = 0 "
-                "AND title IS NOT NULL AND title != '' AND title != 'Untitled Note'"
+                "AND title IS NOT NULL AND title != '' AND title NOT LIKE 'Untitled Note%'"
             )
             if not include_locked:
                 query += " AND is_locked = 0"
@@ -1531,7 +1615,7 @@ Enjoy writing with Stilo Notes!
                         placeholders = ",".join("?" * len(locked_ids))
                         cur.execute(f"DELETE FROM attachments WHERE note_id IN ({placeholders})", locked_ids)
                         cur.execute("DELETE FROM notes WHERE is_locked = 1")
-                    cur.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash', 'private_note_password')")
+                    cur.execute("DELETE FROM app_settings WHERE key IN ('private_note_password_salt', 'private_note_password_hash', 'private_note_password', 'auto_backup_password')")
                     dest_conn.commit()
                     dest_conn.execute("VACUUM")
             finally:

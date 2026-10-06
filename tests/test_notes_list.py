@@ -756,6 +756,111 @@ class TestNotesListAndCards(unittest.TestCase):
                         break
         self.assertTrue(found_print, "editor.print action should be present in editor menu")
 
+    def test_editor_menu_does_not_have_edit_title(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Sample Note")
+        editor.load_note(note)
+
+        menu = editor._create_more_menu()
+        for s_idx in range(menu.get_n_items()):
+            section = menu.get_item_link(s_idx, "section")
+            if section:
+                for i in range(section.get_n_items()):
+                    label = section.get_item_attribute_value(i, "label")
+                    if label:
+                        self.assertNotIn("edit title", label.get_string().lower())
+                    action = section.get_item_attribute_value(i, "action")
+                    if action:
+                        self.assertNotEqual(action.get_string(), "editor.rename-title")
+
+    def test_edit_button_exists_and_properly_configured(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        self.assertTrue(hasattr(editor, "edit_btn"))
+        self.assertEqual(editor.edit_btn.get_icon_name(), "edit-symbolic")
+        # Check it is placed after back_btn in the header
+        self.assertIsNotNone(editor.edit_btn.get_parent())
+
+    def test_existing_note_opens_read_only(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Important Meeting", content_markdown="Existing contents that should not be edited")
+        editor.load_note(note, is_new=False)
+
+        self.assertTrue(editor.is_read_only)
+        self.assertFalse(editor.edit_btn.get_active())
+        self.assertFalse(editor.format_btn.get_sensitive())
+
+    def test_new_note_opens_in_edit_mode(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Untitled Note")
+        editor.load_note(note, is_new=True)
+
+        self.assertFalse(editor.is_read_only)
+        self.assertTrue(editor.edit_btn.get_active())
+        self.assertTrue(editor.format_btn.get_sensitive())
+
+    def test_toggling_edit_mode(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Project Plan", content_markdown="Milestones")
+        editor.load_note(note, is_new=False)
+        self.assertTrue(editor.is_read_only)
+
+        # Toggle to edit mode
+        editor.edit_btn.set_active(True)
+        self.assertFalse(editor.is_read_only)
+        self.assertTrue(editor.format_btn.get_sensitive())
+
+        # Toggle back to read-only mode
+        editor.edit_btn.set_active(False)
+        self.assertTrue(editor.is_read_only)
+        self.assertFalse(editor.format_btn.get_sensitive())
+
+    def test_set_read_only_blocks_formatting(self):
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor import NoteEditor
+        editor = NoteEditor(self.db)
+        note = self.db.create_note(title="Read-only test", content_markdown="Some text")
+        editor.load_note(note, is_new=False)
+
+        # Mock evaluate_javascript to verify it's not called by format commands while read-only
+        calls = []
+        editor.webview.evaluate_javascript = lambda script, *args: calls.append(script)
+        editor._exec_js_format("bold")
+        editor._insert_table_at_cursor(2, 2, True)
+        self.assertEqual(len(calls), 0, "Formatting commands should be blocked when read-only")
+
+        # Now unlock edit mode
+        editor.set_read_only(False)
+        editor._exec_js_format("bold")
+        self.assertTrue(any("bold" in c for c in calls), "Formatting command should be sent when edit mode is unlocked")
+
 
 if __name__ == "__main__":
     unittest.main()

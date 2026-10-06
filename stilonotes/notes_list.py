@@ -73,12 +73,6 @@ def get_note_image_bytes(note: Note, db=None) -> Optional[bytes]:
     elif note.content_html:
         content = note.content_html
 
-    # If content was not on the note object (e.g. lightweight Note), load from database
-    if not content and db and hasattr(db, "get_note"):
-        db_note = db.get_note(note.id)
-        if db_note:
-            content = db_note.content_markdown or db_note.content_html or ""
-
     if content:
         # Collect all images in document order (top to bottom)
         matches = []
@@ -97,6 +91,18 @@ def get_note_image_bytes(note: Note, db=None) -> Optional[bytes]:
                 data = _resolve_image_bytes(url, db)
                 if data:
                     return data
+        return None
+
+    # 2. If content was not on the note object (e.g. lightweight Note), use fast DB method
+    if db and hasattr(db, "get_note_first_image"):
+        try:
+            return db.get_note_first_image(note.id)
+        except Exception:
+            pass
+    elif db and hasattr(db, "get_note"):
+        db_note = db.get_note(note.id)
+        if db_note:
+            return get_note_image_bytes(db_note, db)
 
     return None
 

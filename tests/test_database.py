@@ -483,6 +483,65 @@ class TestDatabase(unittest.TestCase):
         # Even though l1 is pinned, l2 is newer so l2 must appear before l1
         self.assertLess(list_ids.index(l2.id), list_ids.index(l1.id))
 
+    def test_untitled_notes_counter_increments(self):
+        note1 = self.db.create_note()
+        self.assertEqual(note1.title, "Untitled Note 1")
+
+        note2 = self.db.create_note()
+        self.assertEqual(note2.title, "Untitled Note 2")
+
+        note3 = self.db.create_note()
+        self.assertEqual(note3.title, "Untitled Note 3")
+
+        # Distinct titles without duplicates
+        titles = {note1.title, note2.title, note3.title}
+        self.assertEqual(len(titles), 3)
+
+    def test_untitled_notes_counter_fills_gap(self):
+        n1 = self.db.create_note()
+        n2 = self.db.create_note()
+        n3 = self.db.create_note()
+        self.assertEqual(n1.title, "Untitled Note 1")
+        self.assertEqual(n2.title, "Untitled Note 2")
+        self.assertEqual(n3.title, "Untitled Note 3")
+
+        # Trash note 2
+        self.db.delete_note(n2.id)
+
+        # The next untitled note should fill gap with Untitled Note 2
+        n4 = self.db.create_note()
+        self.assertEqual(n4.title, "Untitled Note 2")
+
+        # The following note should be Untitled Note 4
+        n5 = self.db.create_note()
+        self.assertEqual(n5.title, "Untitled Note 4")
+
+    def test_untitled_notes_counter_rename_frees_slot(self):
+        n1 = self.db.create_note()
+        self.assertEqual(n1.title, "Untitled Note 1")
+
+        # Rename n1
+        self.db.save_note(n1.id, title="Sprint Retrospective")
+        updated_n1 = self.db.get_note(n1.id)
+        self.assertEqual(updated_n1.title, "Sprint Retrospective")
+
+        # Next untitled note should reuse 1 since Untitled Note 1 is no longer in use
+        n2 = self.db.create_note()
+        self.assertEqual(n2.title, "Untitled Note 1")
+
+    def test_is_untitled_title(self):
+        from stilonotes.markdown_utils import is_untitled_title
+        self.assertTrue(is_untitled_title(None))
+        self.assertTrue(is_untitled_title(""))
+        self.assertTrue(is_untitled_title("   "))
+        self.assertTrue(is_untitled_title("Untitled"))
+        self.assertTrue(is_untitled_title("Untitled Note"))
+        self.assertTrue(is_untitled_title("Untitled Note 1"))
+        self.assertTrue(is_untitled_title("Untitled Note 42"))
+        self.assertFalse(is_untitled_title("Untitled Note ABC"))
+        self.assertFalse(is_untitled_title("Meeting Notes"))
+        self.assertFalse(is_untitled_title("Project Alpha"))
+
 
 if __name__ == "__main__":
     unittest.main()

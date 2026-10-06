@@ -626,6 +626,20 @@
       background: var(--accent-color, #7B2CBF);
       color: #ffffff;
     }
+
+    body.read-only #editor {
+      cursor: default;
+      user-select: text;
+    }
+    body.read-only .table-handle,
+    body.read-only .image-handle,
+    body.read-only .col-resize-handle {
+      display: none !important;
+    }
+    body.read-only .stilo-task input[type="checkbox"] {
+      cursor: default;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -643,7 +657,7 @@
 
   <script>
     window.addEventListener('error', (e) => console.error('StiloNotes JS Error:', e.message, e.filename, e.lineno, e.error));
-    const editor = document.getElementById('editor');
+    var editor = document.getElementById('editor');
     let saveTimeout = null;
     let isUpdatingFromPython = false;
     let lastSavedHtml = '';
@@ -923,6 +937,13 @@
     // ==========================================
     let userInteractedWithCurrentNote = false;
 
+    function isUntitledTitleText(text) {
+      if (!text) return true;
+      const trimmed = text.trim();
+      if (!trimmed || trimmed.toLowerCase() === 'untitled') return true;
+      return /^Untitled Note(\s+\d+)?$/i.test(trimmed);
+    }
+
     function selectUntitledTitle() {
       const doSelect = () => {
         if (userInteractedWithCurrentNote) return;
@@ -932,7 +953,7 @@
           const h1 = editor.querySelector('h1');
           if (h1) {
             const text = h1.textContent.trim();
-            if (text === 'Untitled Note' || text === 'Untitled' || text === '') {
+            if (isUntitledTitleText(text)) {
               const sel = window.getSelection();
               if (!sel.rangeCount || sel.isCollapsed || (sel.anchorNode && h1.contains(sel.anchorNode))) {
                 const range = document.createRange();
@@ -954,6 +975,7 @@
     }
 
     function focusEditor() {
+      if (isReadOnlyMode) return;
       try {
         window.focus();
         editor.focus();
@@ -961,7 +983,7 @@
         const h1 = editor.querySelector('h1');
         if (h1) {
           const text = h1.textContent.trim();
-          if (text === 'Untitled Note' || text === 'Untitled' || text === '') {
+          if (isUntitledTitleText(text)) {
             selectUntitledTitle();
             return;
           }
@@ -1295,6 +1317,19 @@
         checkAutocompleteTrigger();
       });
       editor.addEventListener('keydown', (e) => {
+        if (isReadOnlyMode) {
+          if (e.ctrlKey || e.metaKey) {
+            const keyLower = e.key.toLowerCase();
+            if (keyLower === 'c' || keyLower === 'a') {
+              return;
+            }
+          }
+          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
+            return;
+          }
+          e.preventDefault();
+          return;
+        }
         userInteractedWithCurrentNote = true;
         if (acState.active) {
           if (e.key === 'ArrowDown') {
@@ -2581,6 +2616,10 @@
     function onEditorClick(e) {
       // Checkbox click
       if (e.target.classList.contains('stilo-checkbox')) {
+        if (typeof isReadOnlyMode !== 'undefined' && isReadOnlyMode) {
+          e.preventDefault();
+          return;
+        }
         saveUndoState();
         const task = e.target.closest('.stilo-task');
         if (task) {
@@ -3764,7 +3803,7 @@
         const t = el.getAttribute('data-tag');
         if (t) tags.add(t.toLowerCase());
       });
-      const text = (editor.innerText || '').replace(/\u200B/g, '');
+      const text = (editor.textContent || '').replace(/\u200B/g, '');
       const rawMatches = text.match(/(?:^|[\s.,;:!?])#([a-zA-Z0-9_\-]+)(?=$|[\s.,;:!?])/g);
       if (rawMatches) {
         rawMatches.forEach(m => {
@@ -3776,7 +3815,7 @@
     }
 
     function getStats() {
-      const text = (editor.innerText || '').replace(/\u200B/g, '');
+      const text = (editor.textContent || '').replace(/\u200B/g, '');
       const words = (text.match(/\S+/g) || []).length;
       const chars = text.length;
       const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0).length;
@@ -3790,10 +3829,11 @@
     }
 
     function hasTodo() {
-      return editor.querySelector('.stilo-task') !== null ||
-             editor.innerHTML.includes('[ ]') ||
-             editor.innerHTML.includes('[x]') ||
-             editor.innerHTML.includes('[X]');
+      if (editor.querySelector('.stilo-task, input[type="checkbox"]')) {
+        return true;
+      }
+      const text = editor.textContent || '';
+      return text.includes('[ ]') || text.includes('[x]') || text.includes('[X]');
     }
 
     function getCleanHtml() {
@@ -3822,8 +3862,31 @@
       saveTimeout = setTimeout(notifyChange, 300);
     }
 
+    let isReadOnlyMode = false;
+
+    function setReadOnly(readOnly) {
+      isReadOnlyMode = Boolean(readOnly);
+      if (isReadOnlyMode) {
+        document.body.classList.add('read-only');
+        editor.setAttribute('contenteditable', 'false');
+      } else {
+        document.body.classList.remove('read-only');
+        editor.setAttribute('contenteditable', 'true');
+      }
+      editor.querySelectorAll('table.stilo-table').forEach(tbl => {
+        tbl.setAttribute('contenteditable', isReadOnlyMode ? 'false' : 'true');
+      });
+      editor.querySelectorAll('.task-text').forEach(sp => {
+        sp.setAttribute('contenteditable', isReadOnlyMode ? 'false' : 'true');
+      });
+      editor.querySelectorAll('.table-handle, .image-handle, .col-resize-handle').forEach(h => {
+        h.style.display = isReadOnlyMode ? 'none' : '';
+      });
+      closeAllPopups();
+    }
+
     function notifyChange() {
-      if (isUpdatingFromPython) return;
+      if (isUpdatingFromPython || isReadOnlyMode) return;
       const currentHtml = getCleanHtml();
       const currentTitle = getTitle();
       if (currentHtml === lastSavedHtml && currentTitle === lastSavedTitle) {
@@ -3846,7 +3909,9 @@
     }
 
     // Window methods called from Python
-    window.setEditorContent = function(html, selectUntitled = false) {
+    window.setReadOnly = setReadOnly;
+
+    window.setEditorContent = function(html, selectUntitled = false, readOnly = false) {
       userInteractedWithCurrentNote = false;
       isUpdatingFromPython = true;
       editor.innerHTML = html || '<h1>Untitled Note</h1><div><br></div>';
@@ -3857,9 +3922,11 @@
 
       initUndoStack();
 
+      setReadOnly(readOnly);
+
       const h1 = editor.querySelector('h1');
-      const isUntitledText = h1 && (h1.textContent.trim() === 'Untitled Note' || h1.textContent.trim() === 'Untitled');
-      if (selectUntitled || isUntitledText) {
+      const isUntitledText = h1 && isUntitledTitleText(h1.textContent);
+      if (!readOnly && (selectUntitled || isUntitledText)) {
         selectUntitledTitle();
       }
 

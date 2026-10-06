@@ -515,6 +515,18 @@ def extract_table_data(content: str) -> Optional[List[List[str]]]:
     return None
 
 
+RE_UNTITLED_NOTE = re.compile(r"^Untitled Note(?:\s+\d+)?$", re.IGNORECASE)
+
+def is_untitled_title(title: Optional[str]) -> bool:
+    """Return True if title is empty or an untitled note pattern (Untitled, Untitled Note, Untitled Note 1, etc.)."""
+    if not title:
+        return True
+    s = title.strip()
+    if not s or s.lower() == "untitled":
+        return True
+    return bool(RE_UNTITLED_NOTE.match(s))
+
+
 def extract_title_and_excerpt(markdown_text: str = "", html_text: str = "") -> Tuple[str, str]:
     """Extract first non-empty line as title, and subsequent text as excerpt."""
     title = "Untitled Note"

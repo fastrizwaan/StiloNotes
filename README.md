@@ -19,36 +19,46 @@
 
 ## ✨ Features
 
-- **Distraction-Free & Standard View Modes**: Default distraction-free mode keeps your focus solely on writing by auto-hiding the sidebar, with instant toggle via <kbd>Ctrl+\</kbd> / <kbd>F11</kbd> or the option to keep the sidebar pinned in Preferences.
-- **Custom Typography & Font Families**: Choose between System (Default), clean Sans-Serif, classic Serif, and developer Monospace typefaces with instant live preview.
-- **Unified Text Zoom & Sizing**: Zoom notes smoothly from 80% to 160% in 10% steps, customize Card & List text size (Small, Normal, Large, Extra Large), and restore baseline settings anytime with a dedicated "Reset to Defaults" button.
+### ✍️ Rich Live Markdown Editor
+- **Dynamic WebKit Markdown Live Rendering**: Type standard and extended markdown syntax (`# `, `## `, `### `, `- [ ]`, `*italic*`, `**bold**`, `==highlight==`, `~~strike~~`, `~sub~`, `^super^`, `>`, ````code blocks````, `| tables |`, `---`, footnotes `[^1]`, emojis `:smile:`, and symbols `->`) and watch it dynamically transform into rich, beautifully styled interactive HTML on the fly.
+- **Read-Only Protection & One-Click Edit Mode**: Existing notes automatically open in safe read-only mode to prevent accidental edits or alterations. A dedicated Edit button (<kbd>Ctrl</kbd>+<kbd>E</kbd>) in the header bar unlocks editing instantly.
+- **Sequential Untitled Counter**: Newly created untitled notes are numbered sequentially (`Untitled Note 1`, `Untitled Note 2`, `Untitled Note 3`...), preventing duplicates and smartly filling gaps when notes are renamed or deleted.
+- **Interactive Checklists**: Click checkboxes (`- [ ]` and `- [x]`) directly in the editor to toggle tasks and track completion status in real time.
+- **Responsive FlowBox Formatting Toolbar**: A modern toolbar that wraps gracefully on narrow windows, providing quick access to headings, bold, italic, strikethrough, underline, marker highlight, eraser/clear formatting, bullet/numbered lists, tables, code blocks, links, and image insertion.
+- **Table & Image Insertion**: Insert tables with customizable row and column counts, add/delete rows and columns, delete tables, and insert images with aspect-ratio preserving resize handles.
+- **Real-Time Note Statistics**: Instant live updates for word count, character count, paragraph count, and estimated reading time.
+
+### 📄 Professional Page Setup & Printing
+- **Page Setup Dialog (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>)**: Configure page dimensions, orientation, and margins with persistent settings saved to your user preferences.
+- **Standard Paper Sizes**: Built-in support for ISO A4, US Letter, US Legal, Executive, A3, A5, and B5 paper sizes.
+- **Orientation & Custom Margins**: Switch between Portrait and Landscape orientations, with custom margins configurable in Inches (`in`), Millimeters (`mm`), Centimeters (`cm`), or Points (`pt`).
+- **WebKit Portal Printing (<kbd>Ctrl</kbd>+<kbd>P</kbd>)**: Print directly or export to PDF with live print preview using the XDG Desktop Portal Print dialog.
+
+### 🔢 Smart Organization & Categorization
+- **Nested Categories & Collapsible Chevrons**: Organize notes in multi-level folder hierarchies with an inline `+` category button, collapsible chevrons, and full-width auto-suggest dropdown.
+- **Hashtags & Tag Popover**: Type `#tag` directly into note content with autocomplete suggestions, clickable tag pills, and a dedicated Tags popover dropdown for fast filtering.
+- **List & Visual Grid Views (<kbd>Ctrl</kbd>+<kbd>G</kbd>)**: Switch between a compact note list and a visual note card grid with responsive FlowBox category sections.
+- **Visual Note Cards**: Card previews display note titles, formatted excerpts, primary image thumbnails, and partial table previews with a clean, borderless design.
+- **Smart Sidebar Filters**: One-click filters for All Notes, Favorites, Todos (checklist notes), Lists (bullet & numbered lists), Private Notes, and Trash.
+- **Instant Search (<kbd>Ctrl</kbd>+<kbd>F</kbd>)**: Lightning-fast instant search across note titles, body contents, and tags.
+- **Batch Selection Mode**: Select multiple notes to bulk export, duplicate, assign categories, or delete.
+
+### 🔒 Privacy, Security & Backup
+- **Private & Password-Secured Notes**: Protect confidential notes with PBKDF2-SHA256 salted AES-256 encryption, session locking, dedicated sidebar section, and hidden search/selection states when locked.
+- **Local Database Backup & Standalone GPG**: Export clean SQLite snapshots or encrypt them with AES-256 password protection via standalone GPG (`.db.gpg`) without touching system keyrings. Supports one-click restore.
+- **Automated Backup on Exit**: Optional automatic backups on application exit to a configurable destination folder.
+- **Hardened Codebase**: Lazy module loading, zero plaintext persistence of backup passwords, and HTML-escaping sanitization.
+
+### 🎨 GNOME Experience & Customization
+- **Iotas-Inspired Clean UI**: Distraction-free two-page navigation (`Adw.NavigationView`): Index and Editor, with adaptive overlays (`Adw.OverlaySplitView`).
+- **Distraction-Free & Standard Modes**: Auto-hides the sidebar when editing for maximum focus, with instant toggle via <kbd>Ctrl</kbd>+<kbd>\</kbd> / <kbd>F11</kbd> or an option to keep the sidebar pinned.
+- **Custom Typography**: Choose between System (Default), clean Sans-Serif, classic Serif, and developer Monospace typefaces with live preview.
+- **Unified Text Zoom & Sizing**: Zoom notes smoothly from 80% to 160%, customize Card & List text size (Small, Normal, Large, Extra Large), and restore defaults anytime.
 - **Draggable Sidebar Splitter**: Smooth, flicker-free drag resizer between the sidebar and notes list with persistent width memory.
-- **Category Hierarchy & Tag Popover**: Nested categories with inline [+] add button, collapsible chevrons, and dedicated Tags popover dropdown for quick tag filtering.
-- **Dynamic WebKit Markdown Live Rendering**: Type standard and extended markdown syntax (`# `, `## `, `### `, `- [ ]`, `*`, `**`, `==highlight==`, `~~strike~~`, `~sub~`, `^super^`, `>`, ````lang````, `| a | b |`, `---`, emojis `:smile:`, and symbols `->`) and watch it dynamically transform into rich, beautifully styled interactive HTML on the fly.
-- **List and Grid Views**: Toggle effortlessly between compact list view and visual note card grid view (`Ctrl+G`), with responsive FlowBox category sections.
-- **Visual Note Cards**: Card previews show note titles, formatted excerpts, primary image thumbnails, and partial table previews with a clean, modern flat design.
-- **Interactive Checklists**: Click checkboxes (`- [ ]` and `- [x]`) directly in the editor to toggle tasks and mark them completed.
-- **Rich Formatting Toolbar**: Responsive FlowBox formatting bar that gracefully wraps on narrow windows, providing quick access to headings, bold, italic, strikethrough, underline, highlight, clear formatting, lists, tables, code blocks, links, and image insertion.
-- **Table & Image Tools**: Insert tables with custom row/column counts, add/delete rows and columns, delete tables, insert images with aspect-ratio preserving resize handles, and link notes via titles.
-- **Iotas-Inspired Clean UI**:
-  - Distraction-free two-page navigation (`Adw.NavigationView`): Index and Editor.
-  - Collapsible folder and category sidebar (`Adw.OverlaySplitView`).
-  - Fast search with instant filtering across note titles, contents, and #tags.
-  - Multi-selection mode for batch operations (export, duplicate, move, delete).
-- **Multi-Window Support & Live Sync**: Open multiple windows (<kbd>Ctrl+Shift+N</kbd>) with real-time SQLite database change synchronization and concurrent conflict detection.
-- **Trash Management & Empty State**: Dedicated "Empty Trash…" action bar and clean "Trash is Empty" state.
-- **Smart Filters**: Quick sidebar filters for Favorites, Todos (notes containing checklists), Lists (bullet and numbered lists), and Recent notes.
-- **Session Memory**: Remembers window geometry, view mode (list/grid), last active folder/category, and previously viewed note.
-- **Real-Time Note Statistics**: Instant word count, character count, paragraph count, and reading time estimate.
-- **Seamless Theme Sync**: Automatic synchronization with Libadwaita dark and light modes, with a manual quick-toggle.
-- **Local Database Backup & Standalone GPG Encryption**: Export clean, atomic SQLite database snapshots anytime, or protect them with AES-256 password encryption via standalone GPG (`.db.gpg`) without touching system keyrings. Supports one-click restore and optional automatic backups on exit to a chosen folder.
-- **Open & Import Files as Notes**: Load external Markdown (`.md`, `.markdown`) and plain text (`.txt`) files directly via <kbd>Ctrl+O</kbd>, with automatic title parsing, hashtag extraction, category matching, and checklist / bullet list detection.
-- **Private & Password-Secured Notes**: Protect confidential notes with PBKDF2-SHA256 salted encryption, session locking, dedicated sidebar section, hidden search/select states when locked, and an option to exclude private notes during database backups.
-- **Dynamic Category Popover**: Full-width category suggestions bar matching the exact entry width, with live filtering and keyboard navigation.
-- **Real-Time Split View Sidebar Sync**: Live updates of sidebar tags and count badges while actively writing in the editor.
-- **Multiple Export Formats**: Export notes cleanly to Markdown (`.md`), HTML (`.html` with bundled base64 images), or Plain Text (`.txt`).
-- **Cute Design & Mascot**: Includes custom Adwaita squircle SVG icon and symbolic icon featuring "Stilo" the stylus mascot.
-- **Robust Architecture**: Thread-safe background database saving, zero UI freezes, and clean lifecycle management with zero memory leaks.
+- **Dark & Light Mode Sync**: Seamless synchronization with Libadwaita dark and light themes, plus a manual toggle shortcut (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>).
+- **Multi-Window Support (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>)**: Open multiple windows with real-time SQLite database change synchronization and concurrent conflict detection.
+- **Multiple Import & Export Formats**: Open external `.md` and `.txt` files directly (<kbd>Ctrl</kbd>+<kbd>O</kbd>), or export notes cleanly to Markdown (`.md`), HTML (`.html` with bundled base64 images), or Plain Text (`.txt`).
+- **Cute Mascot**: Custom Adwaita squircle icon featuring "Stilo" the stylus mascot.
 
 ---
 
@@ -120,7 +130,10 @@ flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNote
 | Shortcut | Action |
 | :--- | :--- |
 | <kbd>Ctrl</kbd> + <kbd>N</kbd> | Create a new note |
+| <kbd>Ctrl</kbd> + <kbd>E</kbd> | Edit note / unlock editing mode |
 | <kbd>Ctrl</kbd> + <kbd>O</kbd> | Open note from file (.md, .txt) |
+| <kbd>Ctrl</kbd> + <kbd>P</kbd> | Print note (WebKit print portal) |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> | Page Setup dialog |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> | Open a new window |
 | <kbd>Ctrl</kbd> + <kbd>F</kbd> | Search notes |
 | <kbd>Ctrl</kbd> + <kbd>G</kbd> | Toggle List / Grid view |
@@ -176,6 +189,7 @@ StiloNotes/
 │   ├── markdown_utils.py            # Two-way Markdown <-> HTML parser
 │   ├── models.py                    # Note & Category dataclasses
 │   ├── notes_list.py                # Note rows, grid cards, & FlowBox views
+│   ├── page_setup.py                # Page setup dialog, paper sizes & margin configs
 │   ├── selection_header_bar.py      # Batch selection mode headerbar
 │   ├── sidebar.py                   # Folder/category navigation sidebar
 │   ├── theme_selector.py            # Light/Dark/Follow system theme selector

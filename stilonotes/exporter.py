@@ -173,7 +173,7 @@ def bundle_attachments_in_markdown(md_str: str, db: Optional[Any] = None, note_i
     )
     return pattern.sub(_replace_md, md_str)
 
-def render_printable_html(note: Note, db: Optional[Any] = None) -> str:
+def render_printable_html(note: Note, db: Optional[Any] = None, page_setup: Optional[Any] = None) -> str:
     """Render a standalone, beautifully styled HTML document for printing or HTML export."""
     clean_html = note.content_html or ""
     if not clean_html and note.content_markdown:
@@ -194,6 +194,24 @@ def render_printable_html(note: Note, db: Optional[Any] = None) -> str:
     has_h1 = bool(re.search(r'<h1[^>]*>', bundled_html, re.IGNORECASE))
     title_heading = f"<h1>{title}</h1>\n" if not has_h1 else ""
 
+    page_css = "@page {\n"
+    if page_setup and hasattr(page_setup, "get_paper_size"):
+        try:
+            paper_size = page_setup.get_paper_size()
+            pname = paper_size.get_name() if paper_size else "A4"
+            orient = "landscape" if hasattr(Gtk, "PageOrientation") and page_setup.get_orientation() == Gtk.PageOrientation.LANDSCAPE else "portrait"
+            top_pt = page_setup.get_top_margin(Gtk.Unit.POINTS)
+            right_pt = page_setup.get_right_margin(Gtk.Unit.POINTS)
+            bottom_pt = page_setup.get_bottom_margin(Gtk.Unit.POINTS)
+            left_pt = page_setup.get_left_margin(Gtk.Unit.POINTS)
+            page_css += f"  size: {pname} {orient};\n"
+            page_css += f"  margin: {top_pt:.1f}pt {right_pt:.1f}pt {bottom_pt:.1f}pt {left_pt:.1f}pt;\n"
+        except Exception:
+            page_css += "  margin: 15mm 20mm;\n"
+    else:
+        page_css += "  margin: 15mm 20mm;\n"
+    page_css += "}"
+
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -201,9 +219,7 @@ def render_printable_html(note: Note, db: Optional[Any] = None) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <style>
-@page {{
-  margin: 15mm 20mm;
-}}
+{page_css}
 body {{
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Cantarell, "Helvetica Neue", Arial, sans-serif;
   font-size: 11pt;
@@ -364,12 +380,13 @@ class Printer(GObject.GObject):
         "finished": (GObject.SignalFlags.ACTION, None, ()),
     }
 
-    def __init__(self, note: Note, db: Optional[Any] = None, parent_window: Optional[Gtk.Window] = None):
+    def __init__(self, note: Note, db: Optional[Any] = None, parent_window: Optional[Gtk.Window] = None, page_setup: Optional[Any] = None):
         super().__init__()
         self.note = note
         self.db = db
         self.parent_window = parent_window
-        self.html = render_printable_html(note, db=db)
+        self.page_setup = page_setup
+        self.html = render_printable_html(note, db=db, page_setup=page_setup)
         setup_print_preview_settings()
         self.web_view = WebKit.WebView()
         self._started = False
@@ -394,6 +411,8 @@ class Printer(GObject.GObject):
 
             try:
                 self._operation = WebKit.PrintOperation.new(self.web_view)
+                if self.page_setup:
+                    self._operation.set_page_setup(self.page_setup)
                 self._operation.connect("finished", lambda _op: self._on_finished())
                 self._operation.connect("failed", lambda _op, _err: self._on_finished())
                 settings = Gtk.PrintSettings.new()

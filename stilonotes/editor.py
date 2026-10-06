@@ -20,8 +20,9 @@ from stilonotes.theme_selector import ThemeSelector
 from stilonotes.font_size_selector import FontSizeSelector
 from stilonotes.models import Note
 from stilonotes.editor_html import get_editor_html_page
-from stilonotes.markdown_utils import compute_note_stats, format_relative_date, html_to_markdown, markdown_to_html
+from stilonotes.markdown_utils import compute_note_stats, format_relative_date, html_to_markdown, markdown_to_html, is_untitled_title
 from stilonotes.exporter import export_note_dialog, Printer
+from stilonotes.page_setup import show_page_setup_dialog, create_default_page_setup
 from stilonotes.const import get_assets_path
 
 _GLOBAL_DB = None
@@ -347,6 +348,8 @@ class NoteEditor(Gtk.Box):
         self._pending_load_note = None
         self._save_timeout_id = None
         self._current_printer = None
+        self.is_read_only = False
+        self.page_setup = self.config_manager.get_page_setup() if hasattr(self.config_manager, "get_page_setup") else create_default_page_setup()
         _register_attachment_scheme(self.db)
         self._build_ui()
 
@@ -367,6 +370,14 @@ class NoteEditor(Gtk.Box):
         self.back_btn.set_tooltip_text("Back to Notes (Esc)")
         self.back_btn.connect("clicked", lambda _b: self.emit("back"))
         self.main_header_bar.pack_start(self.back_btn)
+
+        self.edit_btn = Gtk.ToggleButton()
+        self.edit_btn.set_icon_name("edit-symbolic")
+        self.edit_btn.set_tooltip_text("Edit Note (Ctrl+E)")
+        self.edit_btn.set_focus_on_click(False)
+        self.edit_btn.add_css_class("flat")
+        self.edit_btn.connect("toggled", self._on_edit_btn_toggled)
+        self.main_header_bar.pack_start(self.edit_btn)
 
         self.title_label = Gtk.Label(label="Untitled Note")
         self.title_label.add_css_class("title")
@@ -527,11 +538,48 @@ class NoteEditor(Gtk.Box):
 
     # ── Toolbar auto-hide / hover / pin handling ──────────────────────────
 
+    def set_read_only(self, read_only: bool):
+        """Toggle between read-only mode and edit mode."""
+        self.is_read_only = bool(read_only)
+
+        if hasattr(self, "edit_btn") and self.edit_btn:
+            try:
+                self.edit_btn.handler_block_by_func(self._on_edit_btn_toggled)
+                self.edit_btn.set_active(not self.is_read_only)
+                self.edit_btn.handler_unblock_by_func(self._on_edit_btn_toggled)
+            except Exception:
+                self.edit_btn.set_active(not self.is_read_only)
+
+            if self.is_read_only:
+                self.edit_btn.set_tooltip_text("Edit Note (Ctrl+E)")
+            else:
+                self.edit_btn.set_tooltip_text("Lock for Reading (Ctrl+E)")
+
+        if hasattr(self, "format_btn") and self.format_btn:
+            self.format_btn.set_sensitive(not self.is_read_only)
+
+        if self.is_read_only:
+            if hasattr(self, "fmt_revealer") and self.fmt_revealer:
+                self.fmt_revealer.set_reveal_child(False)
+        else:
+            if getattr(self, "_is_toolbar_pinned", False):
+                self._show_toolbar()
+
+        if hasattr(self, "webview") and self.webview:
+            script = f"if (window.setReadOnly) {{ window.setReadOnly({'true' if self.is_read_only else 'false'}); }}"
+            self.webview.evaluate_javascript(script, -1, None, None, None, None)
+
+    def _on_edit_btn_toggled(self, btn):
+        is_editing = btn.get_active()
+        self.set_read_only(not is_editing)
+        if is_editing:
+            GLib.idle_add(self.focus_editor)
+
     def _on_format_btn_toggled(self, btn):
         pinned = btn.get_active()
         self._is_toolbar_pinned = pinned
         self.config_manager.set_toolbar_pinned(pinned)
-        if pinned:
+        if pinned and not getattr(self, "is_read_only", False):
             self._show_toolbar()
         else:
             if self._toolbar_reveal_timeout:
@@ -543,10 +591,14 @@ class NoteEditor(Gtk.Box):
                 self._schedule_hide_toolbar()
 
     def _insert_table_at_cursor(self, rows: int, cols: int, has_header: bool):
+        if getattr(self, "is_read_only", False):
+            return
         script = f"if (window.insertCustomTable) {{ window.insertCustomTable({rows}, {cols}, {'true' if has_header else 'false'}); }}"
         self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
     def _trigger_pick_image(self):
+        if getattr(self, "is_read_only", False):
+            return
         self._on_js_pick_image(None, None)
 
     def _on_toolbar_enter(self, _ctrl, _x, _y):
@@ -582,6 +634,8 @@ class NoteEditor(Gtk.Box):
             self._schedule_hide_toolbar()
 
     def _show_toolbar(self):
+        if getattr(self, "is_read_only", False):
+            return
         if self._toolbar_reveal_timeout:
             GLib.source_remove(self._toolbar_reveal_timeout)
             self._toolbar_reveal_timeout = None
@@ -620,34 +674,38 @@ class NoteEditor(Gtk.Box):
             font_size = self.config_manager.get_font_size()
             self.update_font_size(font_size)
             if self._pending_load_note:
-                note = self._pending_load_note
+                if isinstance(self._pending_load_note, tuple):
+                    note, is_new = self._pending_load_note
+                else:
+                    note, is_new = self._pending_load_note, False
                 self._pending_load_note = None
-                self.load_note(note)
+                self.load_note(note, is_new=is_new)
             else:
                 self.webview.evaluate_javascript("if (window.selectUntitledTitle) { window.selectUntitledTitle(); }", -1, None, None, None, None)
-            GLib.idle_add(self.focus_editor)
+                GLib.idle_add(self.focus_editor)
 
     # ── WebKit message handlers ───────────────────────────────────────────
 
     def _setup_message_handlers(self):
         ucm = self.webview.get_user_content_manager()
+        self._message_handler_ids = []
         try:
             ucm.register_script_message_handler("contentChanged")
-            ucm.connect("script-message-received::contentChanged", self._on_js_content_changed)
+            self._message_handler_ids.append(ucm.connect("script-message-received::contentChanged", self._on_js_content_changed))
             ucm.register_script_message_handler("statsChanged")
-            ucm.connect("script-message-received::statsChanged", self._on_js_stats_changed)
+            self._message_handler_ids.append(ucm.connect("script-message-received::statsChanged", self._on_js_stats_changed))
             ucm.register_script_message_handler("pickImage")
-            ucm.connect("script-message-received::pickImage", self._on_js_pick_image)
+            self._message_handler_ids.append(ucm.connect("script-message-received::pickImage", self._on_js_pick_image))
             ucm.register_script_message_handler("uploadImage")
-            ucm.connect("script-message-received::uploadImage", self._on_js_upload_image)
+            self._message_handler_ids.append(ucm.connect("script-message-received::uploadImage", self._on_js_upload_image))
             ucm.register_script_message_handler("tagClicked")
-            ucm.connect("script-message-received::tagClicked", self._on_js_tag_clicked)
+            self._message_handler_ids.append(ucm.connect("script-message-received::tagClicked", self._on_js_tag_clicked))
             ucm.register_script_message_handler("openNoteLink")
-            ucm.connect("script-message-received::openNoteLink", self._on_js_open_note_link)
+            self._message_handler_ids.append(ucm.connect("script-message-received::openNoteLink", self._on_js_open_note_link))
             ucm.register_script_message_handler("categorySelected")
-            ucm.connect("script-message-received::categorySelected", self._on_js_category_selected)
+            self._message_handler_ids.append(ucm.connect("script-message-received::categorySelected", self._on_js_category_selected))
             ucm.register_script_message_handler("printNote")
-            ucm.connect("script-message-received::printNote", lambda _ucm, _msg: self._print_note(self.get_root()))
+            self._message_handler_ids.append(ucm.connect("script-message-received::printNote", lambda _ucm, _msg: self._print_note(self.get_root())))
         except Exception as e:
             print("Message handler registration error:", e)
 
@@ -732,7 +790,6 @@ class NoteEditor(Gtk.Box):
         menu.append_section(None, s1)
 
         s2 = Gio.Menu()
-        s2.append("Edit Title…",        "editor.rename-title")
         s2.append("Change Category…",   "editor.edit-category")
         s2.append("Pin to Favorites",   "editor.toggle-pin")
         is_locked = bool(self.current_note and self.current_note.is_locked)
@@ -742,6 +799,7 @@ class NoteEditor(Gtk.Box):
 
         s3 = Gio.Menu()
         s3.append("Open…",                  "win.open-file")
+        s3.append("Page Setup…",            "editor.page-setup")
         s3.append("Print…",                 "editor.print")
         s3.append("Export as Markdown…",    "editor.export-md")
         s3.append("Export as HTML…",        "editor.export-html")
@@ -779,10 +837,12 @@ class NoteEditor(Gtk.Box):
         act("duplicate",     self._on_duplicate)
         act("toggle-theme",  lambda: self.emit("toggle-app-theme"))
         act("show-stats",    lambda: self.info_btn.popup())
+        act("page-setup",    lambda: self._on_page_setup(window))
         act("print",         lambda: self._print_note(window))
         act("export-md",     lambda: self._export_note("md",   window))
         act("export-html",   lambda: self._export_note("html", window))
         act("export-txt",    lambda: self._export_note("txt",  window))
+        act("toggle-edit",   lambda: self.set_read_only(not self.is_read_only))
         act("toggle-format-toolbar", lambda: self.format_btn.set_active(not self.format_btn.get_active()))
         act("delete",        self._on_delete)
 
@@ -793,14 +853,27 @@ class NoteEditor(Gtk.Box):
         shortcut_ctrl.set_scope(Gtk.ShortcutScope.LOCAL)
         shortcut_ctrl.add_shortcut(
             Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string("<Control>e"),
+                Gtk.NamedAction.new("editor.toggle-edit")
+            )
+        )
+        shortcut_ctrl.add_shortcut(
+            Gtk.Shortcut.new(
                 Gtk.ShortcutTrigger.parse_string("<Control>p"),
                 Gtk.NamedAction.new("editor.print")
+            )
+        )
+        shortcut_ctrl.add_shortcut(
+            Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string("<Control><Shift>p"),
+                Gtk.NamedAction.new("editor.page-setup")
             )
         )
         self.add_controller(shortcut_ctrl)
 
         app = window.get_application()
         if app:
+            app.set_accels_for_action("editor.toggle-edit", ["<Control>e"])
             app.set_accels_for_action("editor.undo", ["<Control>z"])
             app.set_accels_for_action("editor.redo", ["<Control>y", "<Control><Shift>z"])
             app.set_accels_for_action("editor.highlight", ["<Control><Shift>h"])
@@ -810,6 +883,7 @@ class NoteEditor(Gtk.Box):
             app.set_accels_for_action("editor.reset-font-size", ["<Control>0"])
             app.set_accels_for_action("editor.toggle-sidebar", ["<Control>backslash", "F11"])
             app.set_accels_for_action("editor.toggle-format-toolbar", ["<Control><Shift>f"])
+            app.set_accels_for_action("editor.page-setup", ["<Control><Shift>p"])
             app.set_accels_for_action("editor.print", ["<Control>p"])
 
     # ── Category editing ──────────────────────────────────────────────────
@@ -883,13 +957,14 @@ class NoteEditor(Gtk.Box):
             html_content = f"<h1>{note.title}</h1><div><br></div>"
 
         escaped_html = json.dumps(html_content)
-        script = f"if (window.setEditorContent) {{ window.setEditorContent({escaped_html}, false); }}"
+        read_only_js = "true" if getattr(self, "is_read_only", False) else "false"
+        script = f"if (window.setEditorContent) {{ window.setEditorContent({escaped_html}, false, {read_only_js}); }}"
         self.webview.evaluate_javascript(script, -1, None, None, None, None)
         self._sync_autocomplete_data()
 
     # ── Note loading & theme ──────────────────────────────────────────────
 
-    def load_note(self, note: Note):
+    def load_note(self, note: Note, is_new: Optional[bool] = None):
         self.hide_conflict_banner()
         self.flush_save()
         full_note = self.db.get_note(note.id)
@@ -900,6 +975,12 @@ class NoteEditor(Gtk.Box):
         self.title_label.set_text(note.title)
         self.status_label.set_text("Saved")
 
+        if is_new is None:
+            has_body = bool((note.content_markdown or "").strip() or (note.content_html or "").strip())
+            is_new = not has_body and is_untitled_title(note.title)
+
+        self.set_read_only(not is_new)
+
         # Update star button state
         self._update_star_btn(note.is_pinned)
         self._update_lock_ui()
@@ -909,7 +990,7 @@ class NoteEditor(Gtk.Box):
         self.update_stats_popover()
 
         if not self._page_loaded:
-            self._pending_load_note = note
+            self._pending_load_note = (note, is_new)
             return
 
         html_content = note.content_html
@@ -919,14 +1000,20 @@ class NoteEditor(Gtk.Box):
             html_content = f"<h1>{note.title}</h1><div><br></div>"
 
         escaped_html = json.dumps(html_content)
-        is_untitled = bool(note.title == "Untitled Note" or not note.title.strip())
-        script = f"if (window.setEditorContent) {{ window.setEditorContent({escaped_html}, {'true' if is_untitled else 'false'}); }}"
+        is_untitled = is_untitled_title(note.title)
+        read_only_js = "true" if self.is_read_only else "false"
+        script = f"if (window.setEditorContent) {{ window.setEditorContent({escaped_html}, {'true' if is_untitled else 'false'}, {read_only_js}); }}"
         self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
-        self._show_toolbar()
+        if not self.is_read_only:
+            self._show_toolbar()
+            GLib.idle_add(self.focus_editor)
+        else:
+            if hasattr(self, "fmt_revealer") and self.fmt_revealer:
+                self.fmt_revealer.set_reveal_child(False)
+
         self.update_stats_popover()
         self._sync_autocomplete_data()
-        GLib.idle_add(self.focus_editor)
 
     def update_theme(self, is_dark: bool):
         self.is_dark_mode = is_dark
@@ -982,6 +1069,8 @@ class NoteEditor(Gtk.Box):
     # ── JS / WebKit callbacks ─────────────────────────────────────────────
 
     def _exec_js_format(self, command: str):
+        if getattr(self, "is_read_only", False):
+            return
         script = f"window.execFormatting({json.dumps(command)});"
         self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
@@ -1202,6 +1291,13 @@ class NoteEditor(Gtk.Box):
         if hasattr(self, "webview") and self.webview:
             try:
                 ucm = self.webview.get_user_content_manager()
+                # Disconnect signal handlers to prevent memory leaks
+                for handler_id in getattr(self, "_message_handler_ids", []):
+                    try:
+                        ucm.disconnect(handler_id)
+                    except Exception:
+                        pass
+                self._message_handler_ids = []
                 for handler in [
                     "contentChanged", "statsChanged", "pickImage",
                     "uploadImage", "tagClicked", "openNoteLink", "categorySelected", "printNote"
@@ -1299,12 +1395,21 @@ class NoteEditor(Gtk.Box):
             if response == "rename":
                 new_title = entry.get_text().strip()
                 if new_title:
+                    if getattr(self, "is_read_only", False):
+                        self.set_read_only(False)
                     self.title_label.set_text(new_title)
                     script = f"""
-                    var h1 = document.querySelector('h1');
-                    if (h1) {{ h1.innerText = {json.dumps(new_title)}; }}
-                    else {{ document.execCommand('insertHTML', false, '<h1>' + {json.dumps(new_title)} + '</h1>'); }}
-                    notifyChange();
+                    (function() {{
+                        var h1 = document.querySelector('h1');
+                        if (h1) {{ h1.innerText = {json.dumps(new_title)}; }}
+                        else {{
+                            var newH1 = document.createElement('h1');
+                            newH1.textContent = {json.dumps(new_title)};
+                            var ed = document.getElementById('editor');
+                            if (ed) {{ ed.insertBefore(newH1, ed.firstChild); }}
+                        }}
+                        notifyChange();
+                    }})();
                     """
                     self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
@@ -1332,6 +1437,31 @@ class NoteEditor(Gtk.Box):
             self.flush_save()
             export_note_dialog(window, self.current_note, fmt, db=self.db)
 
+    def _on_page_setup(self, window: Optional[Gtk.Window] = None):
+        """Show Page Setup dialog to configure paper size, orientation, and margins."""
+        parent = window if isinstance(window, Gtk.Window) else self.get_root()
+        if not isinstance(parent, Gtk.Window):
+            parent = None
+
+        current_unit = "in"
+        if hasattr(self.config_manager, "get_page_setup_unit"):
+            current_unit = self.config_manager.get_page_setup_unit()
+
+        def on_applied(new_setup, unit):
+            self.page_setup = new_setup
+            if hasattr(self.config_manager, "set_page_setup"):
+                self.config_manager.set_page_setup(new_setup, unit)
+            top_win = self.get_root()
+            if top_win and hasattr(top_win, "index_view") and hasattr(top_win.index_view, "toast_overlay"):
+                top_win.index_view.toast_overlay.add_toast(Adw.Toast.new("Page setup saved"))
+
+        show_page_setup_dialog(
+            parent_window=parent,
+            current_page_setup=getattr(self, "page_setup", None),
+            current_unit=current_unit,
+            on_applied=on_applied,
+        )
+
     def _print_note(self, window: Optional[Gtk.Window] = None):
         if not self.current_note:
             return
@@ -1341,7 +1471,7 @@ class NoteEditor(Gtk.Box):
         parent = window if isinstance(window, Gtk.Window) else self.get_root()
         if not isinstance(parent, Gtk.Window):
             parent = None
-        printer = Printer(self.current_note, db=self.db, parent_window=parent)
+        printer = Printer(self.current_note, db=self.db, parent_window=parent, page_setup=getattr(self, "page_setup", None))
         self._current_printer = printer
         printer.connect("finished", lambda _p: setattr(self, "_current_printer", None))
         try:
