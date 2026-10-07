@@ -302,6 +302,8 @@ RE_HTM_TAG = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-tag[^"\']*["\'][^>]*
 RE_HTM_MENTION = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-mention[^"\']*["\'][^>]*data-mention=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
 RE_HTM_WIKI = re.compile(r'<a[^>]*class=["\'][^"\']*stilo-wiki-link[^"\']*["\'][^>]*data-note-title=["\']([^"\']*)["\'][^>]*data-note-heading=["\']([^"\']*)["\'][^>]*>(.*?)</a>', re.DOTALL)
 RE_HTM_CAT_BADGE = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-category-badge[^"\']*["\'][^>]*data-category=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
+RE_MD_LINK_ONLY = re.compile(r'(?<!\!)\[([^\]]+)\]\(([^)\s]+)(?:\s+(?:["\']|&quot;)(.*?)(?:["\']|&quot;))?\)')
+RE_LINK_URL = re.compile(r'https?://[^\s<>"\'`]+', re.IGNORECASE)
 
 MD_SPECIAL_CHARS = set("#*_`[<~=-+:^@/")
 
@@ -357,6 +359,20 @@ def check_has_list(content: str) -> bool:
         RE_LIST_MD_BULLET.search(content)
         or RE_LIST_MD_NUMBER.search(content)
         or RE_LIST_HTML.search(content)
+    )
+
+
+def check_has_link(content: str) -> bool:
+    """Check if content contains any links (internal wiki links or external URLs)."""
+    if not content:
+        return False
+    return bool(
+        RE_WIKI_LINK.search(content)
+        or RE_MD_LINK_ONLY.search(content)
+        or RE_HTM_LINK.search(content)
+        or RE_HTM_WIKI.search(content)
+        or "stilo-note://" in content
+        or RE_LINK_URL.search(content)
     )
 
 

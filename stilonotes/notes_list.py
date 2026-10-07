@@ -1044,6 +1044,12 @@ class NotesList(Gtk.Box):
                     self.empty_page.set_icon_name("channel-secure-symbolic")
                     self.empty_new_btn.set_label("New Private Note")
                     self.empty_new_btn.set_visible(True)
+                elif active_filter_type in ("linked", "link", "links"):
+                    self.empty_page.set_title("No Linked Notes")
+                    self.empty_page.set_description("Notes containing internal or external links will appear here.")
+                    self.empty_page.set_icon_name("insert-link-symbolic")
+                    self.empty_new_btn.set_label("New Note")
+                    self.empty_new_btn.set_visible(True)
                 else:
                     self.empty_page.set_title("Note List Empty")
                     self.empty_page.set_description("Capture your ideas, checklists, and notes in markdown.")
@@ -1081,8 +1087,8 @@ class NotesList(Gtk.Box):
         week_start = (now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())).timestamp()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
 
-        # Favorites bucket: in All Notes, Recent, Private, Todos, and Lists views, do not show a separate Favorites section; sort all notes by date
-        if active_filter_type in ("all", "recent", "recents", "private", "locked", "todo", "todos", "list", "lists", None, ""):
+        # Favorites bucket: in All Notes, Recent, Private, Todos, Lists, and Linked views, do not show a separate Favorites section; sort all notes by date
+        if active_filter_type in ("all", "recent", "recents", "private", "locked", "todo", "todos", "list", "lists", "linked", "link", "links", None, ""):
             fav_notes = []
             date_notes = notes
         else:

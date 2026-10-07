@@ -977,6 +977,13 @@ class NoteEditor(Gtk.Box):
 
     # ── Note loading & theme ──────────────────────────────────────────────
 
+    def update_back_tooltip(self, has_history: bool):
+        if hasattr(self, "back_btn") and self.back_btn:
+            if has_history:
+                self.back_btn.set_tooltip_text("Back to Previous Note (Esc)")
+            else:
+                self.back_btn.set_tooltip_text("Back to Notes (Esc)")
+
     def load_note(self, note: Note, is_new: Optional[bool] = None):
         self.hide_conflict_banner()
         self.flush_save()

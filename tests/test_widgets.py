@@ -99,6 +99,49 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
             # (In headless/CI it might be mocked or no-op)
             pass
 
+    def test_cross_note_navigation_back_history(self):
+        from gi.repository import Gdk, Adw
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.window import StiloWindow
+        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestNav")
+        win = StiloWindow(app, self.db)
+
+        note_a = self.db.create_note("Note A", "Content A")
+        note_b = self.db.create_note("Note B", "Content B")
+        note_c = self.db.create_note("Note C", "Content C")
+
+        # Open Note A from list
+        win.open_note(note_a)
+        self.assertEqual(win.editor.current_note.id, note_a.id)
+        self.assertEqual(len(win._note_history), 0)
+
+        # From Note A, follow link to Note B
+        win._on_editor_open_note_link(win.editor, "Note B", "")
+        self.assertEqual(win.editor.current_note.id, note_b.id)
+        self.assertEqual(win._note_history, [note_a.id])
+
+        # From Note B, follow link to Note C
+        win._on_editor_open_note_link(win.editor, "Note C", "")
+        self.assertEqual(win.editor.current_note.id, note_c.id)
+        self.assertEqual(win._note_history, [note_a.id, note_b.id])
+
+        # Click Back: should navigate to Note B
+        win._go_back()
+        self.assertEqual(win.editor.current_note.id, note_b.id)
+        self.assertEqual(win._note_history, [note_a.id])
+
+        # Click Back: should navigate to Note A
+        win._go_back()
+        self.assertEqual(win.editor.current_note.id, note_a.id)
+        self.assertEqual(len(win._note_history), 0)
+
+        # Click Back: should pop to Notes list
+        win._go_back()
+        self.assertEqual(len(win._note_history), 0)
+        self.assertEqual(win.navigation.get_visible_page(), win.index_page)
+
 
 if __name__ == "__main__":
     unittest.main()

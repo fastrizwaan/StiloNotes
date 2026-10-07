@@ -27,6 +27,7 @@ from stilonotes.markdown_utils import (
     extract_table_data,
     check_has_todo,
     check_has_list,
+    check_has_link,
     markdown_to_html,
     html_to_markdown,
     is_untitled_title,
@@ -92,6 +93,10 @@ class NoteDatabase:
             "has_list_fn", 2,
             lambda md, html: 1 if (check_has_list(md) or check_has_list(html)) else 0
         )
+        conn.create_function(
+            "has_link_fn", 2,
+            lambda md, html: 1 if (check_has_link(md) or check_has_link(html)) else 0
+        )
 
     @contextmanager
     def get_connection(self):
@@ -147,19 +152,23 @@ class NoteDatabase:
                 is_archived INTEGER DEFAULT 0,
                 is_trashed INTEGER DEFAULT 0,
                 has_todo INTEGER DEFAULT 0,
+                has_list INTEGER DEFAULT 0,
+                has_link INTEGER DEFAULT 0,
                 is_locked INTEGER DEFAULT 0,
                 created_at REAL,
                 updated_at REAL
             )
             """)
 
-            # Ensure is_locked column exists for existing databases
+            # Ensure is_locked, has_list, and has_link columns exist for existing databases
             cursor.execute("PRAGMA table_info(notes)")
             existing_cols = [col["name"] for col in cursor.fetchall()]
             if "is_locked" not in existing_cols:
                 cursor.execute("ALTER TABLE notes ADD COLUMN is_locked INTEGER DEFAULT 0")
             if "has_list" not in existing_cols:
                 cursor.execute("ALTER TABLE notes ADD COLUMN has_list INTEGER DEFAULT 0")
+            if "has_link" not in existing_cols:
+                cursor.execute("ALTER TABLE notes ADD COLUMN has_link INTEGER DEFAULT 0")
 
             # Attachments table for storing images and media as binary blobs
             cursor.execute("""
@@ -211,6 +220,7 @@ class NoteDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_locked ON notes (is_locked)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_locked_updated ON notes (is_trashed, is_locked, updated_at DESC)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_has_list ON notes (has_list)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_has_link ON notes (has_link)")
 
             # Migrate legacy notes if content_markdown is empty but content_html exists
             cursor.execute("""
@@ -234,6 +244,12 @@ class NoteDatabase:
             for r in cursor.fetchall():
                 if check_has_list(r["content_markdown"]) or check_has_list(r["content_html"]):
                     cursor.execute("UPDATE notes SET has_list = 1 WHERE id = ?", (r["id"],))
+
+            # Ensure notes with links have has_link set to 1
+            cursor.execute("SELECT id, content_markdown, content_html FROM notes WHERE has_link IS NULL OR has_link = 0")
+            for r in cursor.fetchall():
+                if check_has_link(r["content_markdown"]) or check_has_link(r["content_html"]):
+                    cursor.execute("UPDATE notes SET has_link = 1 WHERE id = ?", (r["id"],))
 
             # Ensure uncategorized is never in categories table or notes category field
             cursor.execute("DELETE FROM categories WHERE LOWER(name) = 'uncategorized'")
@@ -315,7 +331,7 @@ Enjoy writing with Stilo Notes!
             # Locked note bodies are decrypted lazily in get_note().
             query = """
             SELECT id, title, excerpt, category, tags, is_pinned, is_archived, is_trashed,
-                   has_todo, is_locked, created_at, updated_at
+                   has_todo, has_list, has_link, is_locked, created_at, updated_at
             FROM notes WHERE 1=1
             """
             params: List[Any] = []
@@ -342,6 +358,8 @@ Enjoy writing with Stilo Notes!
                 query += " AND has_todo = 1"
             elif filter_type in ("list", "lists"):
                 query += " AND has_list = 1"
+            elif filter_type in ("linked", "link", "links"):
+                query += " AND has_link = 1"
             elif filter_type in ("recent", "recents"):
                 recent_cutoff = time.time() - (7 * 86400)
                 query += " AND updated_at >= ?"
@@ -364,8 +382,8 @@ Enjoy writing with Stilo Notes!
                 query += " AND (title LIKE ? OR excerpt LIKE ? OR content_markdown LIKE ?)"
                 params.extend([q, q, q])
 
-            # In All Notes, Private, Recent, Todos, and Lists, sort strictly by updated_at descending; for others, pinned notes appear first
-            if filter_type in ("all", "recent", "recents", "private", "locked", "todo", "todos", "list", "lists") or not filter_type:
+            # In All Notes, Private, Recent, Todos, Lists, and Linked, sort strictly by updated_at descending; for others, pinned notes appear first
+            if filter_type in ("all", "recent", "recents", "private", "locked", "todo", "todos", "list", "lists", "linked", "link", "links") or not filter_type:
                 query += " ORDER BY updated_at DESC"
             else:
                 query += " ORDER BY is_pinned DESC, updated_at DESC"
@@ -494,6 +512,7 @@ Enjoy writing with Stilo Notes!
                 else:
                     new_todo = 0
                 new_has_list = 1 if (check_has_list(new_md) or check_has_list(new_html)) else 0
+                new_has_link = 1 if (check_has_link(new_md) or check_has_link(new_html)) else 0
 
                 cursor.execute("""
                 UPDATE notes SET
@@ -508,6 +527,7 @@ Enjoy writing with Stilo Notes!
                     is_trashed = ?,
                     has_todo = ?,
                     has_list = ?,
+                    has_link = ?,
                     is_locked = ?,
                     updated_at = ?
                 WHERE id = ?
@@ -523,6 +543,7 @@ Enjoy writing with Stilo Notes!
                     new_trashed,
                     new_todo,
                     new_has_list,
+                    new_has_link,
                     new_locked,
                     now,
                     note_id
@@ -589,12 +610,13 @@ Enjoy writing with Stilo Notes!
                 else:
                     new_todo = 0
                 new_has_list = 1 if (check_has_list(new_md) or check_has_list(new_html)) else 0
+                new_has_link = 1 if (check_has_link(new_md) or check_has_link(new_html)) else 0
 
                 cursor.execute("""
                 INSERT INTO notes (
                     id, title, content_html, content_markdown, excerpt, category,
-                    tags, is_pinned, is_archived, is_trashed, has_todo, has_list, is_locked, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tags, is_pinned, is_archived, is_trashed, has_todo, has_list, has_link, is_locked, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     note_id,
                     new_title,
@@ -608,6 +630,7 @@ Enjoy writing with Stilo Notes!
                     new_trashed,
                     new_todo,
                     new_has_list,
+                    new_has_link,
                     new_locked,
                     now,
                     now
@@ -644,6 +667,7 @@ Enjoy writing with Stilo Notes!
                 is_trashed=bool(new_trashed),
                 has_todo=bool(new_todo),
                 has_list=bool(new_has_list),
+                has_link=bool(new_has_link),
                 is_locked=bool(new_locked),
                 created_at=row["created_at"] if row else now,
                 updated_at=now,
@@ -1389,6 +1413,7 @@ Enjoy writing with Stilo Notes!
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND is_pinned = 1 THEN 1 END) as pinned_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND has_todo = 1 THEN 1 END) as todo_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND has_list = 1 THEN 1 END) as list_cnt,
+                COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND has_link = 1 THEN 1 END) as link_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 1 THEN 1 END) as private_cnt,
                 COUNT(CASE WHEN is_trashed = 0 AND is_locked = 0 AND (category = '' OR category IS NULL) THEN 1 END) as uncat_cnt,
                 COUNT(CASE WHEN is_trashed = 1 THEN 1 END) as trash_cnt
@@ -1399,6 +1424,7 @@ Enjoy writing with Stilo Notes!
             pinned_cnt = counts_row["pinned_cnt"]
             todo_cnt = counts_row["todo_cnt"]
             list_cnt = counts_row["list_cnt"]
+            link_cnt = counts_row["link_cnt"]
             private_cnt = counts_row["private_cnt"]
             uncat_cnt = counts_row["uncat_cnt"]
             trash_cnt = counts_row["trash_cnt"]
@@ -1426,6 +1452,8 @@ Enjoy writing with Stilo Notes!
                 "todos": todo_cnt,
                 "list": list_cnt,
                 "lists": list_cnt,
+                "linked": link_cnt,
+                "links": link_cnt,
                 "private": private_cnt,
                 "locked": private_cnt,
                 "recent": all_cnt,

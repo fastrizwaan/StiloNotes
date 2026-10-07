@@ -4,7 +4,7 @@
 import os
 import urllib.parse
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, List
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -27,6 +27,7 @@ class StiloWindow(Adw.ApplicationWindow):
         self.config_manager = ConfigManager.get_default(db)
         self._pending_sidebar_width = None
         self._sidebar_resize_idle_id = None
+        self._note_history: List[str] = []
 
         self.set_title("Stilo Notes")
         self.set_icon_name(APP_ID)
@@ -344,8 +345,11 @@ class StiloWindow(Adw.ApplicationWindow):
         self.config_manager.set_window_maximized(self.is_maximized())
         return False
 
-    def open_note(self, note: Note, immediate: bool = False, is_new: bool = False):
+    def open_note(self, note: Note, immediate: bool = False, is_new: bool = False, preserve_history: bool = False):
         """Open a note in the editor and navigate to it."""
+        if not preserve_history and hasattr(self, "_note_history"):
+            self._note_history.clear()
+
         full_note = self.db.get_note(note.id)
         target = full_note or note
         if getattr(target, "is_locked", False) and not getattr(self.index_view, "_private_unlocked", False):
@@ -353,6 +357,7 @@ class StiloWindow(Adw.ApplicationWindow):
             return
 
         self.editor.load_note(target, is_new=is_new)
+        self.editor.update_back_tooltip(bool(getattr(self, "_note_history", None)))
         self.config_manager.set_last_opened_note_id(note.id)
 
         visible_page = self.navigation.get_visible_page()
@@ -463,6 +468,8 @@ class StiloWindow(Adw.ApplicationWindow):
 
     def _on_editor_note_deleted(self, _ed, note_id: str):
         self.db.delete_note(note_id, sender=self)
+        if hasattr(self, "_note_history"):
+            self._note_history.clear()
         self._go_back()
         self.index_view.refresh(update_sidebar=True)
 
@@ -577,7 +584,13 @@ class StiloWindow(Adw.ApplicationWindow):
         if not target:
             target = self.db.create_note(title=note_title, initial_text=f"# {note_title}\n\n")
             self.index_view.refresh()
-        self.open_note(target)
+
+        curr_note = self.editor.current_note
+        if curr_note and curr_note.id != target.id:
+            if hasattr(self, "_note_history"):
+                self._note_history.append(curr_note.id)
+
+        self.open_note(target, preserve_history=True)
         if note_heading:
             GLib.idle_add(self.editor.scroll_to_heading, note_heading)
 
@@ -589,6 +602,14 @@ class StiloWindow(Adw.ApplicationWindow):
             if hasattr(self.editor, "header_stack") and self.editor.header_stack.get_visible_child_name() == "category":
                 self.editor.header_stack.set_visible_child_name("main")
                 return
+
+            while getattr(self, "_note_history", None):
+                prev_id = self._note_history.pop()
+                prev_note = self.db.get_note(prev_id)
+                if prev_note and not prev_note.is_trashed:
+                    self.open_note(prev_note, preserve_history=True)
+                    return
+
             self.editor.flush_save()
             self.navigation.pop()
             if not self.split_view.get_collapsed():

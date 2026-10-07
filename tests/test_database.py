@@ -542,6 +542,37 @@ class TestDatabase(unittest.TestCase):
         self.assertFalse(is_untitled_title("Meeting Notes"))
         self.assertFalse(is_untitled_title("Project Alpha"))
 
+    def test_linked_notes_filtering_and_counts(self):
+        from stilonotes.markdown_utils import check_has_link
+        self.assertTrue(check_has_link("See [[Another Note]]"))
+        self.assertTrue(check_has_link("Read [Link](https://example.org)"))
+        self.assertTrue(check_has_link("Check https://example.org for details"))
+        self.assertTrue(check_has_link('<a href="https://example.org">Site</a>'))
+        self.assertFalse(check_has_link("Plain text without any link"))
+
+        # Clean db
+        with self.db.get_connection() as conn:
+            conn.execute("DELETE FROM notes")
+            conn.commit()
+
+        # Note 1: internal wiki link
+        n1 = self.db.create_note("Wiki Note", initial_text="References [[Project Plan]] here")
+        # Note 2: external markdown link
+        n2 = self.db.create_note("Web Note", initial_text="Check [Doc](https://docs.org)")
+        # Note 3: plain note
+        n3 = self.db.create_note("Plain Note", initial_text="Nothing linked here")
+
+        counts = self.db.get_counts()
+        self.assertEqual(counts["all"], 3)
+        self.assertEqual(counts["linked"], 2)
+
+        linked_notes = self.db.get_notes(filter_type="linked")
+        self.assertEqual(len(linked_notes), 2)
+        linked_ids = {n.id for n in linked_notes}
+        self.assertIn(n1.id, linked_ids)
+        self.assertIn(n2.id, linked_ids)
+        self.assertNotIn(n3.id, linked_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

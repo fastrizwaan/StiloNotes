@@ -277,6 +277,8 @@ class Sidebar(Adw.Bin):
             self._add_row("todos", "", "Todos", "checkbox-checked-symbolic", todo_count)
             list_count = counts.get("lists", counts.get("list", 0))
             self._add_row("lists", "", "Lists", "view-list-bullet-symbolic", list_count)
+            linked_count = counts.get("linked", 0)
+            self._add_row("linked", "", "Linked Notes", "insert-link-symbolic", linked_count)
             private_count = counts.get("private", counts.get("locked", 0))
             self._add_row("private", "", "Private", "channel-secure-symbolic", private_count)
             self._add_row("uncategorized", "", "Uncategorized", "folder-open-symbolic",

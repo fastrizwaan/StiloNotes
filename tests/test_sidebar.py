@@ -110,8 +110,8 @@ class TestSidebarTreeAndCollapse(unittest.TestCase):
             if filter_type:
                 rows.append(filter_type)
 
-        # Expected order: all, favorites, todos, lists, private, uncategorized
-        self.assertEqual(rows[:6], ["all", "favorites", "todos", "lists", "private", "uncategorized"])
+        # Expected order: all, favorites, todos, lists, linked, private, uncategorized
+        self.assertEqual(rows[:7], ["all", "favorites", "todos", "lists", "linked", "private", "uncategorized"])
 
     def test_todo_filtering_with_brackets(self):
         # Clean db notes
