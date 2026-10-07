@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from typing import Optional
-from gi.repository import Adw, Gtk, Gio, GLib, GObject
+from gi.repository import Adw, Gtk, Gio, GLib, GObject, Gdk
 
 from stilonotes.database import NoteDatabase
 from stilonotes.config_manager import ConfigManager
@@ -446,9 +446,11 @@ class IndexView(Adw.Bin):
     def _on_note_copy_link(self, note_id: str):
         note = self.db.get_note(note_id)
         if note:
-            clip = Gdk.Display.get_default().get_clipboard()
-            clip.set_text(f"[[{note.title}]]")
-            self.toast_overlay.add_toast(Adw.Toast.new(f"Link to note copied"))
+            display = Gdk.Display.get_default()
+            if display:
+                clip = display.get_clipboard()
+                clip.set(f"[[{note.title}]]")
+                self.toast_overlay.add_toast(Adw.Toast.new(f"Link to '{note.title}' copied"))
 
     def _on_note_duplicated(self, note_id: str):
         dup = self.db.duplicate_note(note_id)

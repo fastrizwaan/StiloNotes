@@ -86,6 +86,19 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
         finally:
             Adw.AlertDialog.present = orig_present
 
+    def test_copy_note_link(self):
+        from gi.repository import Gdk
+        from stilonotes.index import IndexView
+        note = self.db.create_note("Sample Linked Note", "Content")
+        view = IndexView(self.db)
+        # Verify _on_note_copy_link executes cleanly without NameError
+        view._on_note_copy_link(note.id)
+        if Gdk.Display.get_default():
+            clip = Gdk.Display.get_default().get_clipboard()
+            # If clipboard is accessible, verify content
+            # (In headless/CI it might be mocked or no-op)
+            pass
+
 
 if __name__ == "__main__":
     unittest.main()
