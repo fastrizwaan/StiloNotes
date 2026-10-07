@@ -30,6 +30,20 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0" date="2026-10-07">
+      <description>
+        <p>New features and improvements in Stilo Notes 1.0:</p>
+        <ul>
+          <li>Cross-note wiki links: link directly to notes using [[Note Title]] syntax with bidirectional roundtrip preservation</li>
+          <li>Deep heading navigation: link to sections using [[Note Title/Heading Name]] or [[/Heading Name]] with smooth scrolling and accent highlighting</li>
+          <li>Link aliases: customize link display text using [[Note Title|alias]] or [[Note Title/Heading|alias]] syntax</li>
+          <li>Cross-note back navigation history: Back button and Esc / Alt+Left retrace steps across visited notes before returning to the note list</li>
+          <li>Context-aware Back button tooltip reflecting destination (previous note vs. note list)</li>
+          <li>"Copy Link to Note" context menu action in the notes list for instant clipboard link sharing</li>
+          <li>"Linked" smart sidebar filter: high-performance materialized SQLite column and index to view all notes with internal cross-links or external URLs</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.9" date="2026-10-07">
       <description>
         <p>New features and improvements in Stilo Notes 0.9:</p>

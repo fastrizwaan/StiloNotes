@@ -22,7 +22,7 @@
 ### ✍️ Rich Live Markdown Editor
 - **Dynamic WebKit Markdown Live Rendering**: Type standard and extended markdown syntax and watch it dynamically transform into rich, beautifully styled interactive HTML on the fly.
 - **Full CommonMark Compliance**: Strict adherence to the CommonMark specification, including complete support for nested inline styling (bold, italic, underscores), ordered list parenthesis markers (e.g. `1)`), ATX headings, and flawless backslash character escaping.
-- **Extensive Syntax Support**: Bold, italic, code spans, lists, quotes, tables, wiki links (`[[link]]`), hashtags (`#tag`), category badges (`##category`), and mentions (`@user`).
+- **Extensive Syntax Support**: Bold, italic, code spans, lists, quotes, tables, cross-note wiki links (`[[link]]`), hashtags (`#tag`), category badges (`##category`), and mentions (`@user`).
 - **Interactive Checklists**: Click checkboxes (`- [ ]` and `- [x]`) directly in the editor to toggle tasks and track completion status in real time.
 - **Smart Link Insertion**: Two-entry "Insert Link" dialog (<kbd>Ctrl</kbd>+<kbd>K</kbd>) prefilled with your active selection, plus <kbd>Ctrl</kbd>+Click to open links externally in your default browser.
 - **Responsive FlowBox Formatting Toolbar**: A modern toolbar providing quick access to headings, bold, italic, strikethrough, underline, marker highlight, inline code, code blocks, bullet/numbered lists, tables, links, and image insertion.
@@ -31,6 +31,19 @@
 - **Sequential Untitled Counter**: Newly created untitled notes are numbered sequentially (`Untitled Note 1`, `Untitled Note 2`...), preventing duplicates and smartly filling gaps.
 - **Real-Time Note Statistics**: Instant live updates for word count, character count, paragraph count, and estimated reading time.
 - **Seamless HTML Roundtrip**: Automatically and accurately converts your live rich text back into clean, portable Markdown syntax when saving to the database.
+
+### 🔗 Cross-Note Wiki Links & Deep Navigation
+- **Bear-Style Wiki Links**: Interlink notes and ideas effortlessly:
+  - `[[Note Title]]` — Link directly to another note.
+  - `[[Note Title/Heading Name]]` — Deep-link directly to a specific heading in another note.
+  - `[[/Heading Name]]` — Jump to a section within the current note.
+  - `[[Note Title|alias]]` — Display a custom alias instead of the note title.
+  - `[[Note Title/Heading Name|alias]]` — Combine deep section links with custom display aliases.
+- **Smooth Scrolling & Target Highlighting**: Clicking a link with a heading smoothly scrolls to the targeted section and highlights it with an accent glow.
+- **Cross-Note Back History**: Smart navigation stack remembers cross-note paths. Clicking the Back button (or pressing <kbd>Esc</kbd> / <kbd>Alt</kbd>+<kbd>←</kbd>) retraces your steps back to your starting note before returning to the note list.
+- **Context-Aware Tooltips**: The Back button tooltip dynamically shows *"Back to Previous Note (Esc)"* or *"Back to Notes (Esc)"*.
+- **Copy Link to Note**: Right-click any note card or list row to copy its markdown wiki link (`[[Note Title]]`) directly to your clipboard.
+- **"Linked" Smart Sidebar Filter**: Instant filter showing all notes containing internal cross-links or external web URLs with real-time counters.
 
 ### 📄 Professional Page Setup & Printing
 - **Page Setup Dialog (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>)**: Configure page dimensions, orientation, and margins with persistent settings saved to your user preferences.
@@ -144,7 +157,7 @@ flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNote
 | <kbd>Ctrl</kbd> + <kbd>G</kbd> | Toggle List / Grid view |
 | <kbd>Ctrl</kbd> + <kbd>\</kbd> | Toggle folder sidebar |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | Toggle Dark / Light theme |
-| <kbd>Esc</kbd> or <kbd>Alt</kbd> + <kbd>←</kbd> | Return to note list |
+| <kbd>Esc</kbd> or <kbd>Alt</kbd> + <kbd>←</kbd> | Return to previous note / note list |
 | <kbd>Ctrl</kbd> + <kbd>B</kbd> | Bold text |
 | <kbd>Ctrl</kbd> + <kbd>I</kbd> | Italic text |
 | <kbd>Ctrl</kbd> + <kbd>K</kbd> | Insert link / Edit link |
