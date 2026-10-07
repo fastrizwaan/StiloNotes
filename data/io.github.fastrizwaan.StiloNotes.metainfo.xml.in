@@ -30,6 +30,21 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.9" date="2026-10-07">
+      <description>
+        <p>New features and improvements in Stilo Notes 0.9:</p>
+        <ul>
+          <li>Full CommonMark specification compliance: strictly adhering to inline nesting rules, ATX headings, parenthesis ordered lists, and backslash escaping</li>
+          <li>Two-entry Insert Link dialog (Ctrl+K) prefilled with active text selection and intelligent URL detection</li>
+          <li>Direct click-to-open external links support in editor using Ctrl+Click</li>
+          <li>Lighter, more accessible hyperlink styling matching Adwaita light and dark palettes</li>
+          <li>Drag-and-drop ordering for sidebar categories allowing personalized note workflow organization</li>
+          <li>Dedicated inline code button added to formatting action bar alongside code blocks</li>
+          <li>Native Print support via XDG desktop portal (Ctrl+P) with offline Data URI image embedding</li>
+          <li>Restored proper note list view column distributions for wide text snippets</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.8" date="2026-10-06">
       <description>
         <p>New features and improvements in Stilo Notes 0.8:</p>

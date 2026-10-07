@@ -20,13 +20,17 @@
 ## ✨ Features
 
 ### ✍️ Rich Live Markdown Editor
-- **Dynamic WebKit Markdown Live Rendering**: Type standard and extended markdown syntax (`# `, `## `, `### `, `- [ ]`, `*italic*`, `**bold**`, `==highlight==`, `~~strike~~`, `~sub~`, `^super^`, `>`, ````code blocks````, `| tables |`, `---`, footnotes `[^1]`, emojis `:smile:`, and symbols `->`) and watch it dynamically transform into rich, beautifully styled interactive HTML on the fly.
-- **Read-Only Protection & One-Click Edit Mode**: Existing notes automatically open in safe read-only mode to prevent accidental edits or alterations. A dedicated Edit button (<kbd>Ctrl</kbd>+<kbd>E</kbd>) in the header bar unlocks editing instantly.
-- **Sequential Untitled Counter**: Newly created untitled notes are numbered sequentially (`Untitled Note 1`, `Untitled Note 2`, `Untitled Note 3`...), preventing duplicates and smartly filling gaps when notes are renamed or deleted.
+- **Dynamic WebKit Markdown Live Rendering**: Type standard and extended markdown syntax and watch it dynamically transform into rich, beautifully styled interactive HTML on the fly.
+- **Full CommonMark Compliance**: Strict adherence to the CommonMark specification, including complete support for nested inline styling (bold, italic, underscores), ordered list parenthesis markers (e.g. `1)`), ATX headings, and flawless backslash character escaping.
+- **Extensive Syntax Support**: Bold, italic, code spans, lists, quotes, tables, wiki links (`[[link]]`), hashtags (`#tag`), category badges (`##category`), and mentions (`@user`).
 - **Interactive Checklists**: Click checkboxes (`- [ ]` and `- [x]`) directly in the editor to toggle tasks and track completion status in real time.
-- **Responsive FlowBox Formatting Toolbar**: A modern toolbar that wraps gracefully on narrow windows, providing quick access to headings, bold, italic, strikethrough, underline, marker highlight, eraser/clear formatting, bullet/numbered lists, tables, code blocks, links, and image insertion.
+- **Smart Link Insertion**: Two-entry "Insert Link" dialog (<kbd>Ctrl</kbd>+<kbd>K</kbd>) prefilled with your active selection, plus <kbd>Ctrl</kbd>+Click to open links externally in your default browser.
+- **Responsive FlowBox Formatting Toolbar**: A modern toolbar providing quick access to headings, bold, italic, strikethrough, underline, marker highlight, inline code, code blocks, bullet/numbered lists, tables, links, and image insertion.
 - **Table & Image Insertion**: Insert tables with customizable row and column counts, add/delete rows and columns, delete tables, and insert images with aspect-ratio preserving resize handles.
+- **Read-Only Protection & One-Click Edit Mode**: Existing notes automatically open in safe read-only mode to prevent accidental edits or alterations. A dedicated Edit button (<kbd>Ctrl</kbd>+<kbd>E</kbd>) in the header bar unlocks editing instantly.
+- **Sequential Untitled Counter**: Newly created untitled notes are numbered sequentially (`Untitled Note 1`, `Untitled Note 2`...), preventing duplicates and smartly filling gaps.
 - **Real-Time Note Statistics**: Instant live updates for word count, character count, paragraph count, and estimated reading time.
+- **Seamless HTML Roundtrip**: Automatically and accurately converts your live rich text back into clean, portable Markdown syntax when saving to the database.
 
 ### 📄 Professional Page Setup & Printing
 - **Page Setup Dialog (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>)**: Configure page dimensions, orientation, and margins with persistent settings saved to your user preferences.
@@ -36,6 +40,7 @@
 
 ### 🔢 Smart Organization & Categorization
 - **Nested Categories & Collapsible Chevrons**: Organize notes in multi-level folder hierarchies with an inline `+` category button, collapsible chevrons, and full-width auto-suggest dropdown.
+- **Drag-and-Drop Reordering**: Rearrange your sidebar categories natively using drag-and-drop to customize your workflow, with persistent database ordering.
 - **Hashtags & Tag Popover**: Type `#tag` directly into note content with autocomplete suggestions, clickable tag pills, and a dedicated Tags popover dropdown for fast filtering.
 - **List & Visual Grid Views (<kbd>Ctrl</kbd>+<kbd>G</kbd>)**: Switch between a compact note list and a visual note card grid with responsive FlowBox category sections.
 - **Visual Note Cards**: Card previews display note titles, formatted excerpts, primary image thumbnails, and partial table previews with a clean, borderless design.
@@ -142,6 +147,7 @@ flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNote
 | <kbd>Esc</kbd> or <kbd>Alt</kbd> + <kbd>←</kbd> | Return to note list |
 | <kbd>Ctrl</kbd> + <kbd>B</kbd> | Bold text |
 | <kbd>Ctrl</kbd> + <kbd>I</kbd> | Italic text |
+| <kbd>Ctrl</kbd> + <kbd>K</kbd> | Insert link / Edit link |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd> | Highlight text |
 | <kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Ctrl</kbd> + <kbd>Y</kbd> | Undo / Redo |
 | <kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>Ctrl</kbd> + <kbd>-</kbd> / <kbd>Ctrl</kbd> + <kbd>0</kbd> | Zoom in / Zoom out / Reset font size |

@@ -15,7 +15,7 @@ gi.require_version("WebKit", "6.0")
 
 from stilonotes.application import StiloApplication
 
-def main(version: str = "0.8") -> int:
+def main(version: str = "0.9") -> int:
     app = StiloApplication()
     return app.run(sys.argv)
 
