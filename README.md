@@ -44,7 +44,7 @@
 - **Hashtags & Tag Popover**: Type `#tag` directly into note content with autocomplete suggestions, clickable tag pills, and a dedicated Tags popover dropdown for fast filtering.
 - **List & Visual Grid Views (<kbd>Ctrl</kbd>+<kbd>G</kbd>)**: Switch between a compact note list and a visual note card grid with responsive FlowBox category sections.
 - **Visual Note Cards**: Card previews display note titles, formatted excerpts, primary image thumbnails, and partial table previews with a clean, borderless design.
-- **Smart Sidebar Filters**: One-click filters for All Notes, Favorites, Todos (checklist notes), Lists (bullet & numbered lists), Private Notes, and Trash.
+- **Smart Sidebar Filters**: One-click filters for All Notes, Favorites, Todos (checklist notes), Lists (bullet & numbered lists), Linked (notes with internal or external links), Private Notes, and Trash.
 - **Instant Search (<kbd>Ctrl</kbd>+<kbd>F</kbd>)**: Lightning-fast instant search across note titles, body contents, and tags.
 - **Batch Selection Mode**: Select multiple notes to bulk export, duplicate, assign categories, or delete.
 

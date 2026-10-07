@@ -258,7 +258,7 @@ class IndexView(Adw.Bin):
         elif self.active_filter_type in ("list", "lists"):
             self.window_title.set_title("Lists")
         elif self.active_filter_type in ("linked", "link", "links"):
-            self.window_title.set_title("Linked Notes")
+            self.window_title.set_title("Linked")
         elif self.active_filter_type in ("recent", "recents"):
             self.window_title.set_title("Recent")
         elif is_trash:
