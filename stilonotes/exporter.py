@@ -250,6 +250,10 @@ h4 {{ font-size: 1.1em; margin: 14px 0 6px 0; }}
 h5 {{ font-size: 1.05em; margin: 14px 0 6px 0; }}
 h6 {{ font-size: 1.0em; margin: 12px 0 4px 0; color: #666; }}
 p {{ margin: 0 0 12px 0; }}
+a, a.stilo-link {{
+  color: #1c71d8;
+  text-decoration: underline;
+}}
 pre {{
   background: #f6f8fa;
   border: 1px solid #e1e4e8;

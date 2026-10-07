@@ -275,6 +275,16 @@ class TestThemeAndFont(unittest.TestCase):
         html_system = get_editor_html_page("<p>System Content</p>", font_family="system")
         self.assertIn('--font-stack: -apple-system', html_system)
 
+    def test_editor_link_styling_and_variables(self):
+        html_light = get_editor_html_page("<p>Test</p>", is_dark=False)
+        self.assertIn('--link-color: #3584E4;', html_light)
+        self.assertIn('--link-hover: #1C71D8;', html_light)
+        self.assertIn('a.stilo-link', html_light)
+
+        html_dark = get_editor_html_page("<p>Test</p>", is_dark=True)
+        self.assertIn('--link-color: #78AEED;', html_dark)
+        self.assertIn('--link-hover: #99C1F1;', html_dark)
+
 
 if __name__ == "__main__":
     unittest.main()

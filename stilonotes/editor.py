@@ -168,10 +168,10 @@ class FormattingBar(Gtk.Box):
 
         # 4. Blocks & Markdown Elements
         for icon, tip, cmd in [
-            ("quotation-symbolic",       "Blockquote",      "quote"),
-            ("code-block-symbolic",      "Code Block",      "code"),
-            ("insert-link-symbolic",     "Insert Link",     "link"),
-            ("view-continuous-symbolic", "Horizontal Rule", "divider"),
+            ("quotation-symbolic",       "Blockquote",             "quote"),
+            ("code-block-symbolic",      "Code Block",             "code"),
+            ("insert-link-symbolic",     "Insert Link (Ctrl+K)",   "link"),
+            ("view-continuous-symbolic", "Horizontal Rule",        "divider"),
         ]:
             self._add_btn(flowbox, icon, tip, cmd)
 
@@ -488,6 +488,7 @@ class NoteEditor(Gtk.Box):
         self._setup_message_handlers()
 
         self.webview.connect("load-changed", self._on_webview_load_changed)
+        self.webview.connect("decide-policy", self._on_decide_policy)
 
         font_size = self.config_manager.get_font_size()
         heading_scale = self.config_manager.get_heading_scale()
@@ -706,6 +707,10 @@ class NoteEditor(Gtk.Box):
             self._message_handler_ids.append(ucm.connect("script-message-received::categorySelected", self._on_js_category_selected))
             ucm.register_script_message_handler("printNote")
             self._message_handler_ids.append(ucm.connect("script-message-received::printNote", lambda _ucm, _msg: self._print_note(self.get_root())))
+            ucm.register_script_message_handler("insertLink")
+            self._message_handler_ids.append(ucm.connect("script-message-received::insertLink", self._on_js_insert_link))
+            ucm.register_script_message_handler("openExternalUrl")
+            self._message_handler_ids.append(ucm.connect("script-message-received::openExternalUrl", self._on_js_open_external_url))
         except Exception as e:
             print("Message handler registration error:", e)
 
@@ -844,6 +849,7 @@ class NoteEditor(Gtk.Box):
         act("export-txt",    lambda: self._export_note("txt",  window))
         act("toggle-edit",   lambda: self.set_read_only(not self.is_read_only))
         act("toggle-format-toolbar", lambda: self.format_btn.set_active(not self.format_btn.get_active()))
+        act("insert-link",   lambda: self._exec_js_format("link"))
         act("delete",        self._on_delete)
 
         self.insert_action_group("editor", ag)
@@ -869,6 +875,12 @@ class NoteEditor(Gtk.Box):
                 Gtk.NamedAction.new("editor.page-setup")
             )
         )
+        shortcut_ctrl.add_shortcut(
+            Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string("<Control>k"),
+                Gtk.NamedAction.new("editor.insert-link")
+            )
+        )
         self.add_controller(shortcut_ctrl)
 
         app = window.get_application()
@@ -885,6 +897,7 @@ class NoteEditor(Gtk.Box):
             app.set_accels_for_action("editor.toggle-format-toolbar", ["<Control><Shift>f"])
             app.set_accels_for_action("editor.page-setup", ["<Control><Shift>p"])
             app.set_accels_for_action("editor.print", ["<Control>p"])
+            app.set_accels_for_action("editor.insert-link", ["<Control>k"])
 
     # ── Category editing ──────────────────────────────────────────────────
 
@@ -1154,6 +1167,106 @@ class NoteEditor(Gtk.Box):
         except Exception as e:
             print("Open note link error:", e)
 
+    def _on_js_open_external_url(self, _ucm, js_result):
+        try:
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            uri = val.to_string() if hasattr(val, "to_string") else str(val)
+            if uri:
+                Gio.AppInfo.launch_default_for_uri(uri, None)
+        except Exception as e:
+            print("Failed to launch external URL:", e)
+
+    def _on_decide_policy(self, _wv, decision, decision_type):
+        if decision_type in (WebKit.PolicyDecisionType.NAVIGATION_ACTION, WebKit.PolicyDecisionType.NEW_WINDOW_ACTION):
+            action = decision.get_navigation_action()
+            req = action.get_request() if action else None
+            uri = req.get_uri() if req else None
+            if uri and (uri.startswith("http://") or uri.startswith("https://") or uri.startswith("mailto:")):
+                decision.ignore()
+                try:
+                    Gio.AppInfo.launch_default_for_uri(uri, None)
+                except Exception as e:
+                    print(f"Failed to open URI {uri}: {e}")
+                return True
+        return False
+
+    def _on_js_insert_link(self, _ucm, js_result):
+        try:
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            json_str = val.to_string() if hasattr(val, "to_string") else str(val)
+            if not json_str:
+                return
+            data = json.loads(json_str)
+            initial_text = data.get("text", "") or ""
+            initial_url = data.get("url", "") or "https://"
+        except Exception as e:
+            print("Error parsing insertLink message:", e)
+            initial_text = ""
+            initial_url = "https://"
+
+        dialog = Adw.AlertDialog.new("Insert Link", None)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("insert", "Insert")
+        dialog.set_response_appearance("insert", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("insert")
+        dialog.set_close_response("cancel")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.set_margin_top(6)
+        box.set_margin_bottom(6)
+
+        grp = Adw.PreferencesGroup()
+
+        label_row = Adw.EntryRow()
+        label_row.set_title("Label")
+        label_row.set_text(initial_text)
+        label_row.set_activates_default(True)
+        grp.add(label_row)
+
+        url_row = Adw.EntryRow()
+        url_row.set_title("URL")
+        url_row.set_text(initial_url)
+        url_row.set_activates_default(True)
+        grp.add(url_row)
+
+        box.append(grp)
+        dialog.set_extra_child(box)
+
+        def set_initial_focus():
+            if initial_text:
+                url_row.grab_focus()
+                pos = len(url_row.get_text())
+                if initial_url == "https://":
+                    url_row.set_position(pos)
+                else:
+                    url_row.select_region(0, -1)
+            else:
+                label_row.grab_focus()
+            return False
+
+        GLib.idle_add(set_initial_focus)
+
+        def on_response(_d, response):
+            if response == "insert":
+                label_val = label_row.get_text().strip()
+                url_val = url_row.get_text().strip()
+                if not url_val or url_val in ("https://", "http://"):
+                    return
+                # Normalize url if scheme missing
+                if not any(url_val.lower().startswith(p) for p in ("http://", "https://", "mailto:", "ftp://", "file://", "#")):
+                    url_val = "https://" + url_val
+                if not label_val:
+                    label_val = url_val
+
+                script = f"if (window.applyInsertLink) {{ window.applyInsertLink({json.dumps(label_val)}, {json.dumps(url_val)}); }}"
+                self.webview.evaluate_javascript(script, -1, None, None, None, None)
+            else:
+                script = "if (window.cancelInsertLink) { window.cancelInsertLink(); }"
+                self.webview.evaluate_javascript(script, -1, None, None, None, None)
+
+        dialog.connect("response", on_response)
+        dialog.present(self.get_root() or self)
+
     def _on_js_category_selected(self, _ucm, js_result):
         try:
             val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
@@ -1300,7 +1413,8 @@ class NoteEditor(Gtk.Box):
                 self._message_handler_ids = []
                 for handler in [
                     "contentChanged", "statsChanged", "pickImage",
-                    "uploadImage", "tagClicked", "openNoteLink", "categorySelected", "printNote"
+                    "uploadImage", "tagClicked", "openNoteLink", "categorySelected", "printNote",
+                    "insertLink", "openExternalUrl"
                 ]:
                     try:
                         ucm.unregister_script_message_handler(handler)

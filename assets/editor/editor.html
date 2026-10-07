@@ -39,6 +39,8 @@
       --tag-hover: #D1C4E9;
       --highlight-bg: #FFF3C4;
       --hr-color: #E4E6EB;
+      --link-color: #3584E4;
+      --link-hover: #1C71D8;
       --toolbar-bg: rgba(255, 255, 255, 0.94);
       --toolbar-border: #DCDCDE;
       --toolbar-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
@@ -70,6 +72,8 @@
       --tag-hover: #4E3770;
       --highlight-bg: #594A1C;
       --hr-color: #35363D;
+      --link-color: #78AEED;
+      --link-hover: #99C1F1;
       --toolbar-bg: rgba(36, 37, 42, 0.94);
       --toolbar-border: #44464F;
       --toolbar-shadow: 0 4px 22px rgba(0, 0, 0, 0.35);
@@ -102,6 +106,8 @@
         --tag-hover: #4E3770;
         --highlight-bg: #594A1C;
         --hr-color: #35363D;
+        --link-color: #78AEED;
+        --link-hover: #99C1F1;
         --toolbar-bg: rgba(36, 37, 42, 0.94);
         --toolbar-border: #44464F;
         --toolbar-shadow: 0 4px 22px rgba(0, 0, 0, 0.35);
@@ -531,6 +537,24 @@
     }
     .stilo-mention:hover {
       background: rgba(53, 132, 228, 0.22);
+    }
+
+    /* Hyperlinks */
+    a, a.stilo-link {
+      color: var(--link-color, #3584E4);
+      text-decoration: underline;
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
+      cursor: pointer;
+      transition: color var(--transition-speed);
+    }
+
+    a:hover, a.stilo-link:hover {
+      color: var(--link-hover, #1C71D8);
+    }
+
+    a:not(.stilo-wiki-link):visited {
+      color: var(--link-color, #3584E4);
     }
 
     .stilo-wiki-link {
@@ -2187,6 +2211,14 @@
         return;
       }
 
+      // Insert Link shortcut: Ctrl+K
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        e.stopPropagation();
+        promptLink();
+        return;
+      }
+
       // ArrowDown: navigate out of code blocks and tables to the line below
       if (e.key === 'ArrowDown') {
         const pre = getClosestElement('pre.stilo-code-block');
@@ -2642,6 +2674,21 @@
           window.webkit.messageHandlers.openNoteLink.postMessage(noteTitle);
         }
         return;
+      }
+
+      // External link click: Ctrl+Click or Cmd+Click to open in browser
+      const externalLink = e.target.closest('a.stilo-link') || e.target.closest('a:not(.stilo-wiki-link)');
+      if (externalLink) {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const href = externalLink.getAttribute('href');
+          if (href && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openExternalUrl) {
+            window.webkit.messageHandlers.openExternalUrl.postMessage(href);
+          } else if (href) {
+            window.open(href, '_blank');
+          }
+          return;
+        }
       }
 
       // Tag pill click: #tag
@@ -3511,17 +3558,90 @@
       notifyChange();
     }
 
+    let savedLinkRange = null;
+
     function promptLink() {
       closeAllPopups();
       const sel = window.getSelection();
-      const selectedText = sel.toString() || 'Link';
-      const url = prompt('Enter URL:', 'https://');
-      if (url) {
-        const linkHtml = `<a href="${url}" class="stilo-link" target="_blank">${selectedText}</a>`;
-        document.execCommand('insertHTML', false, linkHtml);
-        notifyChange();
+      let selectedText = '';
+      let url = 'https://';
+
+      if (sel && sel.rangeCount > 0) {
+        savedLinkRange = sel.getRangeAt(0).cloneRange();
+        selectedText = sel.toString().trim();
+      } else {
+        savedLinkRange = null;
+      }
+
+      // Check if cursor or selection is on an existing link
+      const existingLink = getClosestElement('a.stilo-link') || getClosestElement('a:not(.stilo-wiki-link)');
+      if (existingLink) {
+        if (!selectedText) {
+          selectedText = existingLink.textContent ? existingLink.textContent.trim() : '';
+        }
+        const existingHref = existingLink.getAttribute('href');
+        if (existingHref) {
+          url = existingHref;
+        }
+      }
+
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.insertLink) {
+        window.webkit.messageHandlers.insertLink.postMessage(JSON.stringify({
+          text: selectedText,
+          url: url
+        }));
+      } else {
+        // Fallback for non-WebKit environments
+        const fallbackUrl = prompt('Enter URL:', url);
+        if (fallbackUrl) {
+          applyInsertLink(selectedText || fallbackUrl, fallbackUrl);
+        }
       }
     }
+
+    window.applyInsertLink = function(label, url) {
+      if (!url) return;
+      label = label || url;
+
+      // Normalize URL if missing scheme
+      if (!url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:/) && !url.startsWith('#')) {
+        url = 'https://' + url;
+      }
+
+      const sel = window.getSelection();
+      if (savedLinkRange) {
+        sel.removeAllRanges();
+        sel.addRange(savedLinkRange);
+      }
+
+      // Check if cursor/selection is on an existing link
+      const existingLink = getClosestElement('a.stilo-link') || getClosestElement('a:not(.stilo-wiki-link)');
+      if (existingLink) {
+        saveUndoState();
+        existingLink.setAttribute('href', url);
+        existingLink.setAttribute('title', url);
+        existingLink.textContent = label;
+        savedLinkRange = null;
+        notifyChange();
+        return;
+      }
+
+      saveUndoState();
+      const linkHtml = `<a href="${escapeHtml(url)}" class="stilo-link" target="_blank" title="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+      document.execCommand('insertHTML', false, linkHtml);
+      savedLinkRange = null;
+      notifyChange();
+    };
+
+    window.cancelInsertLink = function() {
+      const sel = window.getSelection();
+      if (savedLinkRange) {
+        sel.removeAllRanges();
+        sel.addRange(savedLinkRange);
+      }
+      savedLinkRange = null;
+      editor.focus();
+    };
 
     function triggerImagePicker() {
       closeAllPopups();
