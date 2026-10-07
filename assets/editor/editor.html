@@ -1762,18 +1762,81 @@
         .replace(/'/g, '&#39;');
     }
 
+    const ASCII_PUNCTUATION_CHARS = new Set('!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'.split(''));
+
+    function tokenizeMarkdownInline(text, allowEndOfString = false) {
+      const codeSpans = [];
+      const escapes = [];
+      const out = [];
+      const n = text.length;
+      let i = 0;
+
+      while (i < n) {
+        if (text[i] === '\\') {
+          if (i + 1 < n && ASCII_PUNCTUATION_CHARS.has(text[i + 1])) {
+            if (!allowEndOfString && i + 2 >= n) {
+              out.push(text[i]);
+              i += 1;
+              continue;
+            }
+            const escChar = text[i + 1];
+            const idx = escapes.length;
+            escapes.push(escChar);
+            out.push(`\x00ESC_${idx}\x00`);
+            i += 2;
+            continue;
+          } else {
+            out.push('\\');
+            i += 1;
+            continue;
+          }
+        }
+
+        if (text[i] === '`') {
+          const btStart = i;
+          while (i < n && text[i] === '`') {
+            i += 1;
+          }
+          const btLen = i - btStart;
+          const fence = '`'.repeat(btLen);
+
+          const closePos = text.indexOf(fence, i);
+          if (closePos !== -1) {
+            let codeContent = text.substring(i, closePos);
+            if (codeContent.length >= 2 && codeContent.startsWith(' ') && codeContent.endsWith(' ') && codeContent.trim() !== '') {
+              codeContent = codeContent.slice(1, -1);
+            }
+            const idx = codeSpans.length;
+            codeSpans.push(codeContent);
+            out.push(`\x00CODE_${idx}\x00`);
+            i = closePos + btLen;
+            continue;
+          } else {
+            out.push(fence);
+            continue;
+          }
+        }
+
+        out.push(text[i]);
+        i += 1;
+      }
+
+      return { masked: out.join(''), codeSpans, escapes };
+    }
+
     function hasMarkdownSyntax(str, allowEndOfString = false) {
       if (!str) return false;
       if (allowEndOfString) {
-        return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)|\[\[[^\n\]]+\]\]|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/|(?<!#)##[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*(?=$|[\s.,;:!?])|(?<![#\w])#[a-zA-Z0-9_\-]+(?=$|[\s.,;:!?])|(?<![\w@])@[a-zA-Z0-9_\.\-]+(?=$|[\s.,;:!?]))/m.test(str);
+        return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*|__|\*|_|~~|==|`|<\/?u>|<\/?ins>|\+\+|\[.+\]\(.+\)|\[\[[^\n\]]+\]\]|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/|(?<!#)##[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*(?=$|[\s.,;:!?])|(?<![#\w])#[a-zA-Z0-9_\-]+(?=$|[\s.,;:!?])|(?<![\w@])@[a-zA-Z0-9_\.\-]+(?=$|[\s.,;:!?])|\\[!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~])/m.test(str);
       }
-      return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*[^*\n]+?\*\*|__(?!_)[^_\n]+?__(?!_)|\*(?!\*)[^*\s\n](?:[^*\n]*?[^*\s\n])?\*(?!\*)|_(?!_)[^_\s\n](?:[^_\n]*?[^_\s\n])?_(?!_)|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+`|<\/?u>|<\/?ins>|\+\+[^\+\n]+?\+\+|\[.+\]\(.+\)|\[\[[^\n\]]+\]\]|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/|(?<!#)##[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*(?=[\s.,;:!?])|(?<![#\w])#[a-zA-Z0-9_\-]+(?=[\s.,;:!?])|(?<![\w@])@[a-zA-Z0-9_\.\-]+(?=[\s.,;:!?]))/m.test(str);
+      return /(?:```|~~~|^#{1,6}\s|^>\s|^[-*+]\s|^\d+\.\s|^[-*+]\s*\[[ xX]\]|^\|.+\||\*\*[^*\s\n](?:[^*\n]*?[^*\s\n])?\*\*|(?<!\w)__(?!_)[^_\s\n](?:[^_\n]*?[^_\s\n])?__(?!_)(?!\w)|\*(?!\*)[^*\s\n](?:[^*\n]*?[^*\s\n])?\*(?!\*)|(?<!\w)_(?!_)[^_\s\n](?:[^_\n]*?[^_\s\n])?_(?!_)(?!\w)|~~[^~\n]+?~~|==[^=\n]+?==|`[^`\n]+`|<\/?u>|<\/?ins>|\+\+[^\+\n]+?\+\+|\[.+\]\(.+\)|\[\[[^\n\]]+\]\]|\^([^\^\s]+)\^|~([^~\s]+)~|:([a-z0-9_+-]+):|\[\^[^\]]+\]|&lt;https?:\/\/|https?:\/\/|(?<!#)##[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*(?=[\s.,;:!?])|(?<![#\w])#[a-zA-Z0-9_\-]+(?=[\s.,;:!?])|(?<![\w@])@[a-zA-Z0-9_\.\-]+(?=[\s.,;:!?])|\\[!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~].)/m.test(str);
     }
 
     function formatMarkdownInText(str, allowEndOfString = false) {
       if (!str) return { html: str, matched: false };
-      let matched = false;
-      let s = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const { masked, codeSpans, escapes } = tokenizeMarkdownInline(str, allowEndOfString);
+      let matched = (codeSpans.length > 0 || escapes.length > 0);
+      let s = escapeHtml(masked);
 
       function applyRule(regex, replacement) {
         if (regex.test(s)) {
@@ -1783,16 +1846,16 @@
       }
 
       // 1. Triple asterisks or underscores: ***bold italic*** or ___bold italic___
-      applyRule(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-      applyRule(/___([^_\n]+?)___/g, '<strong><em>$1</em></strong>');
+      applyRule(/(?<!\*)\*\*\*(?!\*)([^\s\n](?:[^\n]*?[^\s\n])?)(?<!\*)\*\*\*(?!\*)/g, '<strong><em>$1</em></strong>');
+      applyRule(/(?<!\w)(?<!_)___(?!_)([^_\s\n](?:[^\n]*?[^_\s\n])?)(?<!_)___(?!_)(?!\w)/g, '<strong><em>$1</em></strong>');
 
-      // 2. Double asterisks or underscores: **bold** or __bold__ (allows spaces: ** bold **)
-      applyRule(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
-      applyRule(/__(?!_)([^_\n]+?)__(?!_)/g, '<strong>$1</strong>');
+      // 2. Double asterisks or underscores: **bold** or __bold__
+      applyRule(/(?<!\*)\*\*(?!\*)([^\s\n](?:[^\n]*?[^\s\n])?)(?<!\*)\*\*(?!\*)/g, '<strong>$1</strong>');
+      applyRule(/(?<!\w)(?<!_)__(?!_)([^_\s\n](?:[^\n]*?[^_\s\n])?)(?<!_)__(?!_)(?!\w)/g, '<strong>$1</strong>');
 
       // 3. Single asterisks or underscores: *italic* or _italic_
-      applyRule(/(?<!\*)\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)/g, '<em>$1</em>');
-      applyRule(/(?<!_)_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)/g, '<em>$1</em>');
+      applyRule(/(?<!\*)\*(?!\*)([^\s\n](?:[^\n]*?[^\s\n])?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+      applyRule(/(?<!\w)(?<!_)_(?!_)([^_\s\n](?:[^\n]*?[^_\s\n])?)(?<!_)_(?!_)(?!\w)/g, '<em>$1</em>');
 
       // 4. Underline: <u>underline</u> or <ins>underline</ins> or ++underline++
       applyRule(/&lt;u&gt;([\s\S]+?)&lt;\/u&gt;/gi, '<u>$1</u>');
@@ -1811,37 +1874,44 @@
       // 8. Highlight: ==highlight==
       applyRule(/==([^=\n]+?)==/g, '<mark class="stilo-highlight">$1</mark>');
 
-      // 9. Inline code: `code`
-      applyRule(/`([^`\n]+)`/g, '<code class="stilo-inline-code">$1</code>');
-
-      // 10. Markdown Link: [text](url)
+      // 9. Markdown Link: [text](url)
       applyRule(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="stilo-link" target="_blank">$1</a>');
 
-      // 11. Autolinks: <https://...> and <email@...>
+      // 10. Autolinks: <https://...> and <email@...>
       applyRule(/&lt;(https?:\/\/[^&>\s]+)&gt;/gi, '<a href="$1" class="stilo-link" target="_blank">$1</a>');
       applyRule(/&lt;([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)&gt;/gi, '<a href="mailto:$1" class="stilo-link">$1</a>');
 
-      // 12. Footnote ref: [^1]
+      // 11. Footnote ref: [^1]
       applyRule(/\[\^([a-zA-Z0-9_\-]+)\]/g, '<sup class="stilo-footnote-ref">[$1]</sup>');
 
-      // 13. Emoji: :joy: -> 😂
+      // 12. Emoji: :joy: -> 😂
       applyRule(/:([a-zA-Z0-9_\-+]+):/g, (match) => {
         return EMOJI_MAP[match] || match;
       });
 
-      // 14. Internal Note Links: [[Note Title]]
+      // 13. Internal Note Links: [[Note Title]]
       applyRule(/\[\[([^\]\n]+)\]\]/g, '<a href="stilo-note://$1" class="stilo-wiki-link" data-note-title="$1">[[$1]]</a>');
 
       const endLookahead = allowEndOfString ? '(?=$|[\\s.,;:!?])' : '(?=[\\s.,;:!?])';
 
-      // 15. Categories / Folders: ##Category/Sub (checked before #tag)
+      // 14. Categories / Folders: ##Category/Sub (checked before #tag)
       applyRule(new RegExp('(^|[\\s.,;:!?])##([a-zA-Z0-9_\\-]+(?:\\/[a-zA-Z0-9_\\-]+)*)' + endLookahead, 'g'), '$1<span class="stilo-category-badge" data-category="$2">📁 $2</span>');
 
-      // 16. Tags: #tag (word characters and hyphens)
+      // 15. Tags: #tag (word characters and hyphens)
       applyRule(new RegExp('(^|[\\s.,;:!?])#([a-zA-Z0-9_\\-]+)' + endLookahead, 'g'), '$1<span class="stilo-tag" data-tag="$2">#$2</span>');
 
-      // 17. Mentions: @person
+      // 16. Mentions: @person
       applyRule(new RegExp('(^|[\\s.,;:!?])@([a-zA-Z0-9_\\.\\-]+)' + endLookahead, 'g'), '$1<span class="stilo-mention" data-mention="$2">@$2</span>');
+
+      // Unmask backslash escapes (CommonMark 2.4)
+      s = s.replace(/\x00ESC_(\d+)\x00/g, (m, idx) => {
+        return escapeHtml(escapes[parseInt(idx, 10)]);
+      });
+
+      // Unmask code spans (CommonMark 6.1)
+      s = s.replace(/\x00CODE_(\d+)\x00/g, (m, idx) => {
+        return `<code class="stilo-inline-code">${escapeHtml(codeSpans[parseInt(idx, 10)])}</code>`;
+      });
 
       return { html: s, matched };
     }
@@ -1963,17 +2033,42 @@
           closeTable();
         }
 
+        // Setext Headings
+        if (i + 1 < rawLines.length && trimmed !== '') {
+          const nextTrimmed = rawLines[i + 1].trim();
+          if (/^===+\s*$/.test(nextTrimmed)) {
+            closeList();
+            closeTable();
+            closeQuote();
+            const content = formatMarkdownInText(trimmed, true).html;
+            out.push(`<h1>${content}</h1>`);
+            i += 1;
+            continue;
+          } else if (/^---+\s*$/.test(nextTrimmed) && !/^(?:---|\*\*\*|___)$/.test(trimmed)) {
+            closeList();
+            closeTable();
+            closeQuote();
+            const content = formatMarkdownInText(trimmed, true).html;
+            out.push(`<h2>${content}</h2>`);
+            i += 1;
+            continue;
+          }
+        }
+
         if (/^(?:---|\*\*\*|___)$/.test(trimmed)) {
           closeList();
           out.push('<hr class="stilo-hr"><div><br></div>');
           continue;
         }
 
-        const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        const hMatch = line.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
         if (hMatch) {
           closeList();
+          closeTable();
+          closeQuote();
           const level = hMatch[1].length;
-          const content = formatMarkdownInText(hMatch[2], true).html;
+          let rawHeading = hMatch[2].replace(/(?:^|\s+)#+\s*$/, '').trim();
+          const content = formatMarkdownInText(rawHeading, true).html;
           out.push(`<h${level}>${content}</h${level}>`);
           continue;
         }
@@ -2015,7 +2110,7 @@
           continue;
         }
 
-        const olMatch = line.match(/^\d+\.\s+(.*)$/);
+        const olMatch = line.match(/^\d+[.)]\s+(.*)$/);
         if (olMatch) {
           if (!inList || listType !== 'ol') {
             closeList();
@@ -2035,8 +2130,20 @@
         }
 
         closeList();
-        const content = formatMarkdownInText(line, true).html;
-        out.push(`<div>${content}</div>`);
+        let lineClean = line;
+        let lineBreak = '';
+        if (lineClean.endsWith('  ')) {
+          lineClean = lineClean.slice(0, -2);
+          lineBreak = '<br>';
+        } else {
+          const bsMatch = lineClean.match(/(\\+)$/);
+          if (bsMatch && bsMatch[1].length % 2 === 1) {
+            lineClean = lineClean.slice(0, -1);
+            lineBreak = '<br>';
+          }
+        }
+        const content = formatMarkdownInText(lineClean, true).html;
+        out.push(`<div>${content}${lineBreak}</div>`);
       }
 
       closeList();

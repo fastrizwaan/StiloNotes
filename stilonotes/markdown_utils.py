@@ -204,6 +204,11 @@ RE_DIV_TAG = re.compile(r'<div[^>]*>')
 RE_P_TAG = re.compile(r'<p[^>]*>')
 RE_BR_TAG = re.compile(r'<br\s*/?>')
 
+# CommonMark ASCII punctuation characters (Section 2.1 & 2.4)
+ASCII_PUNCTUATION_STR = r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""
+ASCII_PUNCTUATION_CHARS = set(ASCII_PUNCTUATION_STR)
+RE_BACKSLASH_BEFORE_PUNCT = re.compile(r'\\(?=[' + re.escape(ASCII_PUNCTUATION_STR) + r']|@@STILO_)')
+
 # markdown_to_html inline formatting
 RE_MD_EMOJI = re.compile(r':([a-zA-Z0-9_\-+]+):')
 RE_MD_AUTOLINK_URL = re.compile(r'&lt;(https?://[^&>\s]+)&gt;', re.IGNORECASE)
@@ -211,12 +216,12 @@ RE_MD_AUTOLINK_MAIL = re.compile(r'&lt;([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0
 RE_MD_FOOTNOTE_REF = re.compile(r'\[\^([a-zA-Z0-9_\-]+)\]')
 RE_MD_IMAGE = re.compile(r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+(?:["\']|&quot;)(.*?)(?:["\']|&quot;))?\)')
 RE_MD_LINK = re.compile(r'\[([^\]]+)\]\(([^)\s]+)(?:\s+(?:["\']|&quot;)(.*?)(?:["\']|&quot;))?\)')
-RE_MD_BOLD_ITALIC = re.compile(r'\*\*\*([^*\n]+?)\*\*\*')
-RE_MD_BOLD_ITALIC_UNDER = re.compile(r'___([^_\n]+?)___')
-RE_MD_BOLD = re.compile(r'\*\*([^*\n]+?)\*\*')
-RE_MD_BOLD_UNDER = re.compile(r'__(?!_)([^_\n]+?)__(?!_)')
-RE_MD_ITALIC_STAR = re.compile(r'(?<!\*)\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)')
-RE_MD_ITALIC_UNDER = re.compile(r'(?<!_)_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)')
+RE_MD_BOLD_ITALIC = re.compile(r'(?<!\*)\*\*\*(?!\*)([^\s\n](?:[^\n]*?[^\s\n])?)(?<!\*)\*\*\*(?!\*)')
+RE_MD_BOLD_ITALIC_UNDER = re.compile(r'(?<!\w)(?<!_)___(?!_)([^_\s\n](?:[^\n]*?[^_\s\n])?)(?<!_)___(?!_)(?!\w)')
+RE_MD_BOLD = re.compile(r'(?<!\*)\*\*(?!\*)([^\s\n](?:[^\n]*?[^\s\n])?)(?<!\*)\*\*(?!\*)')
+RE_MD_BOLD_UNDER = re.compile(r'(?<!\w)(?<!_)__(?!_)([^_\s\n](?:[^\n]*?[^_\s\n])?)(?<!_)__(?!_)(?!\w)')
+RE_MD_ITALIC_STAR = re.compile(r'(?<!\*)\*(?!\*)([^\s\n](?:[^\n]*?[^\s\n])?)(?<!\*)\*(?!\*)')
+RE_MD_ITALIC_UNDER = re.compile(r'(?<!\w)(?<!_)_(?!_)([^_\s\n](?:[^\n]*?[^_\s\n])?)(?<!_)_(?!_)(?!\w)')
 RE_MD_UNDERLINE = re.compile(r'&lt;u&gt;(.*?)&lt;/u&gt;', re.IGNORECASE)
 RE_MD_INS = re.compile(r'&lt;ins&gt;(.*?)&lt;/ins&gt;', re.IGNORECASE)
 RE_MD_PLUS_UNDER = re.compile(r'\+\+([^\+\n]+?)\+\+')
@@ -233,7 +238,7 @@ RE_BLOCK_TABLE_SEP = re.compile(r'^[-: ]+$')
 RE_BLOCK_HR = re.compile(r'^(?:---|\*\*\*|___|- - -|\* \* \*|_ _ _)\s*$')
 RE_BLOCK_TODO = re.compile(r'^[-*+]\s+\[([ xX])\]\s*(.*)')
 RE_BLOCK_UL = re.compile(r'^[-*+]\s+(.*)')
-RE_BLOCK_OL = re.compile(r'^\d+\.\s+(.*)')
+RE_BLOCK_OL = re.compile(r'^\d+[.)]\s+(.*)')
 RE_BLOCK_FOOTNOTE_DEF = re.compile(r'^\[\^([a-zA-Z0-9_\-]+)\]:\s*(.*)')
 RE_BLOCK_DEF_LIST = re.compile(r'^:\s+(.*)')
 RE_HEADING_ID_IN_TEXT = re.compile(r'\s*\{#([a-zA-Z0-9_\-]+)\}\s*$')
@@ -635,8 +640,51 @@ def markdown_to_html(md_text: str) -> str:
     if not md_text:
         return "<h1>Untitled Note</h1><div><br></div>"
 
+    def tokenize_markdown_inline(raw_text: str):
+        code_spans: List[str] = []
+        escapes: List[str] = []
+        out: List[str] = []
+        n = len(raw_text)
+        i = 0
+        while i < n:
+            if raw_text[i] == '\\':
+                if i + 1 < n and raw_text[i + 1] in ASCII_PUNCTUATION_CHARS:
+                    esc_char = raw_text[i + 1]
+                    idx = len(escapes)
+                    escapes.append(esc_char)
+                    out.append(f"\x00ESC_{idx}\x00")
+                    i += 2
+                    continue
+                else:
+                    out.append('\\')
+                    i += 1
+                    continue
+            if raw_text[i] == '`':
+                bt_start = i
+                while i < n and raw_text[i] == '`':
+                    i += 1
+                bt_len = i - bt_start
+                fence = '`' * bt_len
+                close_pos = raw_text.find(fence, i)
+                if close_pos != -1:
+                    code_content = raw_text[i:close_pos]
+                    if len(code_content) >= 2 and code_content.startswith(' ') and code_content.endswith(' ') and not code_content.strip() == '':
+                        code_content = code_content[1:-1]
+                    idx = len(code_spans)
+                    code_spans.append(code_content)
+                    out.append(f"\x00CODE_{idx}\x00")
+                    i = close_pos + bt_len
+                    continue
+                else:
+                    out.append(fence)
+                    continue
+            out.append(raw_text[i])
+            i += 1
+        return "".join(out), code_spans, escapes
+
     def format_inline(text: str) -> str:
-        s = html.escape(text)
+        s, code_spans, escapes = tokenize_markdown_inline(text)
+        s = html.escape(s)
 
         # Autolinks: <https://...> and <email@...>
         s = RE_MD_AUTOLINK_URL.sub(r'<a href="\1" class="stilo-link" target="_blank">\1</a>', s)
@@ -648,9 +696,6 @@ def markdown_to_html(md_text: str) -> str:
         # Images & Links
         s = RE_MD_IMAGE.sub(_format_md_image, s)
         s = RE_MD_LINK.sub(_format_md_link, s)
-
-        # Code
-        s = RE_MD_CODE.sub(r'<code class="stilo-inline-code">\1</code>', s)
 
         # Emphasis (Bold, Italic)
         s = RE_MD_BOLD_ITALIC.sub(r'<strong><em>\1</em></strong>', s)
@@ -687,6 +732,18 @@ def markdown_to_html(md_text: str) -> str:
 
         # Categories: ##Category/Sub
         s = RE_CAT_HASH.sub(r'<span class="stilo-category-badge" data-category="\1">📁 \1</span>', s)
+
+        # Unmask backslash escapes (CommonMark 2.4)
+        def _unmask_esc(m: re.Match) -> str:
+            idx = int(m.group(1))
+            return html.escape(escapes[idx])
+        s = re.sub(r'\x00ESC_(\d+)\x00', _unmask_esc, s)
+
+        # Unmask code spans (CommonMark 6.1)
+        def _unmask_code(m: re.Match) -> str:
+            idx = int(m.group(1))
+            return f'<code class="stilo-inline-code">{html.escape(code_spans[idx])}</code>'
+        s = re.sub(r'\x00CODE_(\d+)\x00', _unmask_code, s)
 
         return s
 
@@ -876,10 +933,12 @@ def markdown_to_html(md_text: str) -> str:
 
         # 7. Atx Headings (# H1 to ###### H6 with optional {#custom-id})
         heading_level = 0
-        if line.startswith("#"):
-            stripped_hashes = line.lstrip("#")
-            level = len(line) - len(stripped_hashes)
-            if 1 <= level <= 6 and stripped_hashes.startswith(" "):
+        stripped_line = line.lstrip(" ")
+        leading_spaces = len(line) - len(stripped_line)
+        if leading_spaces <= 3 and stripped_line.startswith("#"):
+            stripped_hashes = stripped_line.lstrip("#")
+            level = len(stripped_line) - len(stripped_hashes)
+            if 1 <= level <= 6 and (stripped_hashes.startswith(" ") or stripped_hashes == ""):
                 heading_level = level
                 heading_content = stripped_hashes.strip()
 
@@ -890,6 +949,8 @@ def markdown_to_html(md_text: str) -> str:
             if id_match:
                 id_attr = f' id="{id_match.group(1)}"'
                 heading_content = heading_content[:id_match.start()].strip()
+            # CommonMark Section 4.2: optional closing sequence of '#'s
+            heading_content = re.sub(r'(?:^|\s+)#+\s*$', '', heading_content).strip()
             html_lines.append(f"<h{heading_level}{id_attr}>{format_inline(heading_content)}</h{heading_level}>")
             i += 1
             continue
@@ -979,9 +1040,15 @@ def markdown_to_html(md_text: str) -> str:
         html_lines.append(close_lists())
         line_clean = line
         line_break = ""
-        if line_clean.endswith("  ") or line_clean.endswith("\\"):
-            line_clean = line_clean[:-2] if line_clean.endswith("  ") else line_clean[:-1]
+        if line_clean.endswith("  "):
+            line_clean = line_clean[:-2]
             line_break = "<br>"
+        else:
+            # Check trailing backslashes: odd number means hard line break (CommonMark 6.7)
+            bs_match = re.search(r'(\\+)$', line_clean)
+            if bs_match and len(bs_match.group(1)) % 2 == 1:
+                line_clean = line_clean[:-1]
+                line_break = "<br>"
         html_lines.append(f"<div>{format_inline(line_clean)}{line_break}</div>")
         i += 1
 
@@ -1080,10 +1147,10 @@ def html_to_markdown(html_content: str) -> str:
     def replace_code_block(m: re.Match) -> str:
         lang = m.group(1) or ""
         code = html.unescape(m.group(2)).rstrip('\n')
-        return f"\n```{lang}\n{code}\n```\n\n"
+        return f"\n@@STILO_CB_START@@{lang}\n{code}\n@@STILO_CB_END@@\n\n"
 
     s = RE_HTM_CODE_LANG.sub(replace_code_block, s)
-    s = RE_HTM_CODE_NO_LANG.sub(lambda m: f"\n```\n{html.unescape(m.group(1)).rstrip(chr(10))}\n```\n\n", s)
+    s = RE_HTM_CODE_NO_LANG.sub(lambda m: f"\n@@STILO_CB_START@@\n{html.unescape(m.group(1)).rstrip(chr(10))}\n@@STILO_CB_END@@\n\n", s)
 
     # 7. Convert Blockquotes (recursively handles nesting)
     def _convert_blockquote_to_md(m: re.Match) -> str:
@@ -1106,18 +1173,18 @@ def html_to_markdown(html_content: str) -> str:
         tr_matches = RE_HTM_TR.findall(table_html)
 
         def _clean_cell(raw_text: str) -> str:
-            c = RE_HTM_STRONG_EM.sub(r'***\1***', raw_text)
-            c = RE_HTM_STRONG.sub(r'**\1**', c)
-            c = RE_HTM_B.sub(r'**\1**', c)
-            c = RE_HTM_EM.sub(r'*\1*', c)
-            c = RE_HTM_I.sub(r'*\1*', c)
-            c = RE_HTM_U.sub(r'<u>\1</u>', c)
-            c = RE_HTM_INS.sub(r'<u>\1</u>', c)
-            c = RE_HTM_DEL.sub(r'~~\1~~', c)
-            c = RE_HTM_MARK.sub(r'==\1==', c)
-            c = RE_HTM_SUB.sub(r'~\1~', c)
-            c = RE_HTM_SUP.sub(r'^\1^', c)
-            c = RE_HTM_CODE.sub(r'`\1`', c)
+            c = RE_HTM_STRONG_EM.sub(r'@@STILO_BI_START@@\1@@STILO_BI_END@@', raw_text)
+            c = RE_HTM_STRONG.sub(r'@@STILO_B_START@@\1@@STILO_B_END@@', c)
+            c = RE_HTM_B.sub(r'@@STILO_B_START@@\1@@STILO_B_END@@', c)
+            c = RE_HTM_EM.sub(r'@@STILO_I_START@@\1@@STILO_I_END@@', c)
+            c = RE_HTM_I.sub(r'@@STILO_I_START@@\1@@STILO_I_END@@', c)
+            c = RE_HTM_U.sub(r'@@STILO_U_START@@\1@@STILO_U_END@@', c)
+            c = RE_HTM_INS.sub(r'@@STILO_U_START@@\1@@STILO_U_END@@', c)
+            c = RE_HTM_DEL.sub(r'@@STILO_DEL_START@@\1@@STILO_DEL_END@@', c)
+            c = RE_HTM_MARK.sub(r'@@STILO_MARK_START@@\1@@STILO_MARK_END@@', c)
+            c = RE_HTM_SUB.sub(r'@@STILO_SUB_START@@\1@@STILO_SUB_END@@', c)
+            c = RE_HTM_SUP.sub(r'@@STILO_SUP_START@@\1@@STILO_SUP_END@@', c)
+            c = RE_HTM_CODE.sub(r'@@STILO_CODE_START@@\1@@STILO_CODE_END@@', c)
             c = RE_HTML_TAGS.sub('', c)
             c = html.unescape(c)
             c = c.replace('\u200b', '').replace('\n', ' ').replace('\r', ' ')
@@ -1162,11 +1229,23 @@ def html_to_markdown(html_content: str) -> str:
     s = RE_HTM_TABLE.sub(replace_table, s)
 
     # 9. Convert Lists
+    def _replace_ol(m: re.Match) -> str:
+        content = m.group(1)
+        i = [0]
+        def repl(m2: re.Match) -> str:
+            i[0] += 1
+            return f"{i[0]}. {m2.group(1)}\n"
+        return "\n" + RE_HTM_LI.sub(repl, content) + "\n"
+
+    def _replace_ul(m: re.Match) -> str:
+        content = m.group(1)
+        def repl(m2: re.Match) -> str:
+            return f"- {m2.group(1)}\n"
+        return "\n" + RE_HTM_LI.sub(repl, content) + "\n"
+
+    s = re.sub(r'<ol[^>]*>(.*?)</ol>', _replace_ol, s, flags=re.DOTALL)
+    s = re.sub(r'<ul[^>]*>(.*?)</ul>', _replace_ul, s, flags=re.DOTALL)
     s = RE_HTM_LI.sub(r'- \1\n', s)
-    s = RE_HTM_UL_START.sub('\n', s)
-    s = s.replace('</ul>', '\n')
-    s = RE_HTM_OL_START.sub('\n', s)
-    s = s.replace('</ol>', '\n')
 
     # 10. Convert Images
     def _convert_img_wrapper_to_md(m: re.Match) -> str:
@@ -1226,23 +1305,64 @@ def html_to_markdown(html_content: str) -> str:
     s = RE_HTM_LINK.sub(_convert_link_to_md, s)
 
     # 12. Inline Formatting
-    s = RE_HTM_STRONG_EM.sub(r'***\1***', s)
-    s = RE_HTM_STRONG.sub(r'**\1**', s)
-    s = RE_HTM_B.sub(r'**\1**', s)
-    s = RE_HTM_EM.sub(r'*\1*', s)
-    s = RE_HTM_I.sub(r'*\1*', s)
+    s = RE_HTM_CODE.sub(lambda m: f'@@STILO_CODE_START@@{m.group(1)}@@STILO_CODE_END@@', s)
+    s = RE_HTM_STRONG_EM.sub(lambda m: f'@@STILO_BI_START@@{m.group(1)}@@STILO_BI_END@@', s)
+    s = RE_HTM_STRONG.sub(lambda m: f'@@STILO_B_START@@{m.group(1)}@@STILO_B_END@@', s)
+    s = RE_HTM_B.sub(lambda m: f'@@STILO_B_START@@{m.group(1)}@@STILO_B_END@@', s)
+    s = RE_HTM_EM.sub(lambda m: f'@@STILO_I_START@@{m.group(1)}@@STILO_I_END@@', s)
+    s = RE_HTM_I.sub(lambda m: f'@@STILO_I_START@@{m.group(1)}@@STILO_I_END@@', s)
     s = RE_HTM_U.sub(r'@@STILO_U_START@@\1@@STILO_U_END@@', s)
     s = RE_HTM_INS.sub(r'@@STILO_U_START@@\1@@STILO_U_END@@', s)
-    s = RE_HTM_DEL.sub(r'~~\1~~', s)
-    s = RE_HTM_MARK.sub(r'==\1==', s)
-    s = RE_HTM_SUB.sub(r'~\1~', s)
-    s = RE_HTM_SUP.sub(r'^\1^', s)
-    s = RE_HTM_CODE.sub(r'`\1`', s)
+    s = RE_HTM_DEL.sub(lambda m: f'@@STILO_DEL_START@@{m.group(1)}@@STILO_DEL_END@@', s)
+    s = RE_HTM_MARK.sub(lambda m: f'@@STILO_MARK_START@@{m.group(1)}@@STILO_MARK_END@@', s)
+    s = RE_HTM_SUB.sub(lambda m: f'@@STILO_SUB_START@@{m.group(1)}@@STILO_SUB_END@@', s)
+    s = RE_HTM_SUP.sub(lambda m: f'@@STILO_SUP_START@@{m.group(1)}@@STILO_SUP_END@@', s)
+
+    # Escape literal backslashes that precede punctuation or formatting markers
+    s = RE_BACKSLASH_BEFORE_PUNCT.sub(r'\\\\', s)
+
+    # In plain text outside protected tags, escape literal asterisks that would form delimiter runs (e.g. **/** or *foo*)
+    def _esc_plain_asterisks(m: re.Match) -> str:
+        return re.sub(r'(?<!\\)\*', r'@@STILO_ESC_STAR@@', m.group(0))
+    s = re.sub(r'\*\*[^*\n@]+?\*\*', _esc_plain_asterisks, s)
+    s = re.sub(r'(?<!\*)\*[^*\s\n@](?:[^*\n@]*?[^*\s\n@])?\*(?!\*)', _esc_plain_asterisks, s)
+
+    # In plain text outside protected code, escape plain-text backticks
+    s = re.sub(r'(?<!\\)`', r'@@STILO_ESC_TICK@@', s)
+
+    # In plain text outside links, escape markdown link patterns [text](url)
+    def _esc_plain_link(m: re.Match) -> str:
+        return r'\[' + m.group(1) + r'](' + m.group(2) + ')'
+    s = re.sub(r'(?<![!\\@])\[([^\]\n]+)\]\(([^)\s]+)\)', _esc_plain_link, s)
+
+    s = s.replace('@@STILO_CB_START@@', '```').replace('@@STILO_CB_END@@', '```')
+    s = s.replace('@@STILO_CODE_START@@', '`').replace('@@STILO_CODE_END@@', '`')
+    s = s.replace('@@STILO_BI_START@@', '***').replace('@@STILO_BI_END@@', '***')
+    s = s.replace('@@STILO_B_START@@', '**').replace('@@STILO_B_END@@', '**')
+    s = s.replace('@@STILO_I_START@@', '*').replace('@@STILO_I_END@@', '*')
+    s = s.replace('@@STILO_DEL_START@@', '~~').replace('@@STILO_DEL_END@@', '~~')
+    s = s.replace('@@STILO_MARK_START@@', '==').replace('@@STILO_MARK_END@@', '==')
+    s = s.replace('@@STILO_SUB_START@@', '~').replace('@@STILO_SUB_END@@', '~')
+    s = s.replace('@@STILO_SUP_START@@', '^').replace('@@STILO_SUP_END@@', '^')
+    s = s.replace('@@STILO_ESC_STAR@@', r'\*')
+    s = s.replace('@@STILO_ESC_TICK@@', r'\`')
 
     # 13. Convert Paragraphs and Divs
+    def _escape_plain_block_starts(m: re.Match) -> str:
+        content = m.group(1)
+        # Heading start: # H
+        content = re.sub(r'^(\s{0,3})#(#{0,5}\s+)', r'\1\\#\2', content)
+        # Blockquote start: > quote
+        content = re.sub(r'^(\s{0,3})>\s*', r'\1\\> ', content)
+        # Unordered list start: * item, - item, + item
+        content = re.sub(r'^(\s*)([-*+])(\s+)', r'\1\\\2\3', content)
+        # Ordered list start: 1. item
+        content = re.sub(r'^(\s*)(\d+)\.(\s+)', r'\1\2\\.\3', content)
+        return content + '\n'
+
     s = RE_HTM_DIV_BR.sub('\n\n', s)
-    s = RE_HTM_DIV.sub(r'\1\n', s)
-    s = RE_HTM_P.sub(r'\1\n\n', s)
+    s = RE_HTM_DIV.sub(_escape_plain_block_starts, s)
+    s = RE_HTM_P.sub(lambda m: _escape_plain_block_starts(m) + '\n', s)
     s = RE_HTM_BR.sub('\n', s)
 
     # 14. Strip Remaining Tags and Unescape

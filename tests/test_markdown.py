@@ -290,7 +290,170 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("##Fast", back)
         self.assertIn("#Fast", back)
 
+    def test_commonmark_backslash_escapes_all_punctuation(self):
+        """CommonMark Section 2.4 Example 12: all ASCII punctuation can be escaped."""
+        md = r"\!\"\#\$\%\&\'\(\)\*\+\,\-\.\/\:\;\<\=\>\?\@\[\\\]\^\_\`\{\|\}\~"
+        html = markdown_to_html(md)
+        self.assertIn("!&quot;#$%&amp;&#x27;()*+,-./:;&lt;=&gt;?@[\\]^_`{|}~", html)
+
+    def test_commonmark_non_punctuation_backslashes(self):
+        """CommonMark Section 2.4 Example 13: backslashes before non-punctuation remain literal."""
+        md = r"\A\a\ \3\φ\«"
+        html = markdown_to_html(md)
+        self.assertIn(r"\A\a\ \3\φ\«", html)
+
+    def test_commonmark_example_14_escaped_delimiters(self):
+        """CommonMark Section 2.4 Example 14: escaped characters do not have markdown meanings."""
+        cases = [
+            (r"\*not emphasized*", "*not emphasized*"),
+            (r"\[not a link](/foo)", "[not a link](/foo)"),
+            (r"\`not code`", "`not code`"),
+            (r"1\. not a list", "1. not a list"),
+            (r"\* not a list", "* not a list"),
+            (r"\# not a heading", "# not a heading"),
+            (r"\<br/> not a tag", "&lt;br/&gt; not a tag"),
+        ]
+        for md, expected in cases:
+            html = markdown_to_html(md)
+            self.assertIn(expected, html, f"Failed for {md}")
+            # Ensure no unwanted tags were created
+            if md == r"\*not emphasized*":
+                self.assertNotIn("<em>", html)
+            elif md == r"\# not a heading":
+                self.assertNotIn("<h1>", html)
+            elif md == r"\* not a list":
+                self.assertNotIn("<ul>", html)
+            elif md == r"1\. not a list":
+                self.assertNotIn("<ol>", html)
+            elif md == r"\[not a link](/foo)":
+                self.assertNotIn("<a ", html)
+            elif md == r"\`not code`":
+                self.assertNotIn("<code", html)
+
+    def test_commonmark_escaped_backslash_before_delimiter(self):
+        """CommonMark Section 2.4 Example 15: escaped backslash leaves following delimiter active."""
+        # \\*emphasis* -> literal backslash followed by emphasis
+        md1 = r"\\*emphasis*"
+        html1 = markdown_to_html(md1)
+        self.assertIn(r"\<em>emphasis</em>", html1)
+
+        # \\\*not emphasized* -> literal backslash followed by escaped asterisk
+        md2 = r"\\\*not emphasized*"
+        html2 = markdown_to_html(md2)
+        self.assertIn(r"\*not emphasized*", html2)
+        self.assertNotIn("<em>", html2)
+
+        # \\\\*emphasis* -> two literal backslashes followed by emphasis
+        md3 = r"\\\\*emphasis*"
+        html3 = markdown_to_html(md3)
+        self.assertIn(r"\\<em>emphasis</em>", html3)
+
+    def test_commonmark_consecutive_escaped_asterisks(self):
+        """CommonMark Section 2.4: escaped asterisks in expressions like **/** and \\* something*."""
+        # \*\*/\*\* -> no bold, no italics
+        md1 = r"\*\*/\*\*"
+        html1 = markdown_to_html(md1)
+        self.assertIn("**/**", html1)
+        self.assertNotIn("<em>", html1)
+        self.assertNotIn("<strong>", html1)
+
+        # \* something* -> no italics
+        md2 = r"\* something*"
+        html2 = markdown_to_html(md2)
+        self.assertIn("* something*", html2)
+        self.assertNotIn("<em>", html2)
+
+        # \*\*bold\*\* -> no bold
+        md3 = r"\*\*bold\*\*"
+        html3 = markdown_to_html(md3)
+        self.assertIn("**bold**", html3)
+        self.assertNotIn("<strong>", html3)
+
+    def test_commonmark_hard_line_breaks(self):
+        """CommonMark Section 2.4 Example 16 & Section 6.7: trailing backslash creates hard line break."""
+        md1 = "foo\\\nbar"
+        html1 = markdown_to_html(md1)
+        self.assertIn("foo<br>", html1)
+
+        # Escaped backslash at line end is literal, not line break
+        md2 = "foo\\\\"
+        html2 = markdown_to_html(md2)
+        self.assertIn("foo\\", html2)
+        self.assertNotIn("foo<br>", html2)
+
+        # Two trailing spaces
+        md3 = "foo  \nbar"
+        html3 = markdown_to_html(md3)
+        self.assertIn("foo<br>", html3)
+
+    def test_commonmark_code_spans_ignore_escapes(self):
+        """CommonMark Section 2.4 Example 17: backslashes inside code spans are literal."""
+        md1 = r"`foo\*bar`"
+        html1 = markdown_to_html(md1)
+        self.assertIn(r"foo\*bar", html1)
+
+        md2 = "`` \\[\\` ``"
+        html2 = markdown_to_html(md2)
+        self.assertIn(r"\[\`", html2)
+
+    def test_commonmark_links_and_urls_escapes(self):
+        """CommonMark Section 2.4 Example 22: escapes work inside URL and link title."""
+        md = r'[foo](/bar\* "ti\*tle")'
+        html = markdown_to_html(md)
+        self.assertIn('href="/bar*"', html)
+        self.assertIn('title="ti*tle"', html)
+
+        # Escaped delimiters inside link text
+        md_text = r"[\*foo\*](/url)"
+        html_text = markdown_to_html(md_text)
+        self.assertIn('>*foo*</a>', html_text)
+
+    def test_commonmark_emphasis_delimiter_runs(self):
+        """CommonMark Section 6.2: left/right flanking rules and intraword underscore."""
+        # Spaces prevent emphasis
+        self.assertNotIn("<em>", markdown_to_html("* foo *"))
+        self.assertNotIn("<strong>", markdown_to_html("** bold **"))
+
+        # Intraword underscore does NOT emphasize
+        html_under = markdown_to_html("foo_bar_baz")
+        self.assertNotIn("<em>", html_under)
+        self.assertIn("foo_bar_baz", html_under)
+
+        # Intraword asterisk DOES emphasize
+        html_star = markdown_to_html("foo*bar*baz")
+        self.assertIn("foo<em>bar</em>baz", html_star)
+
+    def test_commonmark_atx_headings_closing_hashes(self):
+        """CommonMark Section 4.2: optional closing sequence of '#'s and indentation."""
+        html1 = markdown_to_html("# Heading One #")
+        self.assertIn("<h1>Heading One</h1>", html1)
+
+        html2 = markdown_to_html("### Subheading ###")
+        self.assertIn("<h3>Subheading</h3>", html2)
+
+        html3 = markdown_to_html("   ## Indented Heading")
+        self.assertIn("<h2>Indented Heading</h2>", html3)
+
+    def test_commonmark_roundtrip_all(self):
+        """Verify md -> html -> md -> html roundtrip fidelity for all CommonMark Section 2.4 features."""
+        cases = [
+            r"\*not emphasized*",
+            r"\\*emphasis*",
+            r"\*\*/\*\*",
+            r"\[not a link](/foo)",
+            r"\`not code`",
+            r"1\. not a list",
+            r"\* not a list",
+            r"\# not a heading",
+        ]
+        for md in cases:
+            h1 = markdown_to_html(md)
+            b = html_to_markdown(h1)
+            h2 = markdown_to_html(b)
+            self.assertEqual(h1, h2, f"Roundtrip failed for {md}: {h1} != {h2}")
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
