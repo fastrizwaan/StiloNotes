@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import json
+import re
 import base64
 import mimetypes
 import threading
@@ -171,6 +172,7 @@ class FormattingBar(Gtk.Box):
             ("quotation-symbolic",       "Blockquote",             "quote"),
             ("code-block-symbolic",      "Code Block",             "code"),
             ("insert-link-symbolic",     "Insert Link (Ctrl+K)",   "link"),
+            ("chain-link-symbolic",      "Insert Note Link",       "wiki-link"),
             ("view-continuous-symbolic", "Horizontal Rule",        "divider"),
         ]:
             self._add_btn(flowbox, icon, tip, cmd)
@@ -709,6 +711,8 @@ class NoteEditor(Gtk.Box):
             self._message_handler_ids.append(ucm.connect("script-message-received::printNote", lambda _ucm, _msg: self._print_note(self.get_root())))
             ucm.register_script_message_handler("insertLink")
             self._message_handler_ids.append(ucm.connect("script-message-received::insertLink", self._on_js_insert_link))
+            ucm.register_script_message_handler("insertInternalLink")
+            self._message_handler_ids.append(ucm.connect("script-message-received::insertInternalLink", self._on_js_insert_internal_link))
             ucm.register_script_message_handler("openExternalUrl")
             self._message_handler_ids.append(ucm.connect("script-message-received::openExternalUrl", self._on_js_open_external_url))
         except Exception as e:
@@ -850,6 +854,7 @@ class NoteEditor(Gtk.Box):
         act("toggle-edit",   lambda: self.set_read_only(not self.is_read_only))
         act("toggle-format-toolbar", lambda: self.format_btn.set_active(not self.format_btn.get_active()))
         act("insert-link",   lambda: self._exec_js_format("link"))
+        act("insert-internal-link", lambda: self._exec_js_format("wiki-link"))
         act("delete",        self._on_delete)
 
         self.insert_action_group("editor", ag)
@@ -1205,6 +1210,12 @@ class NoteEditor(Gtk.Box):
                 return True
         return False
 
+    def scroll_to_heading(self, heading: str):
+        if not heading:
+            return
+        script = f"if (window.scrollToHeading) {{ window.scrollToHeading({json.dumps(heading)}); }}"
+        self.webview.evaluate_javascript(script, -1, None, None, None, None)
+
     def _on_js_insert_link(self, _ucm, js_result):
         try:
             val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
@@ -1214,14 +1225,21 @@ class NoteEditor(Gtk.Box):
             data = json.loads(json_str)
             initial_text = data.get("text", "") or ""
             initial_url = data.get("url", "") or "https://"
+            is_edit = bool(data.get("isEdit", False))
         except Exception as e:
             print("Error parsing insertLink message:", e)
             initial_text = ""
             initial_url = "https://"
+            is_edit = False
 
-        dialog = Adw.AlertDialog.new("Insert Link", None)
+        dialog_title = "Edit Link" if is_edit else "Insert Link"
+        dialog = Adw.AlertDialog.new(dialog_title, None)
         dialog.add_response("cancel", "Cancel")
-        dialog.add_response("insert", "Insert")
+        if is_edit:
+            dialog.add_response("remove", "Remove Link")
+            dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        button_label = "Save" if is_edit else "Insert"
+        dialog.add_response("insert", button_label)
         dialog.set_response_appearance("insert", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("insert")
         dialog.set_close_response("cancel")
@@ -1274,6 +1292,277 @@ class NoteEditor(Gtk.Box):
                     label_val = url_val
 
                 script = f"if (window.applyInsertLink) {{ window.applyInsertLink({json.dumps(label_val)}, {json.dumps(url_val)}); }}"
+                self.webview.evaluate_javascript(script, -1, None, None, None, None)
+            elif response == "remove":
+                script = "if (window.removeInsertLink) { window.removeInsertLink(); }"
+                self.webview.evaluate_javascript(script, -1, None, None, None, None)
+            else:
+                script = "if (window.cancelInsertLink) { window.cancelInsertLink(); }"
+                self.webview.evaluate_javascript(script, -1, None, None, None, None)
+
+        dialog.connect("response", on_response)
+        dialog.present(self.get_root() or self)
+
+    def _on_js_insert_internal_link(self, _ucm, js_result):
+        try:
+            val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
+            json_str = val.to_string() if hasattr(val, "to_string") else str(val)
+            if not json_str:
+                return
+            data = json.loads(json_str)
+            initial_text = (data.get("text") or "").strip()
+            initial_note_title = (data.get("noteTitle") or "").strip()
+            initial_note_heading = (data.get("noteHeading") or "").strip()
+            is_edit = bool(data.get("isEdit", False))
+        except Exception as e:
+            print("Error parsing insertInternalLink message:", e)
+            initial_text = ""
+            initial_note_title = ""
+            initial_note_heading = ""
+            is_edit = False
+
+        if initial_text and not initial_note_title:
+            if initial_text.startswith("[[") and initial_text.endswith("]]"):
+                raw = initial_text[2:-2].strip()
+                if "|" in raw:
+                    raw, initial_text = raw.split("|", 1)
+                    raw, initial_text = raw.strip(), initial_text.strip()
+                else:
+                    initial_text = ""
+                if "/" in raw:
+                    initial_note_title, initial_note_heading = raw.split("/", 1)
+                    initial_note_title, initial_note_heading = initial_note_title.strip(), initial_note_heading.strip()
+                else:
+                    initial_note_title = raw
+            else:
+                initial_note_title = initial_text
+
+        notes = []
+        try:
+            if hasattr(self, "db") and self.db:
+                notes = self.db.get_notes(filter_type="all")
+        except Exception as e:
+            print("Error fetching notes for link dialog:", e)
+
+        notes_by_title = {}
+        for n in notes:
+            if n.title and n.title.strip():
+                t = n.title.strip()
+                if t not in notes_by_title:
+                    notes_by_title[t] = n
+
+        sorted_titles = sorted(notes_by_title.keys(), key=lambda s: s.lower())
+
+        dialog_title = "Edit Note Link" if is_edit else "Insert Note Link"
+        dialog = Adw.AlertDialog.new(dialog_title, None)
+        dialog.add_response("cancel", "Cancel")
+        if is_edit:
+            dialog.add_response("remove", "Remove Link")
+            dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        button_label = "Save" if is_edit else "Insert"
+        dialog.add_response("insert", button_label)
+        dialog.set_response_appearance("insert", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("insert")
+        dialog.set_close_response("cancel")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.set_margin_top(6)
+        box.set_margin_bottom(6)
+
+        grp_internal = Adw.PreferencesGroup()
+
+        combo_items = ["— Select Existing Note —"] + sorted_titles if sorted_titles else ["— No saved notes —"]
+        string_list = Gtk.StringList.new(combo_items)
+        combo_row = Adw.ComboRow()
+        combo_row.set_title("Select Note")
+        combo_row.set_model(string_list)
+        combo_row.set_enable_search(True)
+        grp_internal.add(combo_row)
+
+        note_entry = Adw.EntryRow()
+        note_entry.set_title("Note Title")
+        note_entry.set_text(initial_note_title)
+        note_entry.set_activates_default(True)
+        grp_internal.add(note_entry)
+
+        heading_entry = Adw.EntryRow()
+        heading_entry.set_title("Heading")
+        heading_entry.set_text(initial_note_heading)
+        heading_entry.set_activates_default(True)
+
+        heading_popover = Gtk.Popover()
+        heading_popover_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        heading_popover_box.set_margin_top(4)
+        heading_popover_box.set_margin_bottom(4)
+        heading_popover_box.set_margin_start(4)
+        heading_popover_box.set_margin_end(4)
+
+        scrolled_headings = Gtk.ScrolledWindow()
+        scrolled_headings.set_max_content_height(180)
+        scrolled_headings.set_propagate_natural_height(True)
+        scrolled_headings.set_child(heading_popover_box)
+        heading_popover.set_child(scrolled_headings)
+
+        heading_btn = Gtk.MenuButton()
+        heading_btn.set_icon_name("view-list-symbolic")
+        heading_btn.set_tooltip_text("Choose a section heading from this note")
+        heading_btn.add_css_class("flat")
+        heading_btn.set_popover(heading_popover)
+        heading_btn.set_visible(False)
+        heading_entry.add_suffix(heading_btn)
+        grp_internal.add(heading_entry)
+
+        internal_label_row = Adw.EntryRow()
+        internal_label_row.set_title("Label")
+        internal_label_row.set_text(initial_text)
+        internal_label_row.set_activates_default(True)
+        grp_internal.add(internal_label_row)
+
+        box.append(grp_internal)
+        dialog.set_extra_child(box)
+
+        def update_headings_for_title(target_title: str):
+            while True:
+                c = heading_popover_box.get_first_child()
+                if not c:
+                    break
+                heading_popover_box.remove(c)
+
+            headings = []
+            if target_title in notes_by_title:
+                note_meta = notes_by_title[target_title]
+                note_obj = None
+                try:
+                    if hasattr(self, "db") and self.db:
+                        note_obj = self.db.get_note(note_meta.id)
+                except Exception:
+                    pass
+                if not note_obj:
+                    note_obj = note_meta
+
+                body = note_obj.content_markdown or ""
+                if body:
+                    for line in body.splitlines():
+                        line = line.strip()
+                        if line.startswith("#"):
+                            m = re.match(r"^#{1,6}\s+(.+)$", line)
+                            if m:
+                                h = m.group(1).strip()
+                                if h and h != note_obj.title and h not in headings:
+                                    headings.append(h)
+                elif note_obj.content_html:
+                    for m in re.finditer(r"<h[1-6][^>]*>(.*?)</h[1-6]>", note_obj.content_html, re.IGNORECASE):
+                        h = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+                        if h and h != note_obj.title and h not in headings:
+                            headings.append(h)
+
+            if headings:
+                heading_btn.set_visible(True)
+                for h in headings:
+                    btn = Gtk.Button(label=h)
+                    btn.add_css_class("flat")
+                    btn.set_halign(Gtk.Align.FILL)
+                    def on_h_click(_b, h_text=h):
+                        heading_entry.set_text(h_text)
+                        heading_popover.popdown()
+                    btn.connect("clicked", on_h_click)
+                    heading_popover_box.append(btn)
+            else:
+                heading_btn.set_visible(False)
+
+        is_syncing = False
+
+        def on_combo_selected(cr, _pspec):
+            nonlocal is_syncing
+            if is_syncing:
+                return
+            idx = cr.get_selected()
+            if idx > 0 and idx <= len(sorted_titles):
+                picked_title = sorted_titles[idx - 1]
+                is_syncing = True
+                note_entry.set_text(picked_title)
+                is_syncing = False
+                update_headings_for_title(picked_title)
+            elif idx == 0:
+                update_headings_for_title(note_entry.get_text().strip())
+
+        combo_row.connect("notify::selected", on_combo_selected)
+
+        def on_note_entry_changed(entry, _pspec):
+            nonlocal is_syncing
+            if is_syncing:
+                return
+            text = entry.get_text().strip()
+            if text in sorted_titles:
+                is_syncing = True
+                combo_row.set_selected(sorted_titles.index(text) + 1)
+                is_syncing = False
+            else:
+                is_syncing = True
+                combo_row.set_selected(0)
+                is_syncing = False
+            update_headings_for_title(text)
+
+        note_entry.connect("notify::text", on_note_entry_changed)
+
+        if initial_note_title:
+            if initial_note_title in sorted_titles:
+                combo_row.set_selected(sorted_titles.index(initial_note_title) + 1)
+            else:
+                combo_row.set_selected(0)
+            update_headings_for_title(initial_note_title)
+        else:
+            combo_row.set_selected(0)
+
+        def set_initial_focus():
+            if note_entry.get_text().strip():
+                if internal_label_row.get_text().strip():
+                    internal_label_row.grab_focus()
+                    internal_label_row.select_region(0, -1)
+                else:
+                    heading_entry.grab_focus()
+            else:
+                note_entry.grab_focus()
+            return False
+
+        GLib.idle_add(set_initial_focus)
+
+        def on_response(_d, response):
+            if response == "insert":
+                note_val = note_entry.get_text().strip()
+                heading_val = heading_entry.get_text().strip()
+                label_val = internal_label_row.get_text().strip()
+
+                if not note_val and not heading_val:
+                    return
+
+                if note_val.startswith("[[") and note_val.endswith("]]"):
+                    note_val = note_val[2:-2].strip()
+                    if "|" in note_val:
+                        note_val, l_override = note_val.split("|", 1)
+                        if not label_val:
+                            label_val = l_override.strip()
+                    if "/" in note_val and not heading_val:
+                        note_val, heading_val = note_val.split("/", 1)
+                        note_val = note_val.strip()
+                        heading_val = heading_val.strip()
+                elif "/" in note_val and not heading_val and note_val not in notes_by_title:
+                    p1, p2 = note_val.split("/", 1)
+                    if p1.strip() in notes_by_title:
+                        note_val = p1.strip()
+                        heading_val = p2.strip()
+
+                payload = {
+                    "noteTitle": note_val,
+                    "noteHeading": heading_val,
+                    "label": label_val
+                }
+
+                script = f"if (window.applyInsertInternalLink) {{ window.applyInsertInternalLink({json.dumps(payload)}); }}"
+                self.webview.evaluate_javascript(script, -1, None, None, None, None)
+
+            elif response == "remove":
+                script = "if (window.removeInsertLink) { window.removeInsertLink(); }"
                 self.webview.evaluate_javascript(script, -1, None, None, None, None)
             else:
                 script = "if (window.cancelInsertLink) { window.cancelInsertLink(); }"
@@ -1429,7 +1718,7 @@ class NoteEditor(Gtk.Box):
                 for handler in [
                     "contentChanged", "statsChanged", "pickImage",
                     "uploadImage", "tagClicked", "openNoteLink", "categorySelected", "printNote",
-                    "insertLink", "openExternalUrl"
+                    "insertLink", "insertInternalLink", "openExternalUrl"
                 ]:
                     try:
                         ucm.unregister_script_message_handler(handler)

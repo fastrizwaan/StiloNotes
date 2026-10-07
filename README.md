@@ -33,6 +33,8 @@
 - **Seamless HTML Roundtrip**: Automatically and accurately converts your live rich text back into clean, portable Markdown syntax when saving to the database.
 
 ### 🔗 Cross-Note Wiki Links & Deep Navigation
+- **Dedicated Toolbar Note Link Button**: Quick-access chain-link button in the formatting bar opens an interactive dialog with a searchable note selector, note title auto-sync, section heading picker, and display alias entry.
+- **Clean Purple Underlined Styling**: Internal cross-note links render cleanly as purple underlined links without raw `[[` and `]]` bracket clutter in rich text mode, preserving complete lossless Markdown serialization upon save.
 - **Bear-Style Wiki Links**: Interlink notes and ideas effortlessly:
   - `[[Note Title]]` — Link directly to another note.
   - `[[Note Title/Heading Name]]` — Deep-link directly to a specific heading in another note.

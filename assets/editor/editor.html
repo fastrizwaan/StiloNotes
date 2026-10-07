@@ -560,15 +560,16 @@
     .stilo-wiki-link {
       color: var(--accent-color, #7B2CBF);
       text-decoration: underline;
-      text-decoration-style: dotted;
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
       cursor: pointer;
       font-weight: 500;
       border-radius: 4px;
       padding: 0 2px;
-      transition: background 0.15s ease;
+      transition: background 0.15s ease, color 0.15s ease;
     }
     .stilo-wiki-link:hover {
-      text-decoration-style: solid;
+      color: var(--accent-hover, #5A189A);
       background: var(--accent-soft);
     }
 
@@ -1299,7 +1300,7 @@
         insertFragment.className = 'stilo-wiki-link';
         insertFragment.href = 'stilo-note://' + encodeURIComponent(title);
         insertFragment.setAttribute('data-note-title', title);
-        insertFragment.textContent = '[[' + title + ']]';
+        insertFragment.textContent = title;
         if (!autocompleteData.notes.includes(title)) {
           autocompleteData.notes.push(title);
         }
@@ -1935,7 +1936,7 @@
           heading = parts.slice(1).join("/");
         }
         
-        const display = alias ? alias : '[[' + content + ']]';
+        const display = alias ? alias : content;
         const safeTitle = encodeURIComponent(title.trim());
         const safeHeading = encodeURIComponent(heading.trim());
         const href = "stilo-note://" + safeTitle + (heading ? "#" + safeHeading : "");
@@ -3724,12 +3725,14 @@
     }
 
     let savedLinkRange = null;
+    let savedLinkElement = null;
 
     function promptLink() {
       closeAllPopups();
       const sel = window.getSelection();
       let selectedText = '';
       let url = 'https://';
+      let isEdit = false;
 
       if (sel && sel.rangeCount > 0) {
         savedLinkRange = sel.getRangeAt(0).cloneRange();
@@ -3738,9 +3741,18 @@
         savedLinkRange = null;
       }
 
-      // Check if cursor or selection is on an existing link
+      // If cursor is on an internal wiki link, route to internal link dialog
+      const existingWikiLink = getClosestElement('.stilo-wiki-link');
+      if (existingWikiLink) {
+        promptInternalLink();
+        return;
+      }
+
+      // Check if cursor or selection is on an existing external link
       const existingLink = getClosestElement('a.stilo-link') || getClosestElement('a:not(.stilo-wiki-link)');
       if (existingLink) {
+        isEdit = true;
+        savedLinkElement = existingLink;
         if (!selectedText) {
           selectedText = existingLink.textContent ? existingLink.textContent.trim() : '';
         }
@@ -3748,12 +3760,19 @@
         if (existingHref) {
           url = existingHref;
         }
+      } else {
+        savedLinkElement = null;
+        if (selectedText.startsWith('http://') || selectedText.startsWith('https://') || selectedText.startsWith('www.')) {
+          url = selectedText;
+          selectedText = '';
+        }
       }
 
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.insertLink) {
         window.webkit.messageHandlers.insertLink.postMessage(JSON.stringify({
           text: selectedText,
-          url: url
+          url: url,
+          isEdit: isEdit
         }));
       } else {
         // Fallback for non-WebKit environments
@@ -3761,6 +3780,61 @@
         if (fallbackUrl) {
           applyInsertLink(selectedText || fallbackUrl, fallbackUrl);
         }
+      }
+    }
+
+    function promptInternalLink() {
+      closeAllPopups();
+      const sel = window.getSelection();
+      let selectedText = '';
+      let noteTitle = '';
+      let noteHeading = '';
+      let isEdit = false;
+
+      if (sel && sel.rangeCount > 0) {
+        savedLinkRange = sel.getRangeAt(0).cloneRange();
+        selectedText = sel.toString().trim();
+      } else {
+        savedLinkRange = null;
+      }
+
+      const existingWikiLink = getClosestElement('.stilo-wiki-link');
+      if (existingWikiLink) {
+        isEdit = true;
+        savedLinkElement = existingWikiLink;
+        noteTitle = existingWikiLink.getAttribute('data-note-title') || '';
+        noteHeading = existingWikiLink.getAttribute('data-note-heading') || '';
+        const rawText = existingWikiLink.textContent ? existingWikiLink.textContent.trim() : '';
+        const baseTarget = noteTitle + (noteHeading ? '/' + noteHeading : '');
+        selectedText = (rawText === baseTarget || rawText === '[[' + baseTarget + ']]') ? '' : rawText;
+      } else {
+        savedLinkElement = null;
+        if (selectedText.startsWith('[[') && selectedText.endsWith(']]')) {
+          let inner = selectedText.slice(2, -2).trim();
+          if (inner.includes('|')) {
+            const parts = inner.split('|');
+            inner = parts[0].trim();
+            selectedText = parts.slice(1).join('|').trim();
+          } else {
+            selectedText = '';
+          }
+          if (inner.includes('/')) {
+            const parts = inner.split('/');
+            noteTitle = parts[0].trim();
+            noteHeading = parts.slice(1).join('/').trim();
+          } else {
+            noteTitle = inner;
+          }
+        }
+      }
+
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.insertInternalLink) {
+        window.webkit.messageHandlers.insertInternalLink.postMessage(JSON.stringify({
+          text: selectedText,
+          noteTitle: noteTitle,
+          noteHeading: noteHeading,
+          isEdit: isEdit
+        }));
       }
     }
 
@@ -3779,14 +3853,18 @@
         sel.addRange(savedLinkRange);
       }
 
-      // Check if cursor/selection is on an existing link
-      const existingLink = getClosestElement('a.stilo-link') || getClosestElement('a:not(.stilo-wiki-link)');
+      const existingLink = savedLinkElement || getClosestElement('a.stilo-link') || getClosestElement('a:not(.stilo-wiki-link)');
       if (existingLink) {
         saveUndoState();
+        existingLink.className = 'stilo-link';
         existingLink.setAttribute('href', url);
         existingLink.setAttribute('title', url);
+        existingLink.setAttribute('target', '_blank');
+        existingLink.removeAttribute('data-note-title');
+        existingLink.removeAttribute('data-note-heading');
         existingLink.textContent = label;
         savedLinkRange = null;
+        savedLinkElement = null;
         notifyChange();
         return;
       }
@@ -3795,7 +3873,82 @@
       const linkHtml = `<a href="${escapeHtml(url)}" class="stilo-link" target="_blank" title="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
       document.execCommand('insertHTML', false, linkHtml);
       savedLinkRange = null;
+      savedLinkElement = null;
       notifyChange();
+    };
+
+    window.applyInsertInternalLink = function(data) {
+      if (!data) return;
+      let noteTitle = (data.noteTitle || '').trim();
+      let noteHeading = (data.noteHeading || '').trim();
+      let label = (data.label || '').trim();
+
+      if (!noteTitle && !noteHeading) {
+        savedLinkRange = null;
+        savedLinkElement = null;
+        return;
+      }
+
+      const safeTitle = encodeURIComponent(noteTitle);
+      const safeHeading = noteHeading ? encodeURIComponent(noteHeading) : '';
+      const href = 'stilo-note://' + safeTitle + (noteHeading ? '#' + safeHeading : '');
+      const defaultDisplay = noteHeading ? (noteTitle + '/' + noteHeading) : noteTitle;
+      const display = label || defaultDisplay;
+
+      const sel = window.getSelection();
+      if (savedLinkRange) {
+        sel.removeAllRanges();
+        sel.addRange(savedLinkRange);
+      }
+
+      const existingLink = savedLinkElement || getClosestElement('.stilo-wiki-link');
+      if (existingLink) {
+        saveUndoState();
+        existingLink.className = 'stilo-wiki-link';
+        existingLink.setAttribute('href', href);
+        existingLink.setAttribute('data-note-title', noteTitle);
+        if (noteHeading) {
+          existingLink.setAttribute('data-note-heading', noteHeading);
+        } else {
+          existingLink.removeAttribute('data-note-heading');
+        }
+        existingLink.removeAttribute('target');
+        existingLink.removeAttribute('title');
+        existingLink.textContent = display;
+        savedLinkRange = null;
+        savedLinkElement = null;
+        notifyChange();
+        return;
+      }
+
+      saveUndoState();
+      const headingAttr = noteHeading ? ` data-note-heading="${escapeHtml(noteHeading)}"` : '';
+      const linkHtml = `<a href="${href}" class="stilo-wiki-link" data-note-title="${escapeHtml(noteTitle)}"${headingAttr}>${escapeHtml(display)}</a>`;
+      document.execCommand('insertHTML', false, linkHtml);
+      savedLinkRange = null;
+      savedLinkElement = null;
+      notifyChange();
+    };
+
+    window.removeInsertLink = function() {
+      const sel = window.getSelection();
+      if (savedLinkRange) {
+        sel.removeAllRanges();
+        sel.addRange(savedLinkRange);
+      }
+      const existingLink = savedLinkElement || getClosestElement('.stilo-wiki-link') || getClosestElement('a.stilo-link') || getClosestElement('a');
+      if (existingLink) {
+        saveUndoState();
+        const parent = existingLink.parentNode;
+        while (existingLink.firstChild) {
+          parent.insertBefore(existingLink.firstChild, existingLink);
+        }
+        parent.removeChild(existingLink);
+        savedLinkRange = null;
+        savedLinkElement = null;
+        notifyChange();
+      }
+      editor.focus();
     };
 
     window.cancelInsertLink = function() {
@@ -3805,6 +3958,7 @@
         sel.addRange(savedLinkRange);
       }
       savedLinkRange = null;
+      savedLinkElement = null;
       editor.focus();
     };
 
@@ -4195,6 +4349,7 @@
 
     // Window methods called from Python
     window.setReadOnly = setReadOnly;
+    window.scrollToHeading = scrollToHeading;
 
     window.setEditorContent = function(html, selectUntitled = false, readOnly = false) {
       userInteractedWithCurrentNote = false;
@@ -4313,8 +4468,8 @@
       else if (command === 'table-del-row') doDeleteTableRow();
       else if (command === 'table-del-col') doDeleteTableColumn();
       else if (command === 'table-delete') doDeleteActiveTable();
-      else if (command === 'divider') insertDivider();
       else if (command === 'link') promptLink();
+      else if (command === 'wiki-link' || command === 'internal-link' || command === 'note-link') promptInternalLink();
       else if (command === 'image') triggerImagePicker();
     };
 

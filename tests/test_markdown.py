@@ -265,11 +265,22 @@ class TestMarkdown(unittest.TestCase):
         self.assertEqual(extract_categories(md), ["Work/Projects"])
         self.assertIn("Project Alpha", extract_note_links(md))
 
+        self.assertIn('>Project Alpha</a>', html)
+        self.assertNotIn('>[[Project Alpha]]</a>', html)
+
         back = html_to_markdown(html)
         self.assertIn("#important", back)
         self.assertIn("@john", back)
         self.assertIn("[[Project Alpha]]", back)
         self.assertIn("##Work/Projects", back)
+
+        # Test headings and aliases roundtripping
+        for wiki_md in ["[[Project Alpha/Roadmap]]", "[[Project Alpha|My Alpha]]", "[[Project Alpha/Roadmap|Milestones]]"]:
+            h = markdown_to_html(wiki_md)
+            self.assertNotIn("[[", h)
+            self.assertNotIn("]]", h)
+            b = html_to_markdown(h).strip()
+            self.assertEqual(b, wiki_md)
 
     def test_fast_category_and_tags(self):
         md = "Task in ##Fast category with #Fast tag"

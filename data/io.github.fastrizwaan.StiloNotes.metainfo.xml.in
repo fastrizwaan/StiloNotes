@@ -30,6 +30,18 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.1" date="2026-10-07">
+      <description>
+        <p>New features and improvements in Stilo Notes 1.1:</p>
+        <ul>
+          <li>Dedicated "Insert Note Link" toolbar button with chain-link icon (chain-link-symbolic)</li>
+          <li>Interactive internal note link dialog: searchable note selector, title auto-sync, heading picker popover, and custom label display</li>
+          <li>Reverted external link dialog (Ctrl+K) to clean, focused Label and URL fields</li>
+          <li>Clean purple underlined styling for internal cross-note links without bracket clutter in both editor and rendered views</li>
+          <li>Lossless markdown roundtrip preservation for clean internal wiki links</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0" date="2026-10-07">
       <description>
         <p>New features and improvements in Stilo Notes 1.0:</p>

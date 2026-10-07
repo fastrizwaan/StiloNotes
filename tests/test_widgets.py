@@ -38,7 +38,7 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
 
     def test_insert_link_dialog(self):
         import json
-        from gi.repository import Adw
+        from gi.repository import Adw, Gtk
         from stilonotes.editor import NoteEditor
 
         ed = NoteEditor(self.db)
@@ -58,31 +58,62 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
         Adw.AlertDialog.present = fake_present
 
         try:
+            # 1. Test External Link Dialog (reverted to simple Label + URL)
             ed._on_js_insert_link(None, FakeJsResult({"text": "My Label", "url": "https://example.org"}))
             self.assertEqual(len(presented_dialog), 1)
             dlg = presented_dialog[0]
             self.assertEqual(dlg.get_heading(), "Insert Link")
 
-            # Verify extra child has the two entries
             box = dlg.get_extra_child()
             self.assertIsNotNone(box)
 
-            def find_entry_rows(widget):
+            def find_widgets(widget, target_type):
                 found = []
                 child = widget.get_first_child()
                 while child:
-                    if isinstance(child, Adw.EntryRow):
+                    if isinstance(child, target_type):
                         found.append(child)
-                    found.extend(find_entry_rows(child))
+                    found.extend(find_widgets(child, target_type))
                     child = child.get_next_sibling()
                 return found
 
-            rows = find_entry_rows(box)
+            rows = find_widgets(box, Adw.EntryRow)
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0].get_title(), "Label")
             self.assertEqual(rows[0].get_text(), "My Label")
             self.assertEqual(rows[1].get_title(), "URL")
             self.assertEqual(rows[1].get_text(), "https://example.org")
+
+            # 2. Test Internal Note Link Dialog (only internal link's stuff)
+            presented_dialog.clear()
+            ed._on_js_insert_internal_link(None, FakeJsResult({"noteTitle": "Project Alpha", "noteHeading": "Roadmap", "text": "Plan"}))
+            self.assertEqual(len(presented_dialog), 1)
+            dlg2 = presented_dialog[0]
+            self.assertEqual(dlg2.get_heading(), "Insert Note Link")
+            box2 = dlg2.get_extra_child()
+
+            combo_rows = find_widgets(box2, Adw.ComboRow)
+            self.assertEqual(len(combo_rows), 1)
+            self.assertEqual(combo_rows[0].get_title(), "Select Note")
+
+            rows2 = find_widgets(box2, Adw.EntryRow)
+            self.assertEqual(len(rows2), 3)
+            note_row = [r for r in rows2 if r.get_title() == "Note Title"][0]
+            heading_row = [r for r in rows2 if r.get_title() == "Heading"][0]
+            label_row = [r for r in rows2 if r.get_title() == "Label"][0]
+            self.assertEqual(note_row.get_text(), "Project Alpha")
+            self.assertEqual(heading_row.get_text(), "Roadmap")
+            self.assertEqual(label_row.get_text(), "Plan")
+
+            # 3. Test Internal Link Mode with selected text auto-prefilling Note Title
+            presented_dialog.clear()
+            ed._on_js_insert_internal_link(None, FakeJsResult({"text": "Quick Note"}))
+            self.assertEqual(len(presented_dialog), 1)
+            dlg3 = presented_dialog[0]
+            box3 = dlg3.get_extra_child()
+            rows3 = find_widgets(box3, Adw.EntryRow)
+            note_row3 = [r for r in rows3 if r.get_title() == "Note Title"][0]
+            self.assertEqual(note_row3.get_text(), "Quick Note")
         finally:
             Adw.AlertDialog.present = orig_present
 

@@ -754,7 +754,7 @@ def markdown_to_html(md_text: str) -> str:
                 parts = content.split("/", 1)
                 title = parts[0]
                 heading = parts[1]
-            display = alias if alias else f"[[{m.group(1)}]]"
+            display = alias if alias else m.group(1).strip()
             from urllib.parse import quote
             safe_title = quote(title.strip())
             safe_heading = quote(heading.strip())
@@ -1330,14 +1330,16 @@ def html_to_markdown(html_content: str) -> str:
 
     # 10.5 Convert Wiki Links, Tags, Mentions, Category Badges
     def _html_to_md_wiki(m):
-        title = m.group(1)
-        heading = m.group(2)
-        display = m.group(3)
+        title = m.group(1).strip()
+        heading = m.group(2).strip()
+        display = m.group(3).strip()
         if display.startswith("[[") and display.endswith("]]"):
             return display
         base = title
         if heading:
             base += f"/{heading}"
+        if not display or display == base or display == title:
+            return f"[[{base}]]"
         return f"[[{base}|{display}]]"
     s = RE_HTM_WIKI.sub(_html_to_md_wiki, s)
     s = RE_HTM_TAG.sub(r'#\1', s)

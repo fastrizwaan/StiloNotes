@@ -586,6 +586,11 @@ class StiloWindow(Adw.ApplicationWindow):
             self.index_view.refresh()
 
         curr_note = self.editor.current_note
+        if curr_note and target and curr_note.id == target.id:
+            if note_heading:
+                self.editor.scroll_to_heading(note_heading)
+            return
+
         if curr_note and curr_note.id != target.id:
             if hasattr(self, "_note_history"):
                 self._note_history.append(curr_note.id)
