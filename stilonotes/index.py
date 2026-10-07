@@ -169,6 +169,7 @@ class IndexView(Adw.Bin):
         self.notes_list.connect("locked-note-clicked", lambda _nl, note: self._prompt_unlock_private(target_note=note))
         self.notes_list.connect("new-note-requested", lambda _nl: self.emit("create-note"))
         self.notes_list.connect("note-pin-toggled", lambda _nl, _id: self.refresh())
+        self.notes_list.connect("note-copy-link", lambda _nl, nid: self._on_note_copy_link(nid))
         self.notes_list.connect("note-deleted", lambda _nl, nid: self._on_note_deleted(nid))
         self.notes_list.connect("note-duplicated", lambda _nl, nid: self._on_note_duplicated(nid))
         self.notes_list.connect("selection-changed", self._on_selection_changed)
@@ -440,6 +441,14 @@ class IndexView(Adw.Bin):
     def _on_note_deleted(self, note_id: str):
         self.db.delete_note(note_id)
         self.refresh()
+
+    
+    def _on_note_copy_link(self, note_id: str):
+        note = self.db.get_note(note_id)
+        if note:
+            clip = Gdk.Display.get_default().get_clipboard()
+            clip.set_text(f"[[{note.title}]]")
+            self.toast_overlay.add_toast(Adw.Toast.new(f"Link to note copied"))
 
     def _on_note_duplicated(self, note_id: str):
         dup = self.db.duplicate_note(note_id)

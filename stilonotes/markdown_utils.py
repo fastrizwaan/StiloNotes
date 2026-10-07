@@ -300,7 +300,7 @@ RE_WIKI_LINK = re.compile(r'\[\[([^\]\n]+)\]\]')
 
 RE_HTM_TAG = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-tag[^"\']*["\'][^>]*data-tag=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
 RE_HTM_MENTION = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-mention[^"\']*["\'][^>]*data-mention=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
-RE_HTM_WIKI = re.compile(r'<a[^>]*class=["\'][^"\']*stilo-wiki-link[^"\']*["\'][^>]*data-note-title=["\']([^"\']+)["\'][^>]*>.*?</a>', re.DOTALL)
+RE_HTM_WIKI = re.compile(r'<a[^>]*class=["\'][^"\']*stilo-wiki-link[^"\']*["\'][^>]*data-note-title=["\']([^"\']*)["\'][^>]*data-note-heading=["\']([^"\']*)["\'][^>]*>(.*?)</a>', re.DOTALL)
 RE_HTM_CAT_BADGE = re.compile(r'<span[^>]*class=["\'][^"\']*stilo-category-badge[^"\']*["\'][^>]*data-category=["\']([^"\']+)["\'][^>]*>.*?</span>', re.DOTALL)
 
 MD_SPECIAL_CHARS = set("#*_`[<~=-+:^@/")
@@ -447,7 +447,10 @@ def strip_markdown(text: str) -> str:
     s = RE_LIST_NUMBERS.sub('', s)
     s = RE_BLOCKQUOTES.sub('', s)
     s = RE_DIVIDERS.sub('', s)
-    s = RE_HTM_WIKI.sub(r'\1', s)
+    def _plain_wiki(m):
+        d = m.group(3)
+        return d[2:-2] if d.startswith("[[") and d.endswith("]]") else d
+    s = RE_HTM_WIKI.sub(_plain_wiki, s)
     s = RE_WIKI_LINK.sub(r'\1', s)
     s = RE_HTM_TAG.sub(r'#\1', s)
     s = RE_HTM_MENTION.sub(r'@\1', s)
@@ -721,8 +724,28 @@ def markdown_to_html(md_text: str) -> str:
         # Emoji shortcodes (:joy: -> 😂)
         s = RE_MD_EMOJI.sub(lambda m: EMOJI_MAP.get(m.group(0), m.group(0)), s)
 
-        # Internal Note Links: [[Note Title]]
-        s = RE_WIKI_LINK.sub(r'<a href="stilo-note://\1" class="stilo-wiki-link" data-note-title="\1">[[\1]]</a>', s)
+        # Internal Note Links: [[Note Title]], [[Note Title/Heading]], [[Note Title|alias]]
+        def _wiki_link_replacer(m: re.Match) -> str:
+            content = m.group(1)
+            alias = ""
+            if "|" in content:
+                parts = content.split("|", 1)
+                content = parts[0]
+                alias = parts[1]
+            title = content
+            heading = ""
+            if "/" in content:
+                parts = content.split("/", 1)
+                title = parts[0]
+                heading = parts[1]
+            display = alias if alias else f"[[{m.group(1)}]]"
+            from urllib.parse import quote
+            safe_title = quote(title.strip())
+            safe_heading = quote(heading.strip())
+            href = f"stilo-note://{safe_title}" + (f"#{safe_heading}" if heading else "")
+            return f'<a href="{href}" class="stilo-wiki-link" data-note-title="{title.strip()}" data-note-heading="{heading.strip()}">{display}</a>'
+            
+        s = RE_WIKI_LINK.sub(_wiki_link_replacer, s)
 
         # Tags: #tag
         s = RE_TAG_EXTRACT.sub(r'<span class="stilo-tag" data-tag="\1">#\1</span>', s)
@@ -1290,7 +1313,17 @@ def html_to_markdown(html_content: str) -> str:
     s = RE_HTM_STANDALONE_IMG.sub(_convert_standalone_img_to_md, s)
 
     # 10.5 Convert Wiki Links, Tags, Mentions, Category Badges
-    s = RE_HTM_WIKI.sub(r'[[\1]]', s)
+    def _html_to_md_wiki(m):
+        title = m.group(1)
+        heading = m.group(2)
+        display = m.group(3)
+        if display.startswith("[[") and display.endswith("]]"):
+            return display
+        base = title
+        if heading:
+            base += f"/{heading}"
+        return f"[[{base}|{display}]]"
+    s = RE_HTM_WIKI.sub(_html_to_md_wiki, s)
     s = RE_HTM_TAG.sub(r'#\1', s)
     s = RE_HTM_MENTION.sub(r'@\1', s)
     s = RE_HTM_CAT_BADGE.sub(r'##\1', s)

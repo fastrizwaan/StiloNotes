@@ -568,12 +568,18 @@ class StiloWindow(Adw.ApplicationWindow):
         self._go_back()
         self.index_view.filter_by_tag(tag_name)
 
-    def _on_editor_open_note_link(self, _ed, note_title: str):
+    def _on_editor_open_note_link(self, _ed, note_title: str, note_heading: str):
+        if not note_title and note_heading:
+            self.editor.scroll_to_heading(note_heading)
+            return
+
         target = self.db.find_note_by_title(note_title)
         if not target:
             target = self.db.create_note(title=note_title, initial_text=f"# {note_title}\n\n")
             self.index_view.refresh()
         self.open_note(target)
+        if note_heading:
+            GLib.idle_add(self.editor.scroll_to_heading, note_heading)
 
     def _on_editor_back(self, _ed):
         self._go_back()

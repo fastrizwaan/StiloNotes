@@ -290,6 +290,7 @@ class BaseNoteCard(Gtk.FlowBoxChild):
 
     __gsignals__ = {
         "pin-toggled": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "copy-link": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "duplicate": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "delete": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "restore": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
@@ -323,6 +324,10 @@ class BaseNoteCard(Gtk.FlowBoxChild):
             menu.append(pin_label, f"row.pin::{self.note.id}")
             menu.append("Duplicate", f"row.duplicate::{self.note.id}")
 
+            
+            if not self.note.is_trashed:
+                menu.append("Copy Link to Note", f"row.copy_link::{self.note.id}")
+
             if self.note.is_trashed:
                 menu.append("Restore Note", f"row.restore::{self.note.id}")
                 menu.append("Delete Permanently", f"row.perm_delete::{self.note.id}")
@@ -346,6 +351,10 @@ class BaseNoteCard(Gtk.FlowBoxChild):
             act_trash = Gio.SimpleAction.new("trash", GLib.VariantType.new("s"))
             act_trash.connect("activate", lambda _a, p: self.emit("delete", p.get_string()))
             action_group.add_action(act_trash)
+            act_copy = Gio.SimpleAction.new("copy_link", GLib.VariantType.new("s"))
+            act_copy.connect("activate", lambda _a, p: self.emit("copy-link", p.get_string()))
+            action_group.add_action(act_copy)
+
 
             act_res = Gio.SimpleAction.new("restore", GLib.VariantType.new("s"))
             act_res.connect("activate", lambda _a, p: self.emit("restore", p.get_string()))
@@ -788,6 +797,7 @@ class NotesList(Gtk.Box):
         "note-selected": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "locked-note-clicked": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "note-pin-toggled": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "note-copy-link": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-deleted": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-duplicated": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "new-note-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
@@ -1124,6 +1134,7 @@ class NotesList(Gtk.Box):
             card = NoteListRow(note, db=self.db, selection_mode=self.selection_mode, show_category_pill=show_category_pill, is_private_locked=is_private_locked)
 
         card.connect("pin-toggled", lambda _r, nid: self.emit("note-pin-toggled", nid))
+        card.connect("copy-link", lambda _r, nid: self.emit("note-copy-link", nid))
         card.connect("duplicate", lambda _r, nid: self.emit("note-duplicated", nid))
         card.connect("delete", lambda _r, nid: self.emit("note-deleted", nid))
         card.connect("restore", lambda _r, nid: self._on_restore(nid))

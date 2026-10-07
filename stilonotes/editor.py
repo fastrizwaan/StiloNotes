@@ -324,7 +324,7 @@ class NoteEditor(Gtk.Box):
         "note-duplicated":       (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "note-category-changed": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
         "tag-clicked":           (GObject.SignalFlags.RUN_FIRST, None, (str,)),
-        "open-note-link":        (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "open-note-link":        (GObject.SignalFlags.RUN_FIRST, None, (str, str,)),
         "back":                  (GObject.SignalFlags.RUN_FIRST, None, ()),
         "toggle-sidebar":        (GObject.SignalFlags.RUN_FIRST, None, ()),
         "toggle-app-theme":      (GObject.SignalFlags.RUN_FIRST, None, ()),
@@ -1161,9 +1161,17 @@ class NoteEditor(Gtk.Box):
     def _on_js_open_note_link(self, _ucm, js_result):
         try:
             val = js_result.get_js_value() if hasattr(js_result, "get_js_value") else js_result
-            title = val.to_string() if hasattr(val, "to_string") else str(val)
-            if title:
-                self.emit("open-note-link", title.strip())
+            val_str = val.to_string() if hasattr(val, "to_string") else str(val)
+            if val_str:
+                import json
+                try:
+                    data = json.loads(val_str)
+                    title = data.get("title", "").strip()
+                    heading = data.get("heading", "").strip()
+                except Exception:
+                    title = val_str.strip()
+                    heading = ""
+                self.emit("open-note-link", title, heading)
         except Exception as e:
             print("Open note link error:", e)
 

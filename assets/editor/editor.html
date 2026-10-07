@@ -1824,6 +1824,25 @@
       return { masked: out.join(''), codeSpans, escapes };
     }
 
+    function scrollToHeading(headingText) {
+      if (!headingText) return;
+      const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      for (const h of headings) {
+        if (h.textContent.trim().toLowerCase() === headingText.trim().toLowerCase()) {
+          h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const originalBg = h.style.backgroundColor;
+          const originalTransition = h.style.transition;
+          h.style.transition = 'background-color 0.5s ease';
+          h.style.backgroundColor = 'var(--accent-color, rgba(123, 44, 191, 0.3))';
+          setTimeout(() => {
+            h.style.backgroundColor = originalBg;
+            setTimeout(() => h.style.transition = originalTransition, 500);
+          }, 1500);
+          return;
+        }
+      }
+    }
+
     function hasMarkdownSyntax(str, allowEndOfString = false) {
       if (!str) return false;
       if (allowEndOfString) {
@@ -1889,8 +1908,30 @@
         return EMOJI_MAP[match] || match;
       });
 
-      // 13. Internal Note Links: [[Note Title]]
-      applyRule(/\[\[([^\]\n]+)\]\]/g, '<a href="stilo-note://$1" class="stilo-wiki-link" data-note-title="$1">[[$1]]</a>');
+      // 13. Internal Note Links: [[Note Title]], [[Note Title/Heading]], [[Note Title|alias]]
+      applyRule(/\[\[([^\]\n]+)\]\]/g, (match, content) => {
+        let alias = "";
+        if (content.includes("|")) {
+          const parts = content.split("|");
+          content = parts[0];
+          alias = parts.slice(1).join("|");
+        }
+        
+        let title = content;
+        let heading = "";
+        if (content.includes("/")) {
+          const parts = content.split("/");
+          title = parts[0];
+          heading = parts.slice(1).join("/");
+        }
+        
+        const display = alias ? alias : '[[' + content + ']]';
+        const safeTitle = encodeURIComponent(title.trim());
+        const safeHeading = encodeURIComponent(heading.trim());
+        const href = "stilo-note://" + safeTitle + (heading ? "#" + safeHeading : "");
+        
+        return `<a href="${href}" class="stilo-wiki-link" data-note-title="${title.trim()}" data-note-heading="${heading.trim()}">${display}</a>`;
+      });
 
       const endLookahead = allowEndOfString ? '(?=$|[\\s.,;:!?])' : '(?=[\\s.,;:!?])';
 
@@ -2772,13 +2813,17 @@
         return;
       }
 
-      // Wiki link click: [[Note Title]]
+      // Wiki link click: [[Note Title]] or [[Note Title/Heading]]
       const wikiLink = e.target.closest('.stilo-wiki-link');
       if (wikiLink) {
         e.preventDefault();
-        const noteTitle = wikiLink.getAttribute('data-note-title');
-        if (noteTitle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openNoteLink) {
-          window.webkit.messageHandlers.openNoteLink.postMessage(noteTitle);
+        const noteTitle = wikiLink.getAttribute('data-note-title') || '';
+        const noteHeading = wikiLink.getAttribute('data-note-heading') || '';
+        if ((noteTitle || noteHeading) && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openNoteLink) {
+          window.webkit.messageHandlers.openNoteLink.postMessage(JSON.stringify({
+            title: noteTitle,
+            heading: noteHeading
+          }));
         }
         return;
       }
