@@ -1392,11 +1392,21 @@
       const container = document.getElementById('editor-container');
       if (container) {
         container.addEventListener('click', (e) => {
+          const sel = window.getSelection();
+          if (sel && !sel.isCollapsed) return;
+
           if (e.target === container || e.target === editor) {
-            ensureBlocksHaveTrailingLine();
             const last = editor.lastElementChild;
-            if (last) {
-              setCursorAtEnd(last);
+            if (last && typeof e.clientY === 'number') {
+              const lastRect = last.getBoundingClientRect();
+              if (e.clientY <= lastRect.bottom) {
+                return;
+              }
+            }
+            ensureBlocksHaveTrailingLine();
+            const newLast = editor.lastElementChild;
+            if (newLast) {
+              setCursorAtEnd(newLast);
             }
           }
         });
@@ -2794,6 +2804,9 @@
     }
 
     function onEditorClick(e) {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+
       // Checkbox click
       if (e.target.classList.contains('stilo-checkbox')) {
         if (typeof isReadOnlyMode !== 'undefined' && isReadOnlyMode) {

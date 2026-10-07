@@ -141,6 +141,56 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
         win._go_back()
         self.assertEqual(len(win._note_history), 0)
         self.assertEqual(win.navigation.get_visible_page(), win.index_page)
+    def test_multiline_selection_not_lost(self):
+        from gi.repository import Gdk, WebKit, GLib
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest("No Gdk.Display available (headless)")
+
+        from stilonotes.editor_html import get_editor_html_page
+        html = get_editor_html_page("<div>Line 1: first paragraph</div><div>Line 2: second paragraph</div>")
+        wv = WebKit.WebView()
+        loop = GLib.MainLoop()
+        result_holder = {}
+
+        def on_load_changed(webview, event):
+            if event == WebKit.LoadEvent.FINISHED:
+                js = '''
+                (function() {
+                    const p1 = editor.children[0];
+                    const p2 = editor.children[1];
+                    const range = document.createRange();
+                    range.setStart(p1.firstChild, 0);
+                    range.setEnd(p2.firstChild, 5);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+
+                    // WebKit fires click with target editor on multi-line selection
+                    const clickEvt = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 100, clientY: 50 });
+                    editor.dispatchEvent(clickEvt);
+
+                    return JSON.stringify({
+                        text: window.getSelection().toString(),
+                        isCollapsed: window.getSelection().isCollapsed
+                    });
+                })()
+                '''
+                webview.evaluate_javascript(js, -1, None, None, None, on_eval_done)
+
+        def on_eval_done(webview, result):
+            try:
+                import json
+                val = webview.evaluate_javascript_finish(result)
+                result_holder.update(json.loads(val.to_string()))
+            finally:
+                loop.quit()
+
+        wv.connect("load-changed", on_load_changed)
+        wv.load_html(html, "file:///var/home/rizvan/StiloNotes/assets/")
+        loop.run()
+
+        self.assertFalse(result_holder.get("isCollapsed"))
+        self.assertIn("Line 1", result_holder.get("text", ""))
 
 
 if __name__ == "__main__":
