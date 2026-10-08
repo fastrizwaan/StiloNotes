@@ -52,10 +52,12 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
                 return json.dumps(self._data)
 
         presented_dialog = []
-        orig_present = Adw.AlertDialog.present
+        orig_alert_present = Adw.AlertDialog.present
+        orig_dialog_present = Adw.Dialog.present
         def fake_present(dlg, parent):
             presented_dialog.append(dlg)
         Adw.AlertDialog.present = fake_present
+        Adw.Dialog.present = fake_present
 
         try:
             # 1. Test External Link Dialog (reverted to simple Label + URL)
@@ -86,10 +88,11 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
 
             # 2. Test Internal Note Link Dialog (only internal link's stuff)
             presented_dialog.clear()
-            ed._on_js_insert_internal_link(None, FakeJsResult({"noteTitle": "Project Alpha", "noteHeading": "Roadmap", "text": "Plan"}))
+            ed._on_js_insert_internal_link(None, FakeJsResult({"noteTitle": "Project Alpha", "noteHeading": "Roadmap", "text": "Plan", "isEdit": True}))
             self.assertEqual(len(presented_dialog), 1)
             dlg2 = presented_dialog[0]
-            self.assertEqual(dlg2.get_heading(), "Insert Note Link")
+            self.assertEqual(dlg2.get_heading(), "Edit Note Link")
+            self.assertGreaterEqual(dlg2.get_content_width(), 460)
             box2 = dlg2.get_extra_child()
 
             combo_rows = find_widgets(box2, Adw.ComboRow)
@@ -105,6 +108,13 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
             self.assertEqual(heading_row.get_text(), "Roadmap")
             self.assertEqual(label_row.get_text(), "Plan")
 
+            # Verify side-by-side Save and Remove Link buttons and no Cancel button
+            all_btns2 = find_widgets(box2, Gtk.Button)
+            btn_labels2 = [b.get_label() for b in all_btns2 if b.get_label()]
+            self.assertIn("Save", btn_labels2)
+            self.assertIn("Remove Link", btn_labels2)
+            self.assertNotIn("Cancel", btn_labels2)
+
             # 3. Test Internal Link Mode with selected text auto-prefilling Note Title
             presented_dialog.clear()
             ed._on_js_insert_internal_link(None, FakeJsResult({"text": "Quick Note"}))
@@ -114,8 +124,41 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
             rows3 = find_widgets(box3, Adw.EntryRow)
             note_row3 = [r for r in rows3 if r.get_title() == "Note Title"][0]
             self.assertEqual(note_row3.get_text(), "Quick Note")
+
+            # 4. Test Heading Popover sizing and layout
+            self.db.create_note("Project Gamma", content_markdown="# Project Gamma\n\n## Introduction\nText\n## Details\nMore text")
+            presented_dialog.clear()
+            ed._on_js_insert_internal_link(None, FakeJsResult({"noteTitle": "Project Gamma", "text": "Gamma Link"}))
+            self.assertEqual(len(presented_dialog), 1)
+            dlg4 = presented_dialog[0]
+            box4 = dlg4.get_extra_child()
+            rows4 = find_widgets(box4, Adw.EntryRow)
+            heading_row4 = [r for r in rows4 if r.get_title() == "Heading"][0]
+
+            menu_btns = find_widgets(heading_row4, Gtk.MenuButton)
+            self.assertEqual(len(menu_btns), 1)
+            heading_btn = menu_btns[0]
+            self.assertTrue(heading_btn.get_visible())
+
+            popover = heading_btn.get_popover()
+            self.assertIsNotNone(popover)
+            sw = popover.get_child()
+            self.assertIsInstance(sw, Gtk.ScrolledWindow)
+            h_policy, _v_policy = sw.get_policy()
+            self.assertEqual(h_policy, Gtk.PolicyType.NEVER)
+            self.assertTrue(sw.get_propagate_natural_width())
+            self.assertTrue(sw.get_propagate_natural_height())
+            self.assertGreaterEqual(sw.get_min_content_width(), 260)
+
+            pop_box = sw.get_child()
+            heading_btns = find_widgets(pop_box, Gtk.Button)
+            self.assertEqual(len(heading_btns), 2)
+            lbl1 = heading_btns[0].get_child()
+            self.assertEqual(lbl1.get_label(), "Introduction")
+            self.assertEqual(lbl1.get_xalign(), 0.0)
         finally:
-            Adw.AlertDialog.present = orig_present
+            Adw.AlertDialog.present = orig_alert_present
+            Adw.Dialog.present = orig_dialog_present
 
     def test_copy_note_link(self):
         from gi.repository import Gdk

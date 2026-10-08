@@ -1354,20 +1354,21 @@ class NoteEditor(Gtk.Box):
         sorted_titles = sorted(notes_by_title.keys(), key=lambda s: s.lower())
 
         dialog_title = "Edit Note Link" if is_edit else "Insert Note Link"
-        dialog = Adw.AlertDialog.new(dialog_title, None)
-        dialog.add_response("cancel", "Cancel")
-        if is_edit:
-            dialog.add_response("remove", "Remove Link")
-            dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
-        button_label = "Save" if is_edit else "Insert"
-        dialog.add_response("insert", button_label)
-        dialog.set_response_appearance("insert", Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response("insert")
-        dialog.set_close_response("cancel")
+        dialog = Adw.Dialog()
+        dialog.set_title(dialog_title)
+        dialog.set_content_width(480)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.set_margin_top(6)
-        box.set_margin_bottom(6)
+        toolbar_view = Adw.ToolbarView()
+        header_bar = Adw.HeaderBar()
+        header_bar.set_show_start_title_buttons(False)
+        header_bar.set_show_end_title_buttons(True)
+        toolbar_view.add_top_bar(header_bar)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_margin_top(12)
+        box.set_margin_bottom(20)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
 
         grp_internal = Adw.PreferencesGroup()
 
@@ -1396,10 +1397,15 @@ class NoteEditor(Gtk.Box):
         heading_popover_box.set_margin_bottom(4)
         heading_popover_box.set_margin_start(4)
         heading_popover_box.set_margin_end(4)
+        heading_popover_box.set_size_request(260, -1)
 
         scrolled_headings = Gtk.ScrolledWindow()
-        scrolled_headings.set_max_content_height(180)
+        scrolled_headings.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled_headings.set_propagate_natural_width(True)
         scrolled_headings.set_propagate_natural_height(True)
+        scrolled_headings.set_min_content_width(260)
+        scrolled_headings.set_max_content_width(360)
+        scrolled_headings.set_max_content_height(220)
         scrolled_headings.set_child(heading_popover_box)
         heading_popover.set_child(scrolled_headings)
 
@@ -1419,7 +1425,35 @@ class NoteEditor(Gtk.Box):
         grp_internal.add(internal_label_row)
 
         box.append(grp_internal)
-        dialog.set_extra_child(box)
+
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        btn_box.set_margin_top(8)
+
+        if is_edit:
+            remove_btn = Gtk.Button(label="Remove Link")
+            remove_btn.add_css_class("destructive-action")
+            remove_btn.set_hexpand(True)
+            btn_box.append(remove_btn)
+
+            save_btn = Gtk.Button(label="Save")
+            save_btn.add_css_class("suggested-action")
+            save_btn.set_hexpand(True)
+            btn_box.append(save_btn)
+        else:
+            save_btn = Gtk.Button(label="Insert")
+            save_btn.add_css_class("suggested-action")
+            save_btn.set_hexpand(True)
+            btn_box.append(save_btn)
+
+        box.append(btn_box)
+
+        toolbar_view.set_content(box)
+        dialog.set_child(toolbar_view)
+        dialog.set_default_widget(save_btn)
+
+        # Compatibility accessors for testing
+        dialog.get_heading = dialog.get_title
+        dialog.get_extra_child = lambda: box
 
         def update_headings_for_title(target_title: str):
             while True:
@@ -1448,6 +1482,8 @@ class NoteEditor(Gtk.Box):
                             m = re.match(r"^#{1,6}\s+(.+)$", line)
                             if m:
                                 h = m.group(1).strip()
+                                h = re.sub(r"\s+#+\s*$", "", h).strip()
+                                h = re.sub(r"\s+\{#[^}]+\}\s*$", "", h).strip()
                                 if h and h != note_obj.title and h not in headings:
                                     headings.append(h)
                 elif note_obj.content_html:
@@ -1459,9 +1495,17 @@ class NoteEditor(Gtk.Box):
             if headings:
                 heading_btn.set_visible(True)
                 for h in headings:
-                    btn = Gtk.Button(label=h)
+                    btn = Gtk.Button()
                     btn.add_css_class("flat")
                     btn.set_halign(Gtk.Align.FILL)
+                    btn.set_tooltip_text(h)
+
+                    lbl = Gtk.Label(label=h)
+                    lbl.set_xalign(0.0)
+                    lbl.set_ellipsize(Pango.EllipsizeMode.END)
+                    lbl.set_hexpand(True)
+                    btn.set_child(lbl)
+
                     def on_h_click(_b, h_text=h):
                         heading_entry.set_text(h_text)
                         heading_popover.popdown()
@@ -1527,48 +1571,65 @@ class NoteEditor(Gtk.Box):
 
         GLib.idle_add(set_initial_focus)
 
-        def on_response(_d, response):
-            if response == "insert":
-                note_val = note_entry.get_text().strip()
-                heading_val = heading_entry.get_text().strip()
-                label_val = internal_label_row.get_text().strip()
+        closed_by_action = False
 
-                if not note_val and not heading_val:
-                    return
+        def on_save():
+            nonlocal closed_by_action
+            note_val = note_entry.get_text().strip()
+            heading_val = heading_entry.get_text().strip()
+            label_val = internal_label_row.get_text().strip()
 
-                if note_val.startswith("[[") and note_val.endswith("]]"):
-                    note_val = note_val[2:-2].strip()
-                    if "|" in note_val:
-                        note_val, l_override = note_val.split("|", 1)
-                        if not label_val:
-                            label_val = l_override.strip()
-                    if "/" in note_val and not heading_val:
-                        note_val, heading_val = note_val.split("/", 1)
-                        note_val = note_val.strip()
-                        heading_val = heading_val.strip()
-                elif "/" in note_val and not heading_val and note_val not in notes_by_title:
-                    p1, p2 = note_val.split("/", 1)
-                    if p1.strip() in notes_by_title:
-                        note_val = p1.strip()
-                        heading_val = p2.strip()
+            if not note_val and not heading_val:
+                return
 
-                payload = {
-                    "noteTitle": note_val,
-                    "noteHeading": heading_val,
-                    "label": label_val
-                }
+            if note_val.startswith("[[") and note_val.endswith("]]"):
+                note_val = note_val[2:-2].strip()
+                if "|" in note_val:
+                    note_val, l_override = note_val.split("|", 1)
+                    if not label_val:
+                        label_val = l_override.strip()
+                if "/" in note_val and not heading_val:
+                    note_val, heading_val = note_val.split("/", 1)
+                    note_val = note_val.strip()
+                    heading_val = heading_val.strip()
+            elif "/" in note_val and not heading_val and note_val not in notes_by_title:
+                p1, p2 = note_val.split("/", 1)
+                if p1.strip() in notes_by_title:
+                    note_val = p1.strip()
+                    heading_val = p2.strip()
 
-                script = f"if (window.applyInsertInternalLink) {{ window.applyInsertInternalLink({json.dumps(payload)}); }}"
-                self.webview.evaluate_javascript(script, -1, None, None, None, None)
+            payload = {
+                "noteTitle": note_val,
+                "noteHeading": heading_val,
+                "label": label_val
+            }
 
-            elif response == "remove":
-                script = "if (window.removeInsertLink) { window.removeInsertLink(); }"
-                self.webview.evaluate_javascript(script, -1, None, None, None, None)
-            else:
+            script = f"if (window.applyInsertInternalLink) {{ window.applyInsertInternalLink({json.dumps(payload)}); }}"
+            self.webview.evaluate_javascript(script, -1, None, None, None, None)
+            closed_by_action = True
+            dialog.close()
+
+        def on_remove():
+            nonlocal closed_by_action
+            script = "if (window.removeInsertLink) { window.removeInsertLink(); }"
+            self.webview.evaluate_javascript(script, -1, None, None, None, None)
+            closed_by_action = True
+            dialog.close()
+
+        save_btn.connect("clicked", lambda _b: on_save())
+        if is_edit:
+            remove_btn.connect("clicked", lambda _b: on_remove())
+
+        note_entry.connect("entry-activated", lambda _e: on_save())
+        heading_entry.connect("entry-activated", lambda _e: on_save())
+        internal_label_row.connect("entry-activated", lambda _e: on_save())
+
+        def on_dialog_closed(_d):
+            if not closed_by_action:
                 script = "if (window.cancelInsertLink) { window.cancelInsertLink(); }"
                 self.webview.evaluate_javascript(script, -1, None, None, None, None)
 
-        dialog.connect("response", on_response)
+        dialog.connect("closed", on_dialog_closed)
         dialog.present(self.get_root() or self)
 
     def _on_js_category_selected(self, _ucm, js_result):
