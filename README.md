@@ -1,7 +1,7 @@
 # Teddy Notes 🖊️
 
 <p align="center">
-  <img src="assets/icons/io.github.fastrizwaan.TeddyNotes.svg" width="128" height="128" alt="Teddy Notes Icon">
+  <img src="https://github.com/fastrizwaan/StiloNotes/blob/main/data/icons/hicolor/scalable/apps/io.github.fastrizwaan.TeddyNotes.svg" width="128" height="128" alt="Teddy Notes Icon">
 </p>
 
 <p align="center">
