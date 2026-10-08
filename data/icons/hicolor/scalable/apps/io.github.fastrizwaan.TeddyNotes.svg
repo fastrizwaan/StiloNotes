@@ -1,154 +1,59 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg
-   height="128"
-   viewBox="0 0 128 128"
-   width="128"
-   version="1.1"
-   id="svg101"
-   xmlns:xlink="http://www.w3.org/1999/xlink"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <defs
-     id="defs73">
-    <linearGradient
-       id="a"
-       gradientUnits="userSpaceOnUse"
-       x1="92.999458"
-       x2="100.99946"
-       y1="71.000198"
-       y2="71.000198">
-      <stop
-         offset="0"
-         stop-color="#deddda"
-         id="stop2" />
-      <stop
-         offset="0.52"
-         stop-color="#ffffff"
-         id="stop4" />
-      <stop
-         offset="1"
-         stop-color="#bdbdbd"
-         id="stop6" />
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Adwaita Squircle Background with gradient -->
+  <defs>
+    <linearGradient id="bearBg" x1="16" y1="12" x2="112" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E54D42"/>
+      <stop offset="100%" stop-color="#C82B22"/>
     </linearGradient>
-    <filter
-       id="b"
-       height="1"
-       width="1"
-       x="0"
-       y="0">
-      <feColorMatrix
-         in="SourceGraphic"
-         type="matrix"
-         values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"
-         id="feColorMatrix9" />
+    <linearGradient id="bearShine" x1="64" y1="12" x2="64" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="softShadow" x="0" y="4" width="128" height="124" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#000000" flood-opacity="0.22"/>
     </filter>
-    <mask
-       id="c">
-      <g
-         filter="url(#b)"
-         id="g14">
-        <rect
-           fill-opacity="0.1"
-           height="128"
-           width="128"
-           id="rect12"
-           x="0"
-           y="0" />
-      </g>
-    </mask>
-    <mask
-       id="d">
-      <g
-         filter="url(#b)"
-         id="g19">
-        <rect
-           fill-opacity="0.1"
-           height="128"
-           width="128"
-           id="rect17"
-           x="0"
-           y="0" />
-      </g>
-    </mask>
-    <clipPath
-       id="e">
-      <rect
-         height="152"
-         width="192"
-         id="rect22"
-         x="0"
-         y="0" />
-    </clipPath>
-    <g
-       id="f"
-       clip-path="url(#e)">
-      <path
-         d="m 34,50 v 68 h 70 c 4.43359,0 8,-3.56641 8,-8 V 58 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-         id="path25" />
-    </g>
-    <clipPath
-       id="g">
-      <rect
-         height="128"
-         width="128"
-         id="rect28"
-         x="0"
-         y="0" />
-    </clipPath>
-    <clipPath
-       id="h">
-      <rect
-         height="128"
-         width="128"
-         id="rect31"
-         x="0"
-         y="0" />
-    </clipPath>
-    <linearGradient
-       xlink:href="#a"
-       id="linearGradient331"
-       gradientUnits="userSpaceOnUse"
-       x1="92.999458"
-       y1="71.000198"
-       x2="100.99946"
-       y2="71.000198" />
   </defs>
-  <path
-     d="m 24,32 v 78 h 72 c 4.43359,0 8,-3.56641 8,-8 V 40 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-     fill="#532499"
-     id="path75" />
-  <path
-     d="m 26,108 h 70 c 6,0 6,-6 6,-6 V 82.050781 L 26,82 Z m 0,0"
-     fill="url(#a)"
-     id="path77"
-     style="fill:url(#linearGradient331)" />
-  <use
-     mask="url(#c)"
-     transform="translate(-8,-16)"
-     xlink:href="#f"
-     id="use79" />
-  <path
-     d="m 24,32 v 68 h 72 c 4.43359,0 8,-3.566406 8,-8 V 40 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-     fill="#532499"
-     id="path81" />
-  <path
-     d="m 24,8 v 90 h 72 c 4.43359,0 8,-3.566406 8,-8 V 16 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-     fill="#7852ff"
-     id="path83" />
-  <path
-     d="m 80,8 h 8 v 90 h -8 z m 0,0"
-     fill="#3a1670"
-     id="path85" />
-  <path
-     d="m 80,98 h 8 v 12 h -8 z m 0,0"
-     fill="#260e4a"
-     id="path87" />
-  <path
-     d="m 36,104 h 16 v 20 l -8,-8 -8,8 z m 0,0"
-     fill="#1c71d8"
-     id="path89" />
-  <path
-     d="m 36,102 h 16 v 6 H 36 Z m 0,0"
-     fill="#3584e4"
-     id="path91" />
+
+  <!-- Base Rounded Squircle with Shadow -->
+  <rect x="12" y="12" width="104" height="104" rx="26" fill="url(#bearBg)" filter="url(#softShadow)"/>
+  <!-- Top Highlight -->
+  <rect x="12" y="12" width="104" height="52" rx="26" fill="url(#bearShine)"/>
+
+  <!-- Teddy Bear Silhouette (Pure White) -->
+  <g fill="#FFFFFF">
+    <!-- Left Ear -->
+    <circle cx="43" cy="45" r="14"/>
+    <!-- Right Ear -->
+    <circle cx="85" cy="45" r="14"/>
+    <!-- Inner Left Ear -->
+    <circle cx="43" cy="45" r="7" fill="#E54D42" fill-opacity="0.3"/>
+    <!-- Inner Right Ear -->
+    <circle cx="85" cy="45" r="7" fill="#E54D42" fill-opacity="0.3"/>
+
+    <!-- Head -->
+    <ellipse cx="64" cy="56" rx="26" ry="23" fill="#FFFFFF"/>
+
+    <!-- Snout (Slightly warmer white) -->
+    <ellipse cx="64" cy="62" rx="14" ry="11" fill="#F8F9FA"/>
+    <!-- Nose (Cute dark triangle/oval) -->
+    <path d="M 59 58 Q 64 56 69 58 Q 64 64 59 58 Z" fill="#2E2E32"/>
+    <!-- Mouth line -->
+    <path d="M 64 62 L 64 66" stroke="#2E2E32" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Eyes -->
+    <circle cx="53" cy="52" r="3.2" fill="#2E2E32"/>
+    <circle cx="75" cy="52" r="3.2" fill="#2E2E32"/>
+    <!-- Eye highlights -->
+    <circle cx="54" cy="51" r="1" fill="#FFFFFF"/>
+    <circle cx="76" cy="51" r="1" fill="#FFFFFF"/>
+
+    <!-- Body / Shoulders -->
+    <path d="M 36 86 C 36 74, 46 72, 64 72 C 82 72, 92 74, 92 86 C 92 98, 86 102, 64 102 C 42 102, 36 98, 36 86 Z" fill="#FFFFFF"/>
+
+    <!-- Tiny pencil / notebook icon held in paws or note badge -->
+    <rect x="53" y="78" width="22" height="16" rx="3" fill="#E54D42"/>
+    <line x1="57" y1="83" x2="69" y2="83" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="57" y1="88" x2="66" y2="88" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
 </svg>
