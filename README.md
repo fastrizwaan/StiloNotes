@@ -10,8 +10,9 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/fastrizwaan/TeddyNotes/releases/download/1.0.0/teddynotes.png" alt="Teddy Notes Main Window" width="48%">
-  <img src="https://github.com/fastrizwaan/TeddyNotes/releases/download/1.0.0/Welcome.png" alt="Teddy Notes Welcome View" width="48%">
+  <img src="https://github.com/fastrizwaan/TeddyNotes/releases/download/1.3/main_window.png" alt="Teddy Notes Main Window" width="48%">
+  <img src="https://github.com/fastrizwaan/TeddyNotes/releases/download/1.3/note.open.png" alt="Teddy Notes Welcome View" width="48%">
+  <img src="https://github.com/fastrizwaan/TeddyNotes/releases/download/1.3/formatting.png" alt="Teddy Notes Markdown features" width="48%">
 </p>
 
 
