@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
-Standalone GPG symmetric encryption and decryption for Stilo Notes backups.
+Standalone GPG symmetric encryption and decryption for Teddy Notes backups.
 Uses standard AES-256 password-based encryption with no dependency on system
 GPG keyring or configuration.
 """

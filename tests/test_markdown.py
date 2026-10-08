@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.markdown_utils import (
+from teddynotes.markdown_utils import (
     compute_note_stats,
     markdown_to_html,
     html_to_markdown,

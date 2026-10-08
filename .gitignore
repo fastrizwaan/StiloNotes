@@ -4,6 +4,7 @@ __pycache__/
 _build/
 build/
 .flatpak-builder/
+flatpak/.flatpak-builder/
 flatpak/build-dir/
 *.flatpak
 *.db
@@ -13,3 +14,4 @@ flatpak/build-dir/
 *.bak
 .freebuff/
 flatpak/modules.yaml
+ref/

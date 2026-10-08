@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stilo Notes Editor</title>
+  <title>Teddy Notes Editor</title>
   <style>
     :root {
       --base-font-size: 16pt;
@@ -687,7 +687,7 @@
 
 
   <script>
-    window.addEventListener('error', (e) => console.error('StiloNotes JS Error:', e.message, e.filename, e.lineno, e.error));
+    window.addEventListener('error', (e) => console.error('TeddyNotes JS Error:', e.message, e.filename, e.lineno, e.error));
     var editor = document.getElementById('editor');
     let saveTimeout = null;
     let isUpdatingFromPython = false;
@@ -1304,7 +1304,7 @@
         const title = item.value.trim();
         insertFragment = document.createElement('a');
         insertFragment.className = 'stilo-wiki-link';
-        insertFragment.href = 'stilo-note://' + encodeURIComponent(title);
+        insertFragment.href = 'teddy-note://' + encodeURIComponent(title);
         insertFragment.setAttribute('data-note-title', title);
         insertFragment.textContent = title;
         if (!autocompleteData.notes.includes(title)) {
@@ -1957,7 +1957,7 @@
         const display = alias ? alias : content;
         const safeTitle = encodeURIComponent(title.trim());
         const safeHeading = encodeURIComponent(heading.trim());
-        const href = "stilo-note://" + safeTitle + (heading ? "#" + safeHeading : "");
+        const href = "teddy-note://" + safeTitle + (heading ? "#" + safeHeading : "");
         
         return `<a href="${href}" class="stilo-wiki-link" data-note-title="${title.trim()}" data-note-heading="${heading.trim()}">${display}</a>`;
       });
@@ -4053,7 +4053,7 @@
 
       const safeTitle = encodeURIComponent(noteTitle);
       const safeHeading = noteHeading ? encodeURIComponent(noteHeading) : '';
-      const href = 'stilo-note://' + safeTitle + (noteHeading ? '#' + safeHeading : '');
+      const href = 'teddy-note://' + safeTitle + (noteHeading ? '#' + safeHeading : '');
       const defaultDisplay = noteHeading ? (noteTitle + '/' + noteHeading) : noteTitle;
       const display = label || defaultDisplay;
 

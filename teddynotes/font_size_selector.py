@@ -3,7 +3,7 @@
 
 from typing import Optional, Callable
 from gi.repository import Gtk, GObject
-from stilonotes.config_manager import ConfigManager
+from teddynotes.config_manager import ConfigManager
 
 
 class FontSizeSelector(Gtk.Box):

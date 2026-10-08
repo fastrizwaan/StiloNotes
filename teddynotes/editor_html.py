@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from pathlib import Path
-from stilonotes.const import get_assets_path
-from stilonotes.config_manager import ConfigManager
+from teddynotes.const import get_assets_path
+from teddynotes.config_manager import ConfigManager
 
 HEADING_SCALE_MAP = {
     "compact": 0.85,

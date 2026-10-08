@@ -1,1 +1,1 @@
-i18n.gettext('stilonotes', preset: 'glib')
+i18n.gettext('teddynotes', preset: 'glib')

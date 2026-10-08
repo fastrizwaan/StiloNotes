@@ -13,8 +13,8 @@ gi.require_version('Adw', '1')
 gi.require_version('GdkPixbuf', '2.0')
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango, GdkPixbuf
 
-from stilonotes.models import Note
-from stilonotes.markdown_utils import strip_markdown, extract_table_data
+from teddynotes.models import Note
+from teddynotes.markdown_utils import strip_markdown, extract_table_data
 
 
 _TEXTURE_CACHE: dict = {}
@@ -817,7 +817,7 @@ class NotesList(Gtk.Box):
         self.is_private_unlocked = False
 
         try:
-            from stilonotes.config_manager import ConfigManager
+            from teddynotes.config_manager import ConfigManager
             self.config_manager = ConfigManager.get_default(self.db)
             self.set_card_size(self.config_manager.get_card_font_size())
         except Exception:

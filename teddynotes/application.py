@@ -14,14 +14,14 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, Gio, Gdk, GLib
 
-from stilonotes.const import APP_ID, APP_NAME, VERSION, get_assets_path
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes import backup_encryption
-from stilonotes.window import StiloWindow
+from teddynotes.const import APP_ID, APP_NAME, VERSION, get_assets_path
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes import backup_encryption
+from teddynotes.window import TeddyWindow
 
-class StiloApplication(Adw.Application):
-    __gtype_name__ = "StiloApplication"
+class TeddyApplication(Adw.Application):
+    __gtype_name__ = "TeddyApplication"
 
     def __init__(self):
         super().__init__(
@@ -31,20 +31,20 @@ class StiloApplication(Adw.Application):
         self.db: Optional[NoteDatabase] = None
         self.config_manager: Optional[ConfigManager] = None
 
-    def create_window(self) -> StiloWindow:
+    def create_window(self) -> TeddyWindow:
         """Create and return a new application window sharing the database and config."""
         if not self.db:
             self.db = NoteDatabase()
         if not self.config_manager:
             self.config_manager = ConfigManager.get_default(self.db)
-        return StiloWindow(self, self.db)
+        return TeddyWindow(self, self.db)
 
     def do_startup(self):
         Adw.Application.do_startup(self)
         self._setup_icons()
         self._load_css()
         self._setup_actions()
-        from stilonotes.exporter import setup_print_preview_settings
+        from teddynotes.exporter import setup_print_preview_settings
         setup_print_preview_settings()
 
     def _setup_icons(self):
@@ -83,14 +83,14 @@ class StiloApplication(Adw.Application):
                             with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
                                 tmp_path = tmp.name
                             self.db.backup_to_file(tmp_path)
-                            target_file = os.path.join(folder, f"stilonotes_backup_{date_suffix}.db.gpg")
+                            target_file = os.path.join(folder, f"teddynotes_backup_{date_suffix}.db.gpg")
                             backup_encryption.encrypt_file(tmp_path, target_file, pwd)
                             try:
                                 os.unlink(tmp_path)
                             except Exception:
                                 pass
                         else:
-                            target_file = os.path.join(folder, f"stilonotes_backup_{date_suffix}.db")
+                            target_file = os.path.join(folder, f"teddynotes_backup_{date_suffix}.db")
                             self.db.backup_to_file(target_file)
                         self.config_manager.set_last_local_backup(time.strftime("%Y-%m-%d %H:%M"))
                     except Exception as e:
@@ -154,8 +154,8 @@ class StiloApplication(Adw.Application):
         about.set_artists(["Mohammed Asif Ali Rizvan"])
         about.set_license_type(Gtk.License.GPL_3_0)
         about.set_comments("Iotas inspired rich text notes with dynamic WebKit Markdown rendering")
-        about.set_website("https://github.com/fastrizwaan/StiloNotes")
-        about.set_issue_url("https://github.com/fastrizwaan/StiloNotes/issues")
+        about.set_website("https://github.com/fastrizwaan/TeddyNotes")
+        about.set_issue_url("https://github.com/fastrizwaan/TeddyNotes/issues")
 
         parent = self.get_active_window()
         about.present(parent)
@@ -173,7 +173,7 @@ class StiloApplication(Adw.Application):
         # Appearance Group
         group_app = Adw.PreferencesGroup()
         group_app.set_title("Appearance")
-        group_app.set_description("Customize how Stilo Notes looks and behaves")
+        group_app.set_description("Customize how Teddy Notes looks and behaves")
 
         theme_row = Adw.ComboRow()
         theme_row.set_title("Color Scheme")
@@ -551,11 +551,11 @@ class StiloApplication(Adw.Application):
         # ── Group 2: Automatic Backups ───────────────────────────────────────
         group_auto = Adw.PreferencesGroup()
         group_auto.set_title("Automatic Backups")
-        group_auto.set_description("Automatically save a backup copy whenever Stilo Notes is closed")
+        group_auto.set_description("Automatically save a backup copy whenever Teddy Notes is closed")
 
         auto_backup_switch = Adw.SwitchRow()
         auto_backup_switch.set_title("Auto-Backup on Exit")
-        auto_backup_switch.set_subtitle("Save a timestamped snapshot when closing Stilo Notes")
+        auto_backup_switch.set_subtitle("Save a timestamped snapshot when closing Teddy Notes")
         auto_backup_switch.set_active(self.config_manager.get_auto_backup_folder_enabled() if self.config_manager else False)
 
         def on_auto_backup_toggled(row, _param):
@@ -784,19 +784,19 @@ class StiloApplication(Adw.Application):
                 file_dialog.set_title("Save Backup Database")
                 date_str = time.strftime("%Y-%m-%d")
                 ext = ".db.gpg" if is_encrypted else ".db"
-                file_dialog.set_initial_name(f"stilonotes_backup_{date_str}{ext}")
+                file_dialog.set_initial_name(f"teddynotes_backup_{date_str}{ext}")
 
                 filters = Gio.ListStore.new(Gtk.FileFilter)
                 if is_encrypted:
                     f_enc = Gtk.FileFilter()
-                    f_enc.set_name("Encrypted Stilo Notes Backup (*.db.gpg, *.gpg)")
+                    f_enc.set_name("Encrypted Teddy Notes Backup (*.db.gpg, *.gpg)")
                     f_enc.add_pattern("*.db.gpg")
                     f_enc.add_pattern("*.gpg")
                     filters.append(f_enc)
                     file_dialog.set_default_filter(f_enc)
                 else:
                     f_db = Gtk.FileFilter()
-                    f_db.set_name("Stilo Notes Backup (*.db)")
+                    f_db.set_name("Teddy Notes Backup (*.db)")
                     f_db.add_pattern("*.db")
                     filters.append(f_db)
                     file_dialog.set_default_filter(f_db)
@@ -873,7 +873,7 @@ class StiloApplication(Adw.Application):
             file_dialog.set_title("Select Backup File to Restore")
 
             filter_any_backup = Gtk.FileFilter()
-            filter_any_backup.set_name("Stilo Notes Backups (*.db, *.db.gpg, *.gpg)")
+            filter_any_backup.set_name("Teddy Notes Backups (*.db, *.db.gpg, *.gpg)")
             filter_any_backup.add_pattern("*.db")
             filter_any_backup.add_pattern("*.db.gpg")
             filter_any_backup.add_pattern("*.gpg")
@@ -1174,3 +1174,5 @@ class StiloApplication(Adw.Application):
         shortcuts_win = builder.get_object("shortcuts_window")
         shortcuts_win.set_transient_for(parent)
         shortcuts_win.present()
+
+StiloApplication = TeddyApplication

@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.models import Note
-from stilonotes.database import NoteDatabase
-from stilonotes.notes_list import (
+from teddynotes.models import Note
+from teddynotes.database import NoteDatabase
+from teddynotes.notes_list import (
     NotesList,
     NoteGridCard,
     NoteListRow,
@@ -145,7 +145,7 @@ class TestNotesListAndCards(unittest.TestCase):
 
     def test_image_preview_extraction(self):
         import base64
-        from stilonotes.notes_list import get_note_image_bytes
+        from teddynotes.notes_list import get_note_image_bytes
 
         # 1. From base64 data URI
         raw_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -190,7 +190,7 @@ class TestNotesListAndCards(unittest.TestCase):
     def test_create_thumbnail_texture_dimensions(self):
         from PIL import Image
         import io
-        from stilonotes.notes_list import _create_thumbnail_texture
+        from teddynotes.notes_list import _create_thumbnail_texture
 
         # Test large 1920x1080 image
         img = Image.new("RGB", (1920, 1080), color="blue")
@@ -229,7 +229,7 @@ class TestNotesListAndCards(unittest.TestCase):
     def test_multiple_images_primary_only(self):
         """Verify that when a note has multiple images, only the top-most primary image is shown."""
         import base64
-        from stilonotes.notes_list import get_note_image_bytes
+        from teddynotes.notes_list import get_note_image_bytes
 
         # Two distinct 1x1 png base64 images
         b64_img1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -256,7 +256,7 @@ class TestNotesListAndCards(unittest.TestCase):
 
     def test_multiple_images_attachment_document_order(self):
         """Verify that document order (top-most in note content) takes precedence over database creation timestamp."""
-        from stilonotes.notes_list import get_note_image_bytes
+        from teddynotes.notes_list import get_note_image_bytes
 
         note_id = "test-doc-order-note"
         # Save attachment B first in database
@@ -299,7 +299,7 @@ class TestNotesListAndCards(unittest.TestCase):
     def test_broken_top_image_falls_back_to_second_image(self):
         """If the top-most image cannot be resolved, it falls back to the next valid image."""
         import base64
-        from stilonotes.notes_list import get_note_image_bytes
+        from teddynotes.notes_list import get_note_image_bytes
 
         valid_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
         valid_bytes = base64.b64decode(valid_b64)
@@ -318,7 +318,7 @@ class TestNotesListAndCards(unittest.TestCase):
 
     def test_preview_excerpt_does_not_leak_image_markup(self):
         """Card preview body excerpt should not contain image markup or alt tags."""
-        from stilonotes.notes_list import _get_note_preview
+        from teddynotes.notes_list import _get_note_preview
 
         note = Note(
             title="Image Excerpt Note",
@@ -338,7 +338,7 @@ class TestNotesListAndCards(unittest.TestCase):
 
     def test_extract_table_data(self):
         """Verify extraction of table headers and rows from markdown and HTML."""
-        from stilonotes.markdown_utils import extract_table_data
+        from teddynotes.markdown_utils import extract_table_data
 
         # 1. Markdown table
         md = (
@@ -377,7 +377,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.notes_list import NoteGridCard
+        from teddynotes.notes_list import NoteGridCard
 
         # 1. Note with TABLE ONLY: table preview should be created, thumb is None
         note_table_only = Note(
@@ -638,7 +638,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.index import IndexView
+        from teddynotes.index import IndexView
         iv = IndexView(self.db)
 
         # 1. Verify restart requirement: starts locked
@@ -719,7 +719,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Private Doc", is_locked=True)
         editor.load_note(note)
@@ -739,7 +739,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Printable Doc", content_markdown="Some text to print")
         editor.load_note(note)
@@ -761,7 +761,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Sample Note")
         editor.load_note(note)
@@ -783,7 +783,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         self.assertTrue(hasattr(editor, "edit_btn"))
         self.assertEqual(editor.edit_btn.get_icon_name(), "edit-symbolic")
@@ -795,7 +795,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Important Meeting", content_markdown="Existing contents that should not be edited")
         editor.load_note(note, is_new=False)
@@ -809,7 +809,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Untitled Note")
         editor.load_note(note, is_new=True)
@@ -823,7 +823,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Project Plan", content_markdown="Milestones")
         editor.load_note(note, is_new=False)
@@ -844,7 +844,7 @@ class TestNotesListAndCards(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Read-only test", content_markdown="Some text")
         editor.load_note(note, is_new=False)

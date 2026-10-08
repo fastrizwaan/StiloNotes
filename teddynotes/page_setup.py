@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
-Page Setup dialog and helpers for Stilo Notes.
+Page Setup dialog and helpers for Teddy Notes.
 Provides paper size, orientation, and margin configuration for printing and export.
 Directly adapted from WebkitWord sources.
 """

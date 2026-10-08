@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.models import Note
-from stilonotes.selection_header_bar import SelectionHeaderBar
+from teddynotes.models import Note
+from teddynotes.selection_header_bar import SelectionHeaderBar
 
 
 class TestSelectionHeaderBar(unittest.TestCase):

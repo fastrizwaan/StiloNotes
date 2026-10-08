@@ -5,7 +5,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from stilonotes.database import NoteDatabase
+from teddynotes.database import NoteDatabase
 
 class TestDatabase(unittest.TestCase):
     def setUp(self):
@@ -20,7 +20,7 @@ class TestDatabase(unittest.TestCase):
     def test_initial_welcome_note(self):
         notes = self.db.get_notes()
         self.assertGreater(len(notes), 0)
-        self.assertIn("Welcome to Stilo Notes", notes[0].title)
+        self.assertIn("Welcome to Teddy Notes", notes[0].title)
 
     def test_crud_note(self):
         # Create
@@ -530,7 +530,7 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(n2.title, "Untitled Note 1")
 
     def test_is_untitled_title(self):
-        from stilonotes.markdown_utils import is_untitled_title
+        from teddynotes.markdown_utils import is_untitled_title
         self.assertTrue(is_untitled_title(None))
         self.assertTrue(is_untitled_title(""))
         self.assertTrue(is_untitled_title("   "))
@@ -543,7 +543,7 @@ class TestDatabase(unittest.TestCase):
         self.assertFalse(is_untitled_title("Project Alpha"))
 
     def test_linked_notes_filtering_and_counts(self):
-        from stilonotes.markdown_utils import check_has_link
+        from teddynotes.markdown_utils import check_has_link
         self.assertTrue(check_has_link("See [[Another Note]]"))
         self.assertTrue(check_has_link("Read [Link](https://example.org)"))
         self.assertTrue(check_has_link("Check https://example.org for details"))

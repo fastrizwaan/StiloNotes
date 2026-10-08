@@ -11,8 +11,8 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, GLib
 
-from stilonotes.database import NoteDatabase
-from stilonotes.notes_list import NotesList
+from teddynotes.database import NoteDatabase
+from teddynotes.notes_list import NotesList
 
 
 class TestTrashAndSync(unittest.TestCase):

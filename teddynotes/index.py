@@ -4,13 +4,13 @@
 from typing import Optional
 from gi.repository import Adw, Gtk, Gio, GLib, GObject, Gdk
 
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes.theme_selector import ThemeSelector
-from stilonotes.notes_list import NotesList
-from stilonotes.sidebar import Sidebar
-from stilonotes.selection_header_bar import SelectionHeaderBar
-from stilonotes.exporter import export_note_dialog, export_notes_dialog
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes.theme_selector import ThemeSelector
+from teddynotes.notes_list import NotesList
+from teddynotes.sidebar import Sidebar
+from teddynotes.selection_header_bar import SelectionHeaderBar
+from teddynotes.exporter import export_note_dialog, export_notes_dialog
 
 
 class IndexView(Adw.Bin):
@@ -208,7 +208,7 @@ class IndexView(Adw.Bin):
         s_app = Gio.Menu()
         s_app.append("Preferences", "app.preferences")
         s_app.append("Keyboard Shortcuts", "app.shortcuts")
-        s_app.append("About Stilo Notes", "app.about")
+        s_app.append("About Teddy Notes", "app.about")
         menu.append_section(None, s_app)
         return menu
 

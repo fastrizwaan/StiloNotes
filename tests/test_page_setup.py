@@ -6,10 +6,10 @@ import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk
 
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes.models import Note
-from stilonotes.page_setup import (
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes.models import Note
+from teddynotes.page_setup import (
     create_default_page_setup,
     to_points,
     from_points,
@@ -17,7 +17,7 @@ from stilonotes.page_setup import (
     FACTORS,
     show_page_setup_dialog,
 )
-from stilonotes.exporter import render_printable_html, Printer
+from teddynotes.exporter import render_printable_html, Printer
 
 
 class TestPageSetup(unittest.TestCase):

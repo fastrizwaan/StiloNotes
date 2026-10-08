@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.database import NoteDatabase
-from stilonotes.category_header_bar import CategoryHeaderBar
+from teddynotes.database import NoteDatabase
+from teddynotes.category_header_bar import CategoryHeaderBar
 
 
 class TestCategoryHeaderBar(unittest.TestCase):

@@ -19,8 +19,8 @@ from gi.repository import Gtk, Gdk, Gio, GLib, GObject, WebKit
 # Ensure portal print dialog with preview is used by WebKit
 os.environ.setdefault("WEBKIT_USE_PORTAL", "1")
 
-from stilonotes.models import Note
-from stilonotes.markdown_utils import html_to_markdown
+from teddynotes.models import Note
+from teddynotes.markdown_utils import html_to_markdown
 
 def get_plain_text(note: Note) -> str:
     """Extract plain text from note."""
@@ -177,7 +177,7 @@ def render_printable_html(note: Note, db: Optional[Any] = None, page_setup: Opti
     """Render a standalone, beautifully styled HTML document for printing or HTML export."""
     clean_html = note.content_html or ""
     if not clean_html and note.content_markdown:
-        from stilonotes.markdown_utils import markdown_to_html
+        from teddynotes.markdown_utils import markdown_to_html
         clean_html = markdown_to_html(note.content_markdown)
 
     # Strip contenteditable attributes from elements
@@ -379,7 +379,7 @@ def setup_print_preview_settings():
 
 
 class Printer(GObject.GObject):
-    __gtype_name__ = "StiloPrinter"
+    __gtype_name__ = "TeddyPrinter"
     __gsignals__ = {
         "finished": (GObject.SignalFlags.ACTION, None, ()),
     }
@@ -472,7 +472,7 @@ def export_note_dialog(parent_window: Gtk.Window, note: Note, fmt: str = "md", o
                 database = db
                 if database is None:
                     try:
-                        from stilonotes.database import NoteDatabase
+                        from teddynotes.database import NoteDatabase
                         database = NoteDatabase()
                     except Exception:
                         database = None
@@ -505,7 +505,7 @@ def export_notes_dialog(parent_window: Gtk.Window, notes: List[Note], on_complet
     database = db
     if database is None:
         try:
-            from stilonotes.database import NoteDatabase
+            from teddynotes.database import NoteDatabase
             database = NoteDatabase()
         except Exception:
             database = None

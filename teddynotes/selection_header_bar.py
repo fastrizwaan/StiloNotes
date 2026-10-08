@@ -7,8 +7,8 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, GObject, Pango
 
-from stilonotes.models import Note
-from stilonotes.category_header_bar import CategoryHeaderBar
+from teddynotes.models import Note
+from teddynotes.category_header_bar import CategoryHeaderBar
 
 
 class SelectionHeaderBar(Adw.Bin):

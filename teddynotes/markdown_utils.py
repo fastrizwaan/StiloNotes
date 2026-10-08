@@ -371,6 +371,7 @@ def check_has_link(content: str) -> bool:
         or RE_MD_LINK_ONLY.search(content)
         or RE_HTM_LINK.search(content)
         or RE_HTM_WIKI.search(content)
+        or "teddy-note://" in content
         or "stilo-note://" in content
         or RE_LINK_URL.search(content)
     )
@@ -655,7 +656,7 @@ def _format_md_link(match: re.Match) -> str:
 
 
 def markdown_to_html(md_text: str) -> str:
-    """Convert Markdown text to Stilo rich HTML with full Basic and Extended syntax support."""
+    """Convert Markdown text to Teddy rich HTML with full Basic and Extended syntax support."""
     if not md_text:
         return "<h1>Untitled Note</h1><div><br></div>"
 
@@ -758,7 +759,7 @@ def markdown_to_html(md_text: str) -> str:
             from urllib.parse import quote
             safe_title = quote(title.strip())
             safe_heading = quote(heading.strip())
-            href = f"stilo-note://{safe_title}" + (f"#{safe_heading}" if heading else "")
+            href = f"teddy-note://{safe_title}" + (f"#{safe_heading}" if heading else "")
             return f'<a href="{href}" class="stilo-wiki-link" data-note-title="{title.strip()}" data-note-heading="{heading.strip()}">{display}</a>'
             
         s = RE_WIKI_LINK.sub(_wiki_link_replacer, s)
@@ -1119,7 +1120,7 @@ def markdown_to_html(md_text: str) -> str:
 
 
 def html_to_markdown(html_content: str) -> str:
-    """Convert Stilo rich HTML back to clean Markdown supporting Basic and Extended syntax."""
+    """Convert Teddy rich HTML back to clean Markdown supporting Basic and Extended syntax."""
     if not html_content:
         return ""
 

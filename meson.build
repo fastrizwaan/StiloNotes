@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 project(
-  'stilonotes',
+  'teddynotes',
   version: '1.1',
   meson_version: '>= 0.62.0',
   license: 'GPL-3.0-or-later'
@@ -12,8 +12,8 @@ i18n = import('i18n')
 python = import('python')
 gnome = import('gnome')
 
-project_id = 'io.github.fastrizwaan.StiloNotes'
-project_name = 'Stilo Notes'
+project_id = 'io.github.fastrizwaan.TeddyNotes'
+project_name = 'Teddy Notes'
 
 python_bin = python.find_installation('python3')
 if not python_bin.found()
@@ -21,7 +21,7 @@ if not python_bin.found()
 endif
 
 python_dir = python_bin.get_install_dir()
-pkgdatadir = join_paths(get_option('prefix'), get_option('datadir'), 'stilonotes')
+pkgdatadir = join_paths(get_option('prefix'), get_option('datadir'), 'teddynotes')
 localedir = join_paths(get_option('prefix'), get_option('localedir'))
 
 application_id = project_id
@@ -33,7 +33,7 @@ else
 endif
 
 subdir('data')
-subdir('stilonotes')
+subdir('teddynotes')
 subdir('po')
 
 gnome.post_install(

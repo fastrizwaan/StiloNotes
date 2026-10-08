@@ -1,7 +1,7 @@
-# Stilo Notes 🖊️
+# Teddy Notes 🖊️
 
 <p align="center">
-  <img src="assets/icons/io.github.fastrizwaan.StiloNotes.svg" width="128" height="128" alt="Stilo Notes Icon">
+  <img src="assets/icons/io.github.fastrizwaan.TeddyNotes.svg" width="128" height="128" alt="Teddy Notes Icon">
 </p>
 
 <p align="center">
@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/fastrizwaan/StiloNotes/releases/download/1.0.0/stilonotes.png" alt="Stilo Notes Main Window" width="48%">
-  <img src="https://github.com/fastrizwaan/StiloNotes/releases/download/1.0.0/Welcome.png" alt="Stilo Notes Welcome View" width="48%">
+  <img src="https://github.com/fastrizwaan/TeddyNotes/releases/download/1.0.0/teddynotes.png" alt="Teddy Notes Main Window" width="48%">
+  <img src="https://github.com/fastrizwaan/TeddyNotes/releases/download/1.0.0/Welcome.png" alt="Teddy Notes Welcome View" width="48%">
 </p>
 
 
@@ -78,14 +78,14 @@
 - **Dark & Light Mode Sync**: Seamless synchronization with Libadwaita dark and light themes, plus a manual toggle shortcut (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>).
 - **Multi-Window Support (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>)**: Open multiple windows with real-time SQLite database change synchronization and concurrent conflict detection.
 - **Multiple Import & Export Formats**: Open external `.md` and `.txt` files directly (<kbd>Ctrl</kbd>+<kbd>O</kbd>), or export notes cleanly to Markdown (`.md`), HTML (`.html` with bundled base64 images), or Plain Text (`.txt`).
-- **Cute Mascot**: Custom Adwaita squircle icon featuring "Stilo" the stylus mascot.
+- **Cute Mascot**: Custom Adwaita squircle icon featuring "Teddy" mascot.
 
 ---
 
-## 🚀 Running Stilo Notes
+## 🚀 Running Teddy Notes
 
 ### Direct Run (Development)
-You can run Stilo Notes immediately without installing anything:
+You can run Teddy Notes immediately without installing anything:
 ```bash
 ./run.py
 ```
@@ -98,7 +98,7 @@ python3 run.py
 
 ## 🛠️ Building with Meson
 
-Stilo Notes includes a complete, standard GNOME Meson build system:
+Teddy Notes includes a complete, standard GNOME Meson build system:
 
 ```bash
 # 1. Configure the build
@@ -108,7 +108,7 @@ meson setup _build --prefix=/usr/local
 sudo ninja -C _build install
 
 # 3. Launch
-stilonotes
+teddynotes
 ```
 
 To run unit tests:
@@ -120,7 +120,7 @@ python3 -m unittest discover -s tests
 
 ## 📦 Flatpak
 
-Stilo Notes is built with Flatpak support using the `org.gnome.Platform` and `org.gnome.Sdk` runtimes:
+Teddy Notes is built with Flatpak support using the `org.gnome.Platform` and `org.gnome.Sdk` runtimes:
 
 ```bash
 # Build and install Flatpak locally
@@ -129,17 +129,17 @@ Stilo Notes is built with Flatpak support using the `org.gnome.Platform` and `or
 
 Or using `flatpak-builder` directly:
 ```bash
-flatpak-builder --user --install --disable-rofiles-fuse --force-clean flatpak/build-dir flatpak/io.github.fastrizwaan.StiloNotes.yaml
+flatpak-builder --user --install --disable-rofiles-fuse --force-clean flatpak/build-dir flatpak/io.github.fastrizwaan.TeddyNotes.yaml
 ```
 
 Run the installed Flatpak:
 ```bash
-flatpak run io.github.fastrizwaan.StiloNotes
+flatpak run io.github.fastrizwaan.TeddyNotes
 ```
 
 ### Flatpak bundle
 ```bash
-flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNotes.flatpak io.github.fastrizwaan.StiloNotes
+flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.TeddyNotes.flatpak io.github.fastrizwaan.TeddyNotes
 
 ```
 
@@ -176,25 +176,25 @@ flatpak build-bundle ~/.local/share/flatpak/repo io.github.fastrizwaan.StiloNote
 ## 📂 Project Architecture
 
 ```
-StiloNotes/
+TeddyNotes/
 ├── assets/
 │   ├── css/style.css                # GTK4 / Libadwaita custom styling
 │   ├── editor/editor.html           # WebKit dynamic live Markdown editor template
 │   └── icons/                       # Cute scalable and symbolic SVG icons
 ├── data/
 │   ├── icons/                       # Standard hicolor icon paths
-│   ├── io.github.fastrizwaan.StiloNotes.desktop.in
-│   ├── io.github.fastrizwaan.StiloNotes.metainfo.xml.in
-│   ├── io.github.fastrizwaan.StiloNotes.gschema.xml
+│   ├── io.github.fastrizwaan.TeddyNotes.desktop.in
+│   ├── io.github.fastrizwaan.TeddyNotes.metainfo.xml.in
+│   ├── io.github.fastrizwaan.TeddyNotes.gschema.xml
 │   └── meson.build
 ├── flatpak/
 │   ├── build.sh                     # Flatpak build helper script
-│   └── io.github.fastrizwaan.StiloNotes.yaml
+│   └── io.github.fastrizwaan.TeddyNotes.yaml
 ├── build-aux/
-│   ├── flatpak/io.github.fastrizwaan.StiloNotes.json
+│   ├── flatpak/io.github.fastrizwaan.TeddyNotes.json
 │   └── meson/post_install.py
 ├── po/                              # Gettext localization
-├── stilonotes/                      # Core Python application package
+├── teddynotes/                      # Core Python application package
 │   ├── application.py               # Adw.Application, actions & dialogs
 │   ├── backup_encryption.py         # Standalone GPG symmetric backup encryption
 │   ├── category_header_bar.py       # Category header and filter widgets

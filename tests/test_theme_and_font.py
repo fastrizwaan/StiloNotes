@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes.editor_html import get_editor_html_page
-from stilonotes.font_size_selector import FontSizeSelector
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes.editor_html import get_editor_html_page
+from teddynotes.font_size_selector import FontSizeSelector
 
 
 class TestThemeAndFont(unittest.TestCase):
@@ -145,7 +145,7 @@ class TestThemeAndFont(unittest.TestCase):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
-        from stilonotes.notes_list import NotesList
+        from teddynotes.notes_list import NotesList
         nl = NotesList(self.db)
         self.assertTrue(nl.has_css_class("card-size-default"))
         nl.set_card_size("large")
@@ -203,9 +203,9 @@ class TestThemeAndFont(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.window import StiloWindow
-        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestTheme")
-        win = StiloWindow(app, self.db)
+        from teddynotes.window import TeddyWindow
+        app = Adw.Application(application_id="io.github.fastrizwaan.TeddyNotes.TestTheme")
+        win = TeddyWindow(app, self.db)
 
         # Window structure: split_view is root, holding navigation
         self.assertIsInstance(win.get_content(), Adw.OverlaySplitView)

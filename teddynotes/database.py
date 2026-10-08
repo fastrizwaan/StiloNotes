@@ -19,8 +19,8 @@ from gi.repository import GLib
 
 HAS_CRYPTOGRAPHY = None  # Lazy-checked on first use
 
-from stilonotes.models import Note, Category
-from stilonotes.markdown_utils import (
+from teddynotes.models import Note, Category
+from teddynotes.markdown_utils import (
     extract_title_and_excerpt,
     extract_tags,
     extract_categories,
@@ -36,15 +36,22 @@ from stilonotes.markdown_utils import (
 )
 
 class NoteDatabase:
-    """High-performance SQLite Database manager for Stilo Notes."""
+    """High-performance SQLite Database manager for Teddy Notes."""
 
     def __init__(self, db_path: Optional[str] = None):
         if db_path:
             self.db_path = Path(db_path)
         else:
-            data_dir = Path(GLib.get_user_data_dir()) / "stilonotes"
+            data_dir = Path(GLib.get_user_data_dir()) / "teddynotes"
             data_dir.mkdir(parents=True, exist_ok=True)
-            self.db_path = data_dir / "stilonotes.db"
+            self.db_path = data_dir / "teddynotes.db"
+            old_db_path = Path(GLib.get_user_data_dir()) / "stilonotes" / "stilonotes.db"
+            if not self.db_path.exists() and old_db_path.exists():
+                try:
+                    import shutil
+                    shutil.copy2(old_db_path, self.db_path)
+                except Exception as e:
+                    print(f"Could not copy old stilonotes.db: {e}")
 
         self._lock = threading.RLock()
         self._conn: Optional[sqlite3.Connection] = None
@@ -263,14 +270,14 @@ class NoteDatabase:
                 self._seed_welcome_notes(conn)
 
     def _seed_welcome_notes(self, conn: sqlite3.Connection):
-        """Create a delightful welcome note showcasing Stilo Notes features."""
+        """Create a delightful welcome note showcasing Teddy Notes features."""
         now = time.time()
         note_id = str(uuid.uuid4())
-        title = "Welcome to Stilo Notes 🖊️"
+        title = "Welcome to Teddy Notes 🖊️"
 
-        md_content = """# Welcome to Stilo Notes 🖊️
+        md_content = """# Welcome to Teddy Notes 🖊️
 
-**Stilo Notes** brings together the clean, distraction-free **GNOME Adwaita** interface of Iotas with the dynamic **WebKit Markdown** live rendering engine!
+**Teddy Notes** brings together the clean, distraction-free **GNOME Adwaita** interface of Iotas with the dynamic **WebKit Markdown** live rendering engine!
 
 ### ✨ Key Features
 - **Dynamic Markdown Parsing**: Type markdown on the fly and watch it format live!
@@ -288,12 +295,12 @@ class NoteDatabase:
 - Type `**bold**`, `*italic*`, `==highlight==`, or `~~strikethrough~~`
 
 ### ☑️ Your First Checklist
-- [x] Launch Stilo Notes
+- [x] Launch Teddy Notes
 - [ ] Try typing a new thought below
 - [ ] Toggle dark and light mode
 - [ ] Create a custom category in the sidebar
 
-Enjoy writing with Stilo Notes!
+Enjoy writing with Teddy Notes!
 """
         html_content = markdown_to_html(md_content)
         title, excerpt = extract_title_and_excerpt(md_content, html_content)

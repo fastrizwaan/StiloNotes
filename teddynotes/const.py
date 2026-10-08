@@ -5,13 +5,13 @@ import os
 import sys
 from pathlib import Path
 
-APP_ID = "@APP_ID@"
-APP_NAME = "Stilo Notes"
-VERSION = "@VERSION@"
-PROFILE = "@PROFILE@"
-IS_DEVEL = "@IS_DEVEL@" == "True"
-PKGDATADIR = "@PKGDATADIR@"
-LOCALEDIR = "@LOCALEDIR@"
+APP_ID = "io.github.fastrizwaan.TeddyNotes"
+APP_NAME = "Teddy Notes"
+VERSION = "1.1"
+PROFILE = ""
+IS_DEVEL = False
+PKGDATADIR = "/usr/share/teddynotes"
+LOCALEDIR = "/usr/share/locale"
 
 def get_assets_path() -> Path:
     """Find the assets directory either from installed location or dev source."""
@@ -26,7 +26,14 @@ def get_assets_path() -> Path:
         return pkg_path
 
     # 3. Fallback to /app or system share
-    for prefix in ["/app/share/stilonotes/assets", "/usr/share/stilonotes/assets", "/usr/local/share/stilonotes/assets"]:
+    for prefix in [
+        "/app/share/teddynotes/assets",
+        "/usr/share/teddynotes/assets",
+        "/usr/local/share/teddynotes/assets",
+        "/app/share/stilonotes/assets",
+        "/usr/share/stilonotes/assets",
+        "/usr/local/share/stilonotes/assets",
+    ]:
         p = Path(prefix)
         if p.exists():
             return p

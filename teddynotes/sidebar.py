@@ -4,9 +4,9 @@
 from typing import Optional
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
 
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes.theme_selector import ThemeSelector
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes.theme_selector import ThemeSelector
 
 
 def _build_category_tree(categories):
@@ -118,7 +118,7 @@ class Sidebar(Adw.Bin):
         self.add_cat_btn.set_visible(False)
         self.header_bar.pack_start(self.add_cat_btn)
 
-        self.window_title = Adw.WindowTitle(title="Stilo Notes")
+        self.window_title = Adw.WindowTitle(title="Teddy Notes")
         self.header_bar.set_title_widget(self.window_title)
 
         self.menu_btn = Gtk.MenuButton()
@@ -251,7 +251,7 @@ class Sidebar(Adw.Bin):
         s_app = Gio.Menu()
         s_app.append("Preferences",       "app.preferences")
         s_app.append("Keyboard Shortcuts","app.shortcuts")
-        s_app.append("About Stilo Notes", "app.about")
+        s_app.append("About Teddy Notes", "app.about")
         menu.append_section(None, s_app)
         return menu
 

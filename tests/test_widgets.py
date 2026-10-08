@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.database import NoteDatabase
+from teddynotes.database import NoteDatabase
 
 
 class TestDatabaseCountsAndFilter(unittest.TestCase):
@@ -39,7 +39,7 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
     def test_insert_link_dialog(self):
         import json
         from gi.repository import Adw, Gtk
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
 
         ed = NoteEditor(self.db)
 
@@ -172,7 +172,7 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
 
     def test_copy_note_link(self):
         from gi.repository import Gdk
-        from stilonotes.index import IndexView
+        from teddynotes.index import IndexView
         note = self.db.create_note("Sample Linked Note", "Content")
         view = IndexView(self.db)
         # Verify _on_note_copy_link executes cleanly without NameError
@@ -188,9 +188,9 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.window import StiloWindow
-        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestNav")
-        win = StiloWindow(app, self.db)
+        from teddynotes.window import TeddyWindow
+        app = Adw.Application(application_id="io.github.fastrizwaan.TeddyNotes.TestNav")
+        win = TeddyWindow(app, self.db)
 
         note_a = self.db.create_note("Note A", "Content A")
         note_b = self.db.create_note("Note B", "Content B")
@@ -230,7 +230,7 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.editor_html import get_editor_html_page
+        from teddynotes.editor_html import get_editor_html_page
         html = get_editor_html_page("<div>Line 1: first paragraph</div><div>Line 2: second paragraph</div>")
         wv = WebKit.WebView()
         loop = GLib.MainLoop()
@@ -270,7 +270,8 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
                 loop.quit()
 
         wv.connect("load-changed", on_load_changed)
-        wv.load_html(html, "file:///var/home/rizvan/StiloNotes/assets/")
+        from teddynotes.const import get_assets_path
+        wv.load_html(html, f"file://{get_assets_path()}/")
         loop.run()
 
         self.assertFalse(result_holder.get("isCollapsed"))

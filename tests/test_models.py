@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.models import Note, Category
+from teddynotes.models import Note, Category
 
 class TestModels(unittest.TestCase):
     def test_note_creation(self):

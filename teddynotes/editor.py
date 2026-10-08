@@ -15,16 +15,16 @@ gi.require_version('Adw', '1')
 gi.require_version('WebKit', '6.0')
 from gi.repository import Adw, Gtk, WebKit, Gio, GLib, GObject, Gdk, Pango
 
-from stilonotes.category_header_bar import CategoryHeaderBar
-from stilonotes.config_manager import ConfigManager
-from stilonotes.theme_selector import ThemeSelector
-from stilonotes.font_size_selector import FontSizeSelector
-from stilonotes.models import Note
-from stilonotes.editor_html import get_editor_html_page
-from stilonotes.markdown_utils import compute_note_stats, format_relative_date, html_to_markdown, markdown_to_html, is_untitled_title
-from stilonotes.exporter import export_note_dialog, Printer
-from stilonotes.page_setup import show_page_setup_dialog, create_default_page_setup
-from stilonotes.const import get_assets_path
+from teddynotes.category_header_bar import CategoryHeaderBar
+from teddynotes.config_manager import ConfigManager
+from teddynotes.theme_selector import ThemeSelector
+from teddynotes.font_size_selector import FontSizeSelector
+from teddynotes.models import Note
+from teddynotes.editor_html import get_editor_html_page
+from teddynotes.markdown_utils import compute_note_stats, format_relative_date, html_to_markdown, markdown_to_html, is_untitled_title
+from teddynotes.exporter import export_note_dialog, Printer
+from teddynotes.page_setup import show_page_setup_dialog, create_default_page_setup
+from teddynotes.const import get_assets_path
 
 _GLOBAL_DB = None
 _URI_SCHEME_REGISTERED = False
@@ -74,7 +74,7 @@ def _register_attachment_scheme(db):
 class FormattingBar(Gtk.Box):
     """Bottom formatting toolbar — mirrors Iotas FormattingHeaderBar style."""
 
-    __gtype_name__ = "StiloFormattingBar"
+    __gtype_name__ = "TeddyFormattingBar"
 
     def __init__(self, exec_fn, insert_table_fn=None, pick_image_fn=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)

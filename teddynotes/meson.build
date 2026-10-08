@@ -12,12 +12,12 @@ configure_file(
   output: 'const.py',
   configuration: pkg_conf,
   install: true,
-  install_dir: join_paths(python_dir, 'stilonotes')
+  install_dir: join_paths(python_dir, 'teddynotes')
 )
 
 configure_file(
-  input: 'stilonotes.in',
-  output: 'stilonotes',
+  input: 'teddynotes.in',
+  output: 'teddynotes',
   configuration: pkg_conf,
   install: true,
   install_dir: get_option('bindir'),
@@ -49,5 +49,5 @@ sources = [
 
 install_data(
   sources,
-  install_dir: join_paths(python_dir, 'stilonotes')
+  install_dir: join_paths(python_dir, 'teddynotes')
 )

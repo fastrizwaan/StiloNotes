@@ -1,11 +1,11 @@
 [Desktop Entry]
-Name=Stilo Notes
+Name=Teddy Notes
 Comment=Take notes with dynamic WebKit Markdown live rendering
-Exec=stilonotes %U
-Icon=io.github.fastrizwaan.StiloNotes
+Exec=teddynotes %U
+Icon=io.github.fastrizwaan.TeddyNotes
 Terminal=false
 Type=Application
 Categories=GNOME;GTK;Utility;TextEditor;Office;
 MimeType=text/markdown;text/plain;
-Keywords=notes;markdown;editor;todo;tasks;stilo;iotas;
+Keywords=notes;markdown;editor;todo;tasks;teddy;iotas;
 StartupNotify=true

@@ -10,15 +10,15 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, Gio, GLib, GObject
 
-from stilonotes.models import Note
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes.index import IndexView
-from stilonotes.editor import NoteEditor
-from stilonotes.const import APP_ID, IS_DEVEL
+from teddynotes.models import Note
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes.index import IndexView
+from teddynotes.editor import NoteEditor
+from teddynotes.const import APP_ID, IS_DEVEL
 
-class StiloWindow(Adw.ApplicationWindow):
-    __gtype_name__ = "StiloWindow"
+class TeddyWindow(Adw.ApplicationWindow):
+    __gtype_name__ = "TeddyWindow"
 
     def __init__(self, app: Optional[Adw.Application] = None, db: Optional[NoteDatabase] = None, application: Optional[Adw.Application] = None, **kwargs):
         effective_app = application if application is not None else app
@@ -29,7 +29,7 @@ class StiloWindow(Adw.ApplicationWindow):
         self._sidebar_resize_idle_id = None
         self._note_history: List[str] = []
 
-        self.set_title("Stilo Notes")
+        self.set_title("Teddy Notes")
         self.set_icon_name(APP_ID)
         self.add_css_class("stilo-window")
         if IS_DEVEL:
@@ -54,7 +54,7 @@ class StiloWindow(Adw.ApplicationWindow):
         self.split_view.set_pin_sidebar(True)
 
         # 1. Sidebar
-        from stilonotes.sidebar import Sidebar
+        from teddynotes.sidebar import Sidebar
         self.sidebar = Sidebar(self.db)
         self.sidebar.connect("filter-changed", self.on_sidebar_filter_changed)
         self.sidebar.connect("close-requested", lambda _sb: GLib.idle_add(self.split_view.set_show_sidebar, False))
@@ -621,3 +621,5 @@ class StiloWindow(Adw.ApplicationWindow):
                 self.split_view.set_show_sidebar(True)
             self.config_manager.set_last_opened_note_id("")
             self.index_view.refresh(update_sidebar=True)
+
+StiloWindow = TeddyWindow

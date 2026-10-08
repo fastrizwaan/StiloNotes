@@ -1,8 +1,8 @@
-app-id: io.github.fastrizwaan.StiloNotes
+app-id: io.github.fastrizwaan.TeddyNotes
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
-command: stilonotes
+command: teddynotes
 finish-args:
   - --share=ipc
   - --socket=fallback-x11
@@ -81,7 +81,7 @@ modules:
           name: cryptography
           packagetype: bdist_wheel
 
-  - name: StiloNotes
+  - name: TeddyNotes
     buildsystem: meson
     sources:
       - type: dir

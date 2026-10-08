@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import unittest
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes.models import Category
-from stilonotes.sidebar import Sidebar, _build_category_tree
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes.models import Category
+from teddynotes.sidebar import Sidebar, _build_category_tree
 
 
 class TestSidebarTreeAndCollapse(unittest.TestCase):
@@ -96,9 +96,9 @@ class TestSidebarTreeAndCollapse(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.sidebar import Sidebar
+        from teddynotes.sidebar import Sidebar
         sidebar = Sidebar(self.db)
-        self.assertEqual(sidebar.window_title.get_title(), "Stilo Notes")
+        self.assertEqual(sidebar.window_title.get_title(), "Teddy Notes")
 
         # Inspect rows
         rows = []
@@ -270,7 +270,7 @@ class TestToolbarPin(unittest.TestCase):
         from gi.repository import Gdk, Gtk
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
-        from stilonotes.editor import FormattingBar
+        from teddynotes.editor import FormattingBar
         bar = FormattingBar(exec_fn=lambda c: None)
         self.assertFalse(hasattr(bar, "pin_btn"))
 
@@ -288,7 +288,7 @@ class TestSidebarSplitterResizer(unittest.TestCase):
 
     def test_sidebar_drag_calculation_and_clamping(self):
         from unittest.mock import MagicMock
-        from stilonotes.sidebar import Sidebar
+        from teddynotes.sidebar import Sidebar
 
         sidebar = Sidebar(self.db)
         sidebar._drag_start_width = 260
@@ -315,7 +315,7 @@ class TestSidebarSplitterResizer(unittest.TestCase):
 
     def test_sidebar_drag_signals_and_persistence(self):
         from unittest.mock import MagicMock
-        from stilonotes.sidebar import Sidebar
+        from teddynotes.sidebar import Sidebar
 
         sidebar = Sidebar(self.db)
         dragged_widths = []
@@ -419,7 +419,7 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.sidebar import Sidebar
+        from teddynotes.sidebar import Sidebar
         self.db.create_category("Personal")
         self.db.create_category("Personal/Projects")
         self.db.create_note(title="Tag Note", tags=["important"])
@@ -498,9 +498,9 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
         from gi.repository import Adw
-        from stilonotes.window import StiloWindow
-        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestSidebar")
-        win = StiloWindow(app, self.db)
+        from teddynotes.window import TeddyWindow
+        app = Adw.Application(application_id="io.github.fastrizwaan.TeddyNotes.TestSidebar")
+        win = TeddyWindow(app, self.db)
 
         # Should accept 3 args (Gtk signal handler style: self, sender, filter_type, category_name)
         win.on_sidebar_filter_changed(win.sidebar, "category", "Personal")
@@ -518,7 +518,7 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
-        from stilonotes.sidebar import Sidebar
+        from teddynotes.sidebar import Sidebar
         note = self.db.create_note(title="App Note", tags=["initial_tag"])
         sidebar = Sidebar(self.db)
         sidebar.refresh()
@@ -539,9 +539,9 @@ class TestSidebarSectionHeadersAndAlignment(unittest.TestCase):
             raise unittest.SkipTest("No Gdk.Display available (headless)")
 
         from gi.repository import Adw
-        from stilonotes.window import StiloWindow
-        app = Adw.Application(application_id="io.github.fastrizwaan.StiloNotes.TestSidebar")
-        win = StiloWindow(app, self.db)
+        from teddynotes.window import TeddyWindow
+        app = Adw.Application(application_id="io.github.fastrizwaan.TeddyNotes.TestSidebar")
+        win = TeddyWindow(app, self.db)
         note = win.db.create_note(title="Task Note", tags=["task"])
         win.sidebar.refresh()
         self.assertIn("task", win.sidebar._tag_rows)

@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from gi.repository import GLib
 
-from stilonotes.database import NoteDatabase
-from stilonotes.config_manager import ConfigManager
-from stilonotes import backup_encryption
+from teddynotes.database import NoteDatabase
+from teddynotes.config_manager import ConfigManager
+from teddynotes import backup_encryption
 
 
 class TestBackupAndEncryption(unittest.TestCase):

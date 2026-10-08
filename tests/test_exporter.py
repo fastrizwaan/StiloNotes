@@ -3,10 +3,10 @@
 
 import base64
 import unittest
-from stilonotes.database import NoteDatabase
-from stilonotes.models import Note
+from teddynotes.database import NoteDatabase
+from teddynotes.models import Note
 import os
-from stilonotes.exporter import (
+from teddynotes.exporter import (
     bundle_attachments_in_html,
     bundle_attachments_in_markdown,
     resolve_attachment_to_data_uri,
@@ -155,7 +155,7 @@ class TestExporter(unittest.TestCase):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         self.assertTrue(hasattr(editor, "print_btn"))
         self.assertEqual(editor.print_btn.get_icon_name(), "printer-symbolic")
@@ -166,7 +166,7 @@ class TestExporter(unittest.TestCase):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
-        from stilonotes.editor import NoteEditor
+        from teddynotes.editor import NoteEditor
         editor = NoteEditor(self.db)
         note = self.db.create_note(title="Print Test", content_markdown="Some content")
         editor.load_note(note)
@@ -197,7 +197,7 @@ class TestExporter(unittest.TestCase):
         self.assertEqual(emitted_count, 1)
 
     def test_editor_html_has_ctrl_p_shortcut(self):
-        from stilonotes.const import get_assets_path
+        from teddynotes.const import get_assets_path
         html_path = get_assets_path() / "editor" / "editor.html"
         self.assertTrue(html_path.exists())
         content = html_path.read_text(encoding="utf-8")
@@ -208,10 +208,10 @@ class TestExporter(unittest.TestCase):
         from gi.repository import Gdk
         if Gdk.Display.get_default() is None:
             raise unittest.SkipTest("No Gdk.Display available (headless)")
-        from stilonotes.window import StiloWindow
-        from stilonotes.application import StiloApplication
-        app = StiloApplication()
-        win = StiloWindow(application=app, db=self.db)
+        from teddynotes.window import TeddyWindow
+        from teddynotes.application import TeddyApplication
+        app = TeddyApplication()
+        win = TeddyWindow(application=app, db=self.db)
         ag = win.get_action_group("win")
         self.assertIsNotNone(ag)
         self.assertTrue(ag.has_action("print"))

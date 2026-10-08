@@ -3,7 +3,7 @@
 
 from typing import Optional, Tuple
 from gi.repository import Gio, GLib
-from stilonotes.const import APP_ID
+from teddynotes.const import APP_ID
 
 class ConfigManager:
     """Manages application settings and session memory."""
