@@ -92,6 +92,7 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
             self.assertEqual(len(presented_dialog), 1)
             dlg2 = presented_dialog[0]
             self.assertEqual(dlg2.get_heading(), "Edit Note Link")
+            self.assertTrue(dlg2.get_prefer_wide_layout())
             self.assertGreaterEqual(dlg2.get_content_width(), 460)
             box2 = dlg2.get_extra_child()
 
@@ -108,18 +109,27 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
             self.assertEqual(heading_row.get_text(), "Roadmap")
             self.assertEqual(label_row.get_text(), "Plan")
 
-            # Verify side-by-side Save and Remove Link buttons and no Cancel button
-            all_btns2 = find_widgets(box2, Gtk.Button)
-            btn_labels2 = [b.get_label() for b in all_btns2 if b.get_label()]
-            self.assertIn("Save", btn_labels2)
-            self.assertIn("Remove Link", btn_labels2)
-            self.assertNotIn("Cancel", btn_labels2)
+            # Verify standard GNOME dialog responses (Cancel, Save, Remove Link)
+            self.assertTrue(dlg2.has_response("cancel"))
+            self.assertTrue(dlg2.has_response("remove"))
+            self.assertTrue(dlg2.has_response("insert"))
+            self.assertEqual(dlg2.get_response_label("insert"), "Save")
+            self.assertEqual(dlg2.get_response_label("remove"), "Remove Link")
+            self.assertEqual(dlg2.get_response_label("cancel"), "Cancel")
+            self.assertEqual(dlg2.get_response_appearance("insert"), Adw.ResponseAppearance.SUGGESTED)
+            self.assertEqual(dlg2.get_response_appearance("remove"), Adw.ResponseAppearance.DESTRUCTIVE)
 
             # 3. Test Internal Link Mode with selected text auto-prefilling Note Title
             presented_dialog.clear()
             ed._on_js_insert_internal_link(None, FakeJsResult({"text": "Quick Note"}))
             self.assertEqual(len(presented_dialog), 1)
             dlg3 = presented_dialog[0]
+            self.assertEqual(dlg3.get_heading(), "Insert Note Link")
+            self.assertTrue(dlg3.has_response("cancel"))
+            self.assertFalse(dlg3.has_response("remove"))
+            self.assertTrue(dlg3.has_response("insert"))
+            self.assertEqual(dlg3.get_response_label("insert"), "Insert")
+            self.assertEqual(dlg3.get_response_appearance("insert"), Adw.ResponseAppearance.SUGGESTED)
             box3 = dlg3.get_extra_child()
             rows3 = find_widgets(box3, Adw.EntryRow)
             note_row3 = [r for r in rows3 if r.get_title() == "Note Title"][0]
