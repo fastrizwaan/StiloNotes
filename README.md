@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Elegant, distraction-free note taking for GNOME & Libadwaita.</b><br>
-  Combines the clean, thoughtful architecture and UI of <a href="https://gitlab.gnome.org/World/iotas">Iotas</a> with the dynamic WebKit live Markdown-to-HTML rendering engine of <a href="https://github.com/fastrizwaan/TeddyNotes">TeddyNotes</a>.
+  Combines the clean, thoughtful architecture and UI of <a href="https://gitlab.gnome.org/World/iotas">Iotas</a> with the dynamic WebKit live Markdown-to-HTML rendering engine of <a href="https://github.com/fastrizwaan/TeddyNotes">TeddyNotes</a> and tags feature of <a href="https://bear.app">Bear Notes</a>.
 </p>
 
 <p align="center">
