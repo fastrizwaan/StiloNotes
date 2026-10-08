@@ -30,6 +30,25 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.3" date="2026-10-08">
+      <description>
+        <p>New features and improvements in Teddy Notes 1.3:</p>
+        <ul>
+          <li>Standard editor view mode by default (keeps sidebar visible when opening and editing notes)</li>
+          <li>Rebranded application to Teddy Notes with refreshed app icon</li>
+          <li>Standard GNOME AlertDialog with horizontal button layout for link dialogs</li>
+          <li>Smooth tag editing: arrow key navigation to exit badges and prevention of nested tag badges</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.2" date="2026-10-08">
+      <description>
+        <p>Improvements in version 1.2:</p>
+        <ul>
+          <li>Improved note link dialog layout and section heading popovers</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1" date="2026-10-07">
       <description>
         <p>New features and improvements in Teddy Notes 1.1:</p>

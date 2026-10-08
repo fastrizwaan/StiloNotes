@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_ID = "io.github.fastrizwaan.TeddyNotes"
 APP_NAME = "Teddy Notes"
-VERSION = "1.1"
+VERSION = "1.3"
 PROFILE = ""
 IS_DEVEL = False
 PKGDATADIR = "/usr/share/teddynotes"

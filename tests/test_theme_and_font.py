@@ -119,12 +119,12 @@ class TestThemeAndFont(unittest.TestCase):
         self.config.set_sidebar_width(100)  # clamped to 200
         self.assertEqual(self.config.get_sidebar_width(), 200)
 
-        # Editor mode (default: distraction_free)
-        self.assertEqual(self.config.get_editor_mode(), "distraction_free")
-        self.config.set_editor_mode("standard")
+        # Editor mode (default: standard)
         self.assertEqual(self.config.get_editor_mode(), "standard")
-        self.config.set_editor_mode("invalid")
+        self.config.set_editor_mode("distraction_free")
         self.assertEqual(self.config.get_editor_mode(), "distraction_free")
+        self.config.set_editor_mode("invalid")
+        self.assertEqual(self.config.get_editor_mode(), "standard")
 
     def test_get_editor_html_page_full_typography(self):
         html = get_editor_html_page(
@@ -211,8 +211,8 @@ class TestThemeAndFont(unittest.TestCase):
         self.assertIsInstance(win.get_content(), Adw.OverlaySplitView)
         self.assertEqual(win.split_view.get_content(), win.navigation)
 
-        # Default mode: distraction_free
-        self.assertEqual(win.config_manager.get_editor_mode(), "distraction_free")
+        # Default mode: standard
+        self.assertEqual(win.config_manager.get_editor_mode(), "standard")
 
         # Switch to standard mode
         win.apply_editor_mode("standard")

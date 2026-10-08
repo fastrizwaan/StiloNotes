@@ -218,16 +218,16 @@ class ConfigManager:
             self.db.set_setting("sidebar_width", str(clamped))
 
     def get_editor_mode(self) -> str:
-        """Return 'distraction_free' (default, hide sidebar) or 'standard' (keep sidebar)."""
+        """Return 'standard' (default, keep sidebar) or 'distraction_free' (hide sidebar)."""
         if self.db:
-            mode = self.db.get_setting("editor_mode", "distraction_free")
+            mode = self.db.get_setting("editor_mode", "standard")
             if mode in ("standard", "distraction_free"):
                 return mode
-        return "distraction_free"
+        return "standard"
 
     def set_editor_mode(self, mode: str):
         if mode not in ("standard", "distraction_free"):
-            mode = "distraction_free"
+            mode = "standard"
         if self.db:
             self.db.set_setting("editor_mode", mode)
 

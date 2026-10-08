@@ -211,14 +211,14 @@ class TeddyApplication(Adw.Application):
         editor_mode_row.set_title("Editor View Mode")
         editor_mode_row.set_subtitle("Sidebar visibility while editing a note")
         editor_mode_row.set_model(Gtk.StringList.new([
-            "Distraction-Free (Hide sidebar)",
-            "Standard (Keep sidebar visible)"
+            "Standard (Keep sidebar visible)",
+            "Distraction-Free (Hide sidebar)"
         ]))
-        cur_mode = self.config_manager.get_editor_mode() if hasattr(self, "config_manager") else "distraction_free"
-        editor_mode_row.set_selected(0 if cur_mode == "distraction_free" else 1)
+        cur_mode = self.config_manager.get_editor_mode() if hasattr(self, "config_manager") else "standard"
+        editor_mode_row.set_selected(0 if cur_mode == "standard" else 1)
 
         def on_editor_mode_changed(row, _param):
-            mode = "distraction_free" if row.get_selected() == 0 else "standard"
+            mode = "standard" if row.get_selected() == 0 else "distraction_free"
             if hasattr(self, "config_manager"):
                 self.config_manager.set_editor_mode(mode)
             for win in self.get_windows():

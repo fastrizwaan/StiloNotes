@@ -27,5 +27,15 @@ class TestModels(unittest.TestCase):
         self.assertTrue(d["is_pinned"])
         self.assertTrue(d["has_todo"])
 
+    def test_version_consistency(self):
+        import inspect
+        import teddynotes
+        from teddynotes.const import VERSION
+        from teddynotes.main import main
+        self.assertEqual(teddynotes.__version__, "1.3")
+        self.assertEqual(VERSION, "1.3")
+        sig = inspect.signature(main)
+        self.assertEqual(sig.parameters["version"].default, "1.3")
+
 if __name__ == "__main__":
     unittest.main()
