@@ -510,9 +510,12 @@
       color: var(--tag-text, #6A1B9A);
       font-size: 0.9em;
       font-weight: 500;
-      cursor: pointer;
-      user-select: all;
+      cursor: text;
+      user-select: text;
       transition: background 0.15s ease;
+    }
+    body.read-only .stilo-tag {
+      cursor: pointer;
     }
     .stilo-tag:hover {
       background: var(--tag-hover, #D1C4E9);
@@ -527,9 +530,12 @@
       color: #1c71d8;
       font-size: 0.9em;
       font-weight: 500;
-      cursor: pointer;
-      user-select: all;
+      cursor: text;
+      user-select: text;
       transition: background 0.15s ease;
+    }
+    body.read-only .stilo-mention {
+      cursor: pointer;
     }
     html.dark-theme .stilo-mention {
       background: rgba(98, 160, 234, 0.2);
@@ -1307,14 +1313,26 @@
       }
 
       const space = document.createTextNode('\u00A0');
-      const parent = node.parentNode;
+      const existingBadge = node.parentElement ? node.parentElement.closest('.stilo-tag, .stilo-category-badge, .stilo-mention') : null;
 
-      node.textContent = before;
-      const afterNode = document.createTextNode(after);
+      if (existingBadge) {
+        const badgeParent = existingBadge.parentNode;
+        const afterNode = document.createTextNode(after);
+        badgeParent.insertBefore(insertFragment, existingBadge.nextSibling);
+        badgeParent.insertBefore(space, insertFragment.nextSibling);
+        if (after) {
+          badgeParent.insertBefore(afterNode, space.nextSibling);
+        }
+        existingBadge.remove();
+      } else {
+        const parent = node.parentNode;
+        node.textContent = before;
+        const afterNode = document.createTextNode(after);
 
-      parent.insertBefore(insertFragment, node.nextSibling);
-      parent.insertBefore(space, insertFragment.nextSibling);
-      parent.insertBefore(afterNode, space.nextSibling);
+        parent.insertBefore(insertFragment, node.nextSibling);
+        parent.insertBefore(space, insertFragment.nextSibling);
+        parent.insertBefore(afterNode, space.nextSibling);
+      }
 
       const newRange = document.createRange();
       newRange.setStart(space, 1);
@@ -2234,18 +2252,14 @@
       }
 
       // Process only text nodes
+      flattenNestedBadges(block);
+      syncAndCleanTags(block);
       const textNodes = [];
       const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
       let n;
       while (n = walk.nextNode()) {
-        if (n.parentNode && (
-          n.parentNode.tagName === 'CODE' ||
-          n.parentNode.tagName === 'A' ||
-          n.parentNode.classList.contains('stilo-tag') ||
-          n.parentNode.classList.contains('stilo-mention') ||
-          n.parentNode.classList.contains('stilo-category-badge') ||
-          n.parentNode.classList.contains('stilo-wiki-link')
-        )) {
+        const closestIgnored = n.parentElement ? n.parentElement.closest('code, pre, a, .stilo-tag, .stilo-mention, .stilo-category-badge, .stilo-wiki-link') : null;
+        if (closestIgnored) {
           continue;
         }
         textNodes.push(n);
@@ -2287,6 +2301,8 @@
             console.error('Fragment replace error:', e);
           }
         }
+
+        flattenNestedBadges(block);
 
         // Restore cursor position
         if (marker && marker.parentNode) {
@@ -2378,6 +2394,80 @@
         return;
       }
 
+      // ArrowRight: navigate out of tags / badges when at the end
+      if (e.key === 'ArrowRight' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        const badge = getClosestElement('.stilo-tag, .stilo-mention, .stilo-category-badge');
+        if (badge) {
+          const sel = window.getSelection();
+          if (sel && sel.isCollapsed && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            const postRange = range.cloneRange();
+            postRange.selectNodeContents(badge);
+            postRange.setStart(range.endContainer, range.endOffset);
+            if (postRange.toString().length === 0) {
+              e.preventDefault();
+              setCursorAfterElement(badge);
+              return;
+            }
+          }
+        }
+      }
+
+      // ArrowLeft: navigate out of tags / badges when at the start
+      if (e.key === 'ArrowLeft' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        const badge = getClosestElement('.stilo-tag, .stilo-mention, .stilo-category-badge');
+        if (badge) {
+          const sel = window.getSelection();
+          if (sel && sel.isCollapsed && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            const preRange = range.cloneRange();
+            preRange.selectNodeContents(badge);
+            preRange.setEnd(range.startContainer, range.startOffset);
+            if (preRange.toString().length === 0) {
+              e.preventDefault();
+              setCursorBeforeElement(badge);
+              return;
+            }
+          }
+        }
+      }
+
+      // Backspace right after badge
+      if (e.key === 'Backspace' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        const sel = window.getSelection();
+        if (sel && sel.isCollapsed && sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          const node = range.startContainer;
+          if (node.nodeType === 3 && node.textContent === '\u200B' && range.startOffset <= 1) {
+            const prev = node.previousSibling;
+            if (prev && prev.classList && (prev.classList.contains('stilo-tag') || prev.classList.contains('stilo-mention') || prev.classList.contains('stilo-category-badge'))) {
+              e.preventDefault();
+              node.remove();
+              setCursorAtEnd(prev);
+              return;
+            }
+          }
+        }
+      }
+
+      // Delete right before badge
+      if (e.key === 'Delete' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        const sel = window.getSelection();
+        if (sel && sel.isCollapsed && sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          const node = range.startContainer;
+          if (node.nodeType === 3 && node.textContent === '\u200B' && range.startOffset === 0) {
+            const next = node.nextSibling;
+            if (next && next.classList && (next.classList.contains('stilo-tag') || next.classList.contains('stilo-mention') || next.classList.contains('stilo-category-badge'))) {
+              e.preventDefault();
+              node.remove();
+              setCursorAtStart(next);
+              return;
+            }
+          }
+        }
+      }
+
       // ArrowDown: navigate out of code blocks and tables to the line below
       if (e.key === 'ArrowDown') {
         const pre = getClosestElement('pre.stilo-code-block');
@@ -2444,6 +2534,20 @@
 
       // 2. Enter key
       if (e.key === 'Enter') {
+        const badge = getClosestElement('.stilo-tag, .stilo-mention, .stilo-category-badge');
+        if (badge) {
+          const sel = window.getSelection();
+          if (sel && sel.isCollapsed && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            const postRange = range.cloneRange();
+            postRange.selectNodeContents(badge);
+            postRange.setStart(range.endContainer, range.endOffset);
+            if (postRange.toString().length === 0) {
+              setCursorAfterElement(badge);
+            }
+          }
+        }
+
         const pre = getClosestElement('pre.stilo-code-block');
         if (pre) {
           const sel = window.getSelection();
@@ -2682,6 +2786,54 @@
 
       // 3. Space key (line-start block triggers: #, ##, ###, - [ ], -, *, 1., >)
       if (e.key === ' ') {
+        const badge = getClosestElement('.stilo-tag, .stilo-mention, .stilo-category-badge');
+        if (badge) {
+          const sel = window.getSelection();
+          if (sel && sel.isCollapsed && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            const postRange = range.cloneRange();
+            postRange.selectNodeContents(badge);
+            postRange.setStart(range.endContainer, range.endOffset);
+
+            const preRange = range.cloneRange();
+            preRange.selectNodeContents(badge);
+            preRange.setEnd(range.startContainer, range.startOffset);
+
+            const isAtEnd = (postRange.toString().length === 0);
+            const isAtStart = (preRange.toString().length === 0);
+
+            if (isAtEnd) {
+              e.preventDefault();
+              setCursorAfterElement(badge, true);
+              notifyChange();
+              return;
+            } else if (isAtStart) {
+              e.preventDefault();
+              setCursorBeforeElement(badge, true);
+              notifyChange();
+              return;
+            } else {
+              e.preventDefault();
+              const beforeText = preRange.toString();
+              const afterText = postRange.toString();
+              badge.textContent = beforeText;
+              if (badge.classList.contains('stilo-tag')) {
+                const clean = beforeText.replace(/^#+/, '').trim().toLowerCase();
+                badge.setAttribute('data-tag', clean);
+              }
+              const spaceNode = document.createTextNode('\u00A0' + afterText);
+              badge.parentNode.insertBefore(spaceNode, badge.nextSibling);
+              const newRange = document.createRange();
+              newRange.setStart(spaceNode, 1);
+              newRange.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+              notifyChange();
+              return;
+            }
+          }
+        }
+
         const sel = window.getSelection();
         if (sel.rangeCount) {
           const range = sel.getRangeAt(0);
@@ -2783,6 +2935,10 @@
     function onEditorInput(e) {
       if (isUpdatingFromPython || isUndoRedoAction || isConvertingMarkdown) return;
 
+      const currentBlock = getClosestBlockElement() || editor;
+      flattenNestedBadges(currentBlock);
+      syncAndCleanTags(currentBlock);
+
       clearTimeout(markdownConvertTimer);
       markdownConvertTimer = setTimeout(() => {
         const block = getClosestBlockElement();
@@ -2860,21 +3016,27 @@
       // Tag pill click: #tag
       const tagEl = e.target.closest('.stilo-tag');
       if (tagEl) {
-        const tagName = tagEl.getAttribute('data-tag');
-        if (tagName && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tagClicked) {
-          window.webkit.messageHandlers.tagClicked.postMessage(tagName);
+        if (isReadOnlyMode || e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const tagName = tagEl.getAttribute('data-tag');
+          if (tagName && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tagClicked) {
+            window.webkit.messageHandlers.tagClicked.postMessage(tagName);
+          }
+          return;
         }
-        return;
       }
 
       // Category badge click: 📁 Category
       const catBadge = e.target.closest('.stilo-category-badge');
       if (catBadge) {
-        const catName = catBadge.getAttribute('data-category');
-        if (catName && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.categorySelected) {
-          window.webkit.messageHandlers.categorySelected.postMessage(catName);
+        if (isReadOnlyMode || e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const catName = catBadge.getAttribute('data-category');
+          if (catName && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.categorySelected) {
+            window.webkit.messageHandlers.categorySelected.postMessage(catName);
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -4214,6 +4376,172 @@
       el.focus();
     }
 
+    function setCursorAfterElement(el, withSpace = false) {
+      if (!el || !el.parentNode) return;
+      const parent = el.parentNode;
+      const next = el.nextSibling;
+
+      if (withSpace) {
+        if (next && next.nodeType === Node.TEXT_NODE) {
+          next.textContent = ' ' + next.textContent.replace(/^\u200B/, '');
+          const range = document.createRange();
+          range.setStart(next, 1);
+          range.collapse(true);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } else {
+          const spaceNode = document.createTextNode('\u00A0');
+          parent.insertBefore(spaceNode, next);
+          const range = document.createRange();
+          range.setStart(spaceNode, 1);
+          range.collapse(true);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        return;
+      }
+
+      if (next && next.nodeType === Node.TEXT_NODE && next.textContent.length > 0) {
+        const range = document.createRange();
+        range.setStart(next, 0);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        const zwsp = document.createTextNode('\u200B');
+        parent.insertBefore(zwsp, next);
+        const range = document.createRange();
+        range.setStart(zwsp, 1);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+
+    function setCursorBeforeElement(el, withSpace = false) {
+      if (!el || !el.parentNode) return;
+      const parent = el.parentNode;
+      const prev = el.previousSibling;
+
+      if (withSpace) {
+        if (prev && prev.nodeType === Node.TEXT_NODE) {
+          prev.textContent = prev.textContent.replace(/\u200B$/, '') + ' ';
+          const range = document.createRange();
+          range.setStart(prev, prev.textContent.length);
+          range.collapse(true);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } else {
+          const spaceNode = document.createTextNode('\u00A0');
+          parent.insertBefore(spaceNode, el);
+          const range = document.createRange();
+          range.setStart(spaceNode, 1);
+          range.collapse(true);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        return;
+      }
+
+      if (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.length > 0) {
+        const range = document.createRange();
+        range.setStart(prev, prev.textContent.length);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        const zwsp = document.createTextNode('\u200B');
+        parent.insertBefore(zwsp, el);
+        const range = document.createRange();
+        range.setStart(zwsp, 0);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+
+    function flattenNestedBadges(container) {
+      const root = container || editor;
+      if (!root) return;
+      let nested = root.querySelectorAll('.stilo-tag .stilo-tag, .stilo-tag .stilo-mention, .stilo-tag .stilo-category-badge, .stilo-mention .stilo-tag, .stilo-category-badge .stilo-tag');
+      let safetyLimit = 10;
+      while (nested.length > 0 && safetyLimit-- > 0) {
+        nested.forEach(badge => {
+          const outer = badge.parentElement ? badge.parentElement.closest('.stilo-tag, .stilo-mention, .stilo-category-badge') : null;
+          if (outer && outer !== badge) {
+            if (outer.textContent.trim() === badge.textContent.trim()) {
+              outer.replaceWith(badge);
+            } else {
+              const tn = document.createTextNode(badge.textContent);
+              badge.replaceWith(tn);
+            }
+          }
+        });
+        nested = root.querySelectorAll('.stilo-tag .stilo-tag, .stilo-tag .stilo-mention, .stilo-tag .stilo-category-badge, .stilo-mention .stilo-tag, .stilo-category-badge .stilo-tag');
+      }
+    }
+
+    function syncAndCleanTags(container) {
+      const root = container || editor;
+      if (!root) return;
+      const tags = root.querySelectorAll('.stilo-tag');
+      tags.forEach(tag => {
+        const text = tag.textContent;
+        const trimmed = text.trim();
+        if (!trimmed) {
+          tag.remove();
+          return;
+        }
+        if (!trimmed.startsWith('#')) {
+          const sel = window.getSelection();
+          let savedOffset = -1;
+          if (sel && sel.rangeCount && tag.contains(sel.getRangeAt(0).startContainer)) {
+            const range = sel.getRangeAt(0);
+            const preRange = range.cloneRange();
+            preRange.selectNodeContents(tag);
+            preRange.setEnd(range.startContainer, range.startOffset);
+            savedOffset = preRange.toString().length;
+          }
+          const tn = document.createTextNode(text);
+          tag.parentNode.replaceChild(tn, tag);
+          if (savedOffset >= 0 && sel) {
+            const newRange = document.createRange();
+            newRange.setStart(tn, Math.min(savedOffset, tn.textContent.length));
+            newRange.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
+          return;
+        }
+        if (/\s/.test(trimmed)) {
+          const parts = trimmed.split(/\s+/);
+          const firstTag = parts[0];
+          const restIndex = text.indexOf(firstTag) + firstTag.length;
+          const restText = text.substring(restIndex);
+          tag.textContent = firstTag;
+          const clean = firstTag.replace(/^#+/, '').trim().toLowerCase();
+          tag.setAttribute('data-tag', clean);
+          if (restText) {
+            const tn = document.createTextNode(restText);
+            tag.parentNode.insertBefore(tn, tag.nextSibling);
+          }
+          return;
+        }
+        const clean = trimmed.replace(/^#+/, '').trim().toLowerCase();
+        if (clean && tag.getAttribute('data-tag') !== clean) {
+          tag.setAttribute('data-tag', clean);
+        }
+      });
+    }
+
     // ==========================================
     // Python WebKit Bridge & Data Extraction
     // ==========================================
@@ -4293,6 +4621,8 @@
           wrapper.remove();
         }
       });
+      flattenNestedBadges(clone);
+      syncAndCleanTags(clone);
       return clone.innerHTML.replace(/\u200B/g, '');
     }
 
@@ -4355,6 +4685,8 @@
       userInteractedWithCurrentNote = false;
       isUpdatingFromPython = true;
       editor.innerHTML = html || '<h1>Untitled Note</h1><div><br></div>';
+      flattenNestedBadges(editor);
+      syncAndCleanTags(editor);
       initAllHandles();
       lastSavedHtml = getCleanHtml();
       lastSavedTitle = getTitle();
@@ -4481,9 +4813,14 @@
       if (!tagName) return;
       const cleanTag = tagName.replace(/^#+/, '').trim().toLowerCase();
       if (!cleanTag) return;
+      const existingBadge = getClosestElement('.stilo-tag, .stilo-mention, .stilo-category-badge');
+      if (existingBadge) {
+        setCursorAfterElement(existingBadge, false);
+      }
       saveUndoState();
       const tagHtml = `<span class="stilo-tag" data-tag="${cleanTag}">#${cleanTag}</span>&nbsp;`;
       insertHtmlSafely(tagHtml);
+      flattenNestedBadges(editor);
       notifyChange();
     };
   </script>
