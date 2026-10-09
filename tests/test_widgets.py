@@ -278,5 +278,138 @@ class TestDatabaseCountsAndFilter(unittest.TestCase):
         self.assertIn("Line 1", result_holder.get("text", ""))
 
 
+class TestEditorContextMenuAndNavigation(unittest.TestCase):
+    def setUp(self):
+        self.db = NoteDatabase(":memory:")
+        from teddynotes.editor import NoteEditor
+        self.editor = NoteEditor(self.db)
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_context_menu_blocks_reload_and_browser_navigation(self):
+        import gi
+        gi.require_version('WebKit', '6.0')
+        from gi.repository import WebKit
+
+        cm = WebKit.ContextMenu()
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.GO_BACK))
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.GO_FORWARD))
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.STOP))
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.RELOAD))
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.COPY))
+
+        # In edit mode
+        self.editor.is_read_only = False
+        res = self.editor._on_context_menu(self.editor.webview, cm, None)
+        self.assertFalse(res)  # Shows menu
+        actions = [it.get_stock_action() for it in cm.get_items()]
+        self.assertNotIn(WebKit.ContextMenuAction.RELOAD, actions)
+        self.assertNotIn(WebKit.ContextMenuAction.GO_BACK, actions)
+        self.assertNotIn(WebKit.ContextMenuAction.GO_FORWARD, actions)
+        self.assertNotIn(WebKit.ContextMenuAction.STOP, actions)
+        self.assertIn(WebKit.ContextMenuAction.COPY, actions)
+
+    def test_context_menu_read_only_mode(self):
+        import gi
+        gi.require_version('WebKit', '6.0')
+        from gi.repository import WebKit
+
+        cm = WebKit.ContextMenu()
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.RELOAD))
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.CUT))
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.PASTE))
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.COPY))
+
+        # In read-only mode
+        self.editor.is_read_only = True
+        res = self.editor._on_context_menu(self.editor.webview, cm, None)
+        self.assertFalse(res)
+        actions = [it.get_stock_action() for it in cm.get_items()]
+        self.assertNotIn(WebKit.ContextMenuAction.RELOAD, actions)
+        self.assertNotIn(WebKit.ContextMenuAction.CUT, actions)
+        self.assertNotIn(WebKit.ContextMenuAction.PASTE, actions)
+        self.assertIn(WebKit.ContextMenuAction.COPY, actions)
+
+    def test_context_menu_empty_provides_select_all(self):
+        import gi
+        gi.require_version('WebKit', '6.0')
+        from gi.repository import WebKit
+
+        cm = WebKit.ContextMenu()
+        cm.append(WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.RELOAD))
+
+        self.editor.is_read_only = True
+        res = self.editor._on_context_menu(self.editor.webview, cm, None)
+        self.assertFalse(res)
+        actions = [it.get_stock_action() for it in cm.get_items()]
+        self.assertNotIn(WebKit.ContextMenuAction.RELOAD, actions)
+        self.assertIn(WebKit.ContextMenuAction.SELECT_ALL, actions)
+
+    def test_decide_policy_blocks_reload_and_back_forward(self):
+        import gi
+        gi.require_version('WebKit', '6.0')
+        from gi.repository import WebKit
+
+        class MockAction:
+            def __init__(self, nav_type, uri=None):
+                self._nav_type = nav_type
+                self._uri = uri
+            def get_navigation_type(self):
+                return self._nav_type
+            def get_request(self):
+                class Req:
+                    def __init__(self, u): self._u = u
+                    def get_uri(self): return self._u
+                return Req(self._uri) if self._uri else None
+
+        class MockDecision:
+            def __init__(self, action):
+                self._action = action
+                self.ignored = False
+            def get_navigation_action(self):
+                return self._action
+            def ignore(self):
+                self.ignored = True
+
+        # Test Reload
+        dec_reload = MockDecision(MockAction(WebKit.NavigationType.RELOAD, "file:///assets/"))
+        res = self.editor._on_decide_policy(self.editor.webview, dec_reload, WebKit.PolicyDecisionType.NAVIGATION_ACTION)
+        self.assertTrue(res)
+        self.assertTrue(dec_reload.ignored)
+
+        # Test Back/Forward
+        dec_bf = MockDecision(MockAction(WebKit.NavigationType.BACK_FORWARD, "file:///assets/"))
+        res = self.editor._on_decide_policy(self.editor.webview, dec_bf, WebKit.PolicyDecisionType.NAVIGATION_ACTION)
+        self.assertTrue(res)
+        self.assertTrue(dec_bf.ignored)
+
+        # Test Link clicked
+        dec_link = MockDecision(MockAction(WebKit.NavigationType.LINK_CLICKED, "file:///assets/editor/"))
+        res = self.editor._on_decide_policy(self.editor.webview, dec_link, WebKit.PolicyDecisionType.NAVIGATION_ACTION)
+        self.assertTrue(res)
+        self.assertTrue(dec_link.ignored)
+
+        # Test Programmatic load_html (OTHER)
+        dec_other = MockDecision(MockAction(WebKit.NavigationType.OTHER, "file:///assets/editor/editor.html"))
+        res = self.editor._on_decide_policy(self.editor.webview, dec_other, WebKit.PolicyDecisionType.NAVIGATION_ACTION)
+        self.assertFalse(res)
+        self.assertFalse(dec_other.ignored)
+
+    def test_webview_key_pressed_blocks_f5_and_ctrl_r(self):
+        import gi
+        gi.require_version('Gdk', '4.0')
+        from gi.repository import Gdk
+
+        # F5
+        self.assertTrue(self.editor._on_webview_key_pressed(None, Gdk.KEY_F5, 0, Gdk.ModifierType(0)))
+        # Ctrl+R
+        self.assertTrue(self.editor._on_webview_key_pressed(None, Gdk.KEY_r, 0, Gdk.ModifierType.CONTROL_MASK))
+        # Normal key (e.g. typing 'a')
+        self.assertFalse(self.editor._on_webview_key_pressed(None, Gdk.KEY_a, 0, Gdk.ModifierType(0)))
+        # Ctrl+C
+        self.assertFalse(self.editor._on_webview_key_pressed(None, Gdk.KEY_c, 0, Gdk.ModifierType.CONTROL_MASK))
+
+
 if __name__ == "__main__":
     unittest.main()

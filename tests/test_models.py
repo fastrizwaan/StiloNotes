@@ -32,10 +32,10 @@ class TestModels(unittest.TestCase):
         import teddynotes
         from teddynotes.const import VERSION
         from teddynotes.main import main
-        self.assertEqual(teddynotes.__version__, "1.3")
-        self.assertEqual(VERSION, "1.3")
+        self.assertEqual(teddynotes.__version__, "1.4")
+        self.assertEqual(VERSION, "1.4")
         sig = inspect.signature(main)
-        self.assertEqual(sig.parameters["version"].default, "1.3")
+        self.assertEqual(sig.parameters["version"].default, "1.4")
 
 if __name__ == "__main__":
     unittest.main()

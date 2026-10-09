@@ -1,154 +1,237 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
+   width="128"
    height="128"
    viewBox="0 0 128 128"
-   width="128"
+   fill="none"
    version="1.1"
-   id="svg101"
-   xmlns:xlink="http://www.w3.org/1999/xlink"
+   id="svg14"
+   sodipodi:docname="io.github.fastrizwaan.TeddyNotes.svg"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview14"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1"
+     inkscape:cx="60.5"
+     inkscape:cy="51"
+     inkscape:window-width="2560"
+     inkscape:window-height="1374"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g14" />
+  <!-- Adwaita Squircle Background with gradient -->
   <defs
-     id="defs73">
+     id="defs4">
     <linearGradient
-       id="a"
-       gradientUnits="userSpaceOnUse"
-       x1="92.999458"
-       x2="100.99946"
-       y1="71.000198"
-       y2="71.000198">
+       id="bearBg"
+       x1="16"
+       y1="12"
+       x2="112"
+       y2="116"
+       gradientUnits="userSpaceOnUse">
       <stop
-         offset="0"
-         stop-color="#deddda"
+         offset="0%"
+         stop-color="#E54D42"
+         id="stop1" />
+      <stop
+         offset="100%"
+         stop-color="#C82B22"
          id="stop2" />
+    </linearGradient>
+    <linearGradient
+       id="bearShine"
+       x1="64"
+       y1="12"
+       x2="64"
+       y2="60"
+       gradientUnits="userSpaceOnUse">
       <stop
-         offset="0.52"
-         stop-color="#ffffff"
+         offset="0%"
+         stop-color="#FFFFFF"
+         stop-opacity="0.25"
+         id="stop3" />
+      <stop
+         offset="100%"
+         stop-color="#FFFFFF"
+         stop-opacity="0"
          id="stop4" />
-      <stop
-         offset="1"
-         stop-color="#bdbdbd"
-         id="stop6" />
     </linearGradient>
     <filter
-       id="b"
-       height="1"
-       width="1"
+       id="softShadow"
        x="0"
-       y="0">
-      <feColorMatrix
-         in="SourceGraphic"
-         type="matrix"
-         values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"
-         id="feColorMatrix9" />
+       y="4"
+       width="128"
+       height="124"
+       filterUnits="userSpaceOnUse"
+       color-interpolation-filters="sRGB">
+      <feDropShadow
+         dx="0"
+         dy="6"
+         stdDeviation="6"
+         flood-color="#000000"
+         flood-opacity="0.22" />
     </filter>
-    <mask
-       id="c">
-      <g
-         filter="url(#b)"
-         id="g14">
-        <rect
-           fill-opacity="0.1"
-           height="128"
-           width="128"
-           id="rect12"
-           x="0"
-           y="0" />
-      </g>
-    </mask>
-    <mask
-       id="d">
-      <g
-         filter="url(#b)"
-         id="g19">
-        <rect
-           fill-opacity="0.1"
-           height="128"
-           width="128"
-           id="rect17"
-           x="0"
-           y="0" />
-      </g>
-    </mask>
-    <clipPath
-       id="e">
-      <rect
-         height="152"
-         width="192"
-         id="rect22"
-         x="0"
-         y="0" />
-    </clipPath>
-    <g
-       id="f"
-       clip-path="url(#e)">
-      <path
-         d="m 34,50 v 68 h 70 c 4.43359,0 8,-3.56641 8,-8 V 58 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-         id="path25" />
-    </g>
-    <clipPath
-       id="g">
-      <rect
-         height="128"
-         width="128"
-         id="rect28"
-         x="0"
-         y="0" />
-    </clipPath>
-    <clipPath
-       id="h">
-      <rect
-         height="128"
-         width="128"
-         id="rect31"
-         x="0"
-         y="0" />
-    </clipPath>
-    <linearGradient
-       xlink:href="#a"
-       id="linearGradient331"
-       gradientUnits="userSpaceOnUse"
-       x1="92.999458"
-       y1="71.000198"
-       x2="100.99946"
-       y2="71.000198" />
   </defs>
-  <path
-     d="m 24,32 v 78 h 72 c 4.43359,0 8,-3.56641 8,-8 V 40 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-     fill="#532499"
-     id="path75" />
-  <path
-     d="m 26,108 h 70 c 6,0 6,-6 6,-6 V 82.050781 L 26,82 Z m 0,0"
-     fill="url(#a)"
-     id="path77"
-     style="fill:url(#linearGradient331)" />
-  <use
-     mask="url(#c)"
-     transform="translate(-8,-16)"
-     xlink:href="#f"
-     id="use79" />
-  <path
-     d="m 24,32 v 68 h 72 c 4.43359,0 8,-3.566406 8,-8 V 40 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-     fill="#532499"
-     id="path81" />
-  <path
-     d="m 24,8 v 90 h 72 c 4.43359,0 8,-3.566406 8,-8 V 16 c 0,-4.433594 -3.56641,-8 -8,-8 z m 0,0"
-     fill="#7852ff"
-     id="path83" />
-  <path
-     d="m 80,8 h 8 v 90 h -8 z m 0,0"
-     fill="#3a1670"
-     id="path85" />
-  <path
-     d="m 80,98 h 8 v 12 h -8 z m 0,0"
-     fill="#260e4a"
-     id="path87" />
-  <path
-     d="m 36,104 h 16 v 20 l -8,-8 -8,8 z m 0,0"
-     fill="#1c71d8"
-     id="path89" />
-  <path
-     d="m 36,102 h 16 v 6 H 36 Z m 0,0"
-     fill="#3584e4"
-     id="path91" />
+  <!-- Base Rounded Squircle with Shadow -->
+  <rect
+     x="12"
+     y="12"
+     width="104"
+     height="104"
+     rx="26"
+     fill="url(#bearBg)"
+     
+     id="rect4" />
+  <!-- Top Highlight -->
+  <rect
+     x="12"
+     y="12"
+     width="104"
+     height="52"
+     rx="26"
+     fill="url(#bearShine)"
+     id="rect5" />
+  <!-- Teddy Bear Silhouette (Pure White) -->
+  <g
+     fill="#FFFFFF"
+     id="g14">
+    <!-- Left Ear -->
+    <circle
+       cx="39.123901"
+       cy="37.123901"
+       r="17.250732"
+       id="circle5"
+       style="stroke-width:1.2322" />
+    <!-- Right Ear -->
+    <circle
+       cx="90.876099"
+       cy="37.123901"
+       r="17.250732"
+       id="circle6"
+       style="stroke-width:1.2322" />
+    <!-- Inner Left Ear -->
+    <circle
+       cx="39.123901"
+       cy="37.123901"
+       r="8.6253662"
+       fill="#e54d42"
+       fill-opacity="0.3"
+       id="circle7"
+       style="stroke-width:1.2322" />
+    <!-- Inner Right Ear -->
+    <circle
+       cx="90.876099"
+       cy="37.123901"
+       r="8.6253662"
+       fill="#e54d42"
+       fill-opacity="0.3"
+       id="circle8"
+       style="stroke-width:1.2322" />
+    <!-- Head -->
+    <ellipse
+       cx="65"
+       cy="50.678047"
+       rx="32.037075"
+       ry="28.340488"
+       fill="#ffffff"
+       id="ellipse8"
+       style="stroke-width:1.2322" />
+    <!-- Snout (Slightly warmer white) -->
+    <ellipse
+       cx="65"
+       cy="58.071217"
+       rx="17.250732"
+       ry="13.554147"
+       fill="#f8f9fa"
+       id="ellipse9"
+       style="stroke-width:1.2322" />
+    <!-- Nose (Cute dark triangle/oval) -->
+    <path
+       d="m 58.839024,53.142439 q 6.160976,-2.46439 12.321952,0 -6.160976,7.393171 -12.321952,0 z"
+       fill="#2e2e32"
+       id="path9"
+       style="stroke-width:1.2322" />
+    <!-- Mouth line -->
+    <path
+       d="M 65,58.071219 V 63"
+       stroke="#2e2e32"
+       stroke-width="2"
+       stroke-linecap="round"
+       id="path10" />
+    <!-- Eyes -->
+    <circle
+       cx="51.445854"
+       cy="45.749268"
+       r="3.9430244"
+       fill="#2e2e32"
+       id="circle10"
+       style="stroke-width:1.2322" />
+    <circle
+       cx="78.554146"
+       cy="45.749268"
+       r="3.9430244"
+       fill="#2e2e32"
+       id="circle11"
+       style="stroke-width:1.2322" />
+    <!-- Eye highlights -->
+    <circle
+       cx="52.678047"
+       cy="44.517071"
+       r="1.2321951"
+       fill="#ffffff"
+       id="circle12"
+       style="stroke-width:1.2322" />
+    <circle
+       cx="79.786339"
+       cy="44.517071"
+       r="1.2321951"
+       fill="#ffffff"
+       id="circle13"
+       style="stroke-width:1.2322" />
+    <!-- Body / Shoulders -->
+    <path
+       d="m 30.498536,87.643903 c 0,-14.786342 12.321951,-17.250732 34.501464,-17.250732 22.179512,0 34.50146,2.46439 34.50146,17.250732 0,14.786337 -7.393167,19.715127 -34.50146,19.715127 -27.108293,0 -34.501464,-4.92879 -34.501464,-19.715127 z"
+       fill="#ffffff"
+       id="path13"
+       style="stroke-width:1.2322" />
+    <!-- Tiny pencil / notebook icon held in paws or note badge -->
+    <rect
+       x="51.445854"
+       y="77.786339"
+       width="27.108294"
+       height="19.715122"
+       rx="3.6965854"
+       fill="#e54d42"
+       id="rect13"
+       style="stroke-width:1.2322" />
+    <line
+       x1="56.374634"
+       y1="83.947319"
+       x2="71.160973"
+       y2="83.947319"
+       stroke="#ffffff"
+       stroke-width="1.5"
+       stroke-linecap="round"
+       id="line13" />
+    <line
+       x1="56.374634"
+       y1="90.108292"
+       x2="67.464386"
+       y2="90.108292"
+       stroke="#ffffff"
+       stroke-width="1.5"
+       stroke-linecap="round"
+       id="line14" />
+  </g>
 </svg>

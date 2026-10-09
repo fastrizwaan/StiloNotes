@@ -491,6 +491,11 @@ class NoteEditor(Gtk.Box):
 
         self.webview.connect("load-changed", self._on_webview_load_changed)
         self.webview.connect("decide-policy", self._on_decide_policy)
+        self.webview.connect("context-menu", self._on_context_menu)
+
+        wv_key_ctrl = Gtk.EventControllerKey.new()
+        wv_key_ctrl.connect("key-pressed", self._on_webview_key_pressed)
+        self.webview.add_controller(wv_key_ctrl)
 
         font_size = self.config_manager.get_font_size()
         heading_scale = self.config_manager.get_heading_scale()
@@ -501,7 +506,7 @@ class NoteEditor(Gtk.Box):
             "", self.is_dark_mode, font_size, heading_scale, code_font_size, quote_font_size,
             font_family=font_family
         )
-        assets_uri = f"file://{get_assets_path()}/"
+        assets_uri = f"file://{get_assets_path()}/editor/editor.html"
         self.webview.load_html(initial_html, assets_uri)
 
         overlay.set_child(self.webview)
@@ -1199,15 +1204,139 @@ class NoteEditor(Gtk.Box):
     def _on_decide_policy(self, _wv, decision, decision_type):
         if decision_type in (WebKit.PolicyDecisionType.NAVIGATION_ACTION, WebKit.PolicyDecisionType.NEW_WINDOW_ACTION):
             action = decision.get_navigation_action()
-            req = action.get_request() if action else None
-            uri = req.get_uri() if req else None
-            if uri and (uri.startswith("http://") or uri.startswith("https://") or uri.startswith("mailto:")):
-                decision.ignore()
-                try:
-                    Gio.AppInfo.launch_default_for_uri(uri, None)
-                except Exception as e:
-                    print(f"Failed to open URI {uri}: {e}")
-                return True
+            if action:
+                nav_type = action.get_navigation_type()
+                req = action.get_request()
+                uri = req.get_uri() if req else None
+
+                # 1. Block any attempt to reload or navigate history in the WebView
+                if nav_type in (WebKit.NavigationType.RELOAD, WebKit.NavigationType.BACK_FORWARD):
+                    decision.ignore()
+                    return True
+
+                # 2. External links: open in default system browser and prevent WebView navigation
+                if uri and (uri.startswith("http://") or uri.startswith("https://") or uri.startswith("mailto:")):
+                    decision.ignore()
+                    try:
+                        Gio.AppInfo.launch_default_for_uri(uri, None)
+                    except Exception as e:
+                        print(f"Failed to open URI {uri}: {e}")
+                    return True
+
+                # 3. Block all link clicks inside the WebView (internal note links are handled via JS message handlers)
+                if nav_type == WebKit.NavigationType.LINK_CLICKED:
+                    decision.ignore()
+                    return True
+
+                # 4. Block any other non-programmatic navigations to directories or files
+                if nav_type != WebKit.NavigationType.OTHER:
+                    decision.ignore()
+                    return True
+        return False
+
+    def _on_webview_key_pressed(self, _ctrl, keyval, _keycode, state):
+        """Prevent browser reload keys (F5, Ctrl+R) from reloading the editor."""
+        is_ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        if keyval in (Gdk.KEY_F5, Gdk.KEY_Refresh):
+            return True
+        if is_ctrl and keyval in (Gdk.KEY_r, Gdk.KEY_R):
+            return True
+        return False
+
+    def _clean_context_menu_separators(self, cm: WebKit.ContextMenu):
+        """Remove leading, trailing, and consecutive duplicate separators."""
+        items = list(cm.get_items())
+        while items and items[0].is_separator():
+            cm.remove(items[0])
+            items.pop(0)
+        while items and items[-1].is_separator():
+            cm.remove(items[-1])
+            items.pop()
+        prev_sep = False
+        for item in list(items):
+            if item.is_separator():
+                if prev_sep:
+                    cm.remove(item)
+                else:
+                    prev_sep = True
+            else:
+                prev_sep = False
+
+    def _on_context_menu(self, _wv, context_menu: WebKit.ContextMenu, _hit_test_result: WebKit.HitTestResult) -> bool:
+        """Sanitize WebKit context menu.
+
+        Never expose browser navigation controls (Reload, Back, Forward, Stop)
+        which break the single-page editor environment.
+        In read-only mode, filter out editing operations and provide relevant
+        read-only actions (Select All, Copy).
+        """
+        import os
+
+        # Browser navigation actions that should never appear in a note editor
+        disallowed_actions = {
+            WebKit.ContextMenuAction.RELOAD,
+            WebKit.ContextMenuAction.GO_BACK,
+            WebKit.ContextMenuAction.GO_FORWARD,
+            WebKit.ContextMenuAction.STOP,
+            WebKit.ContextMenuAction.OPEN_FRAME_IN_NEW_WINDOW,
+            WebKit.ContextMenuAction.OPEN_LINK_IN_NEW_WINDOW,
+            WebKit.ContextMenuAction.OPEN_IMAGE_IN_NEW_WINDOW,
+            WebKit.ContextMenuAction.OPEN_AUDIO_IN_NEW_WINDOW,
+            WebKit.ContextMenuAction.OPEN_VIDEO_IN_NEW_WINDOW,
+            WebKit.ContextMenuAction.DOWNLOAD_LINK_TO_DISK,
+            WebKit.ContextMenuAction.DOWNLOAD_IMAGE_TO_DISK,
+            WebKit.ContextMenuAction.DOWNLOAD_AUDIO_TO_DISK,
+            WebKit.ContextMenuAction.DOWNLOAD_VIDEO_TO_DISK,
+        }
+
+        # Hide developer inspection in release
+        if not os.environ.get("TEDDYNOTES_DEBUG"):
+            disallowed_actions.add(WebKit.ContextMenuAction.INSPECT_ELEMENT)
+
+        # In read-only mode, also disallow editing actions
+        if getattr(self, "is_read_only", False):
+            read_only_disallowed = {
+                WebKit.ContextMenuAction.CUT,
+                WebKit.ContextMenuAction.PASTE,
+                WebKit.ContextMenuAction.PASTE_AS_PLAIN_TEXT,
+                WebKit.ContextMenuAction.DELETE,
+                WebKit.ContextMenuAction.INSERT_EMOJI,
+                WebKit.ContextMenuAction.BOLD,
+                WebKit.ContextMenuAction.ITALIC,
+                WebKit.ContextMenuAction.UNDERLINE,
+                WebKit.ContextMenuAction.FONT_MENU,
+                WebKit.ContextMenuAction.OUTLINE,
+                WebKit.ContextMenuAction.SPELLING_GUESS,
+                WebKit.ContextMenuAction.NO_GUESSES_FOUND,
+                WebKit.ContextMenuAction.IGNORE_SPELLING,
+                WebKit.ContextMenuAction.LEARN_SPELLING,
+                WebKit.ContextMenuAction.IGNORE_GRAMMAR,
+            }
+            disallowed_actions.update(read_only_disallowed)
+
+        # Remove disallowed actions
+        for item in list(context_menu.get_items()):
+            action = item.get_stock_action()
+            if action in disallowed_actions:
+                context_menu.remove(item)
+
+        # Clean up any leftover duplicate/stray separators
+        self._clean_context_menu_separators(context_menu)
+
+        # If menu is now empty (e.g. right-clicked on unselected text or margin),
+        # provide "Select All" so user can select text
+        if context_menu.get_n_items() == 0:
+            try:
+                select_all_item = WebKit.ContextMenuItem.new_from_stock_action(WebKit.ContextMenuAction.SELECT_ALL)
+                context_menu.append(select_all_item)
+            except Exception:
+                pass
+
+        # If still empty for any reason, suppress the menu
+        if context_menu.get_n_items() == 0:
+            return True
+
+        # Return False to let WebKit display the sanitized context menu
         return False
 
     def scroll_to_heading(self, heading: str):

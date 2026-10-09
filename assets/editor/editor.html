@@ -2998,10 +2998,10 @@
         return;
       }
 
-      // External link click: Ctrl+Click or Cmd+Click to open in browser
+      // External link click: Ctrl+Click or Cmd+Click to open in browser (or single click in read-only mode)
       const externalLink = e.target.closest('a.stilo-link') || e.target.closest('a:not(.stilo-wiki-link)');
       if (externalLink) {
-        if (e.ctrlKey || e.metaKey) {
+        if (isReadOnlyMode || e.ctrlKey || e.metaKey) {
           e.preventDefault();
           const href = externalLink.getAttribute('href');
           if (href && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openExternalUrl) {

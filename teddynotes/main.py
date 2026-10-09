@@ -15,7 +15,7 @@ gi.require_version("WebKit", "6.0")
 
 from teddynotes.application import TeddyApplication
 
-def main(version: str = "1.3") -> int:
+def main(version: str = "1.4") -> int:
     app = TeddyApplication()
     return app.run(sys.argv)
 
