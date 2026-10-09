@@ -410,6 +410,25 @@ class TestEditorContextMenuAndNavigation(unittest.TestCase):
         # Ctrl+C
         self.assertFalse(self.editor._on_webview_key_pressed(None, Gdk.KEY_c, 0, Gdk.ModifierType.CONTROL_MASK))
 
+    def test_horizontal_rule_toolbar_button_and_action(self):
+        from gi.repository import Gtk
+        buttons = []
+        def find_btns(w):
+            c = w.get_first_child()
+            while c:
+                if isinstance(c, Gtk.Button):
+                    buttons.append(c)
+                find_btns(c)
+                c = c.get_next_sibling()
+        find_btns(self.editor.fmt_bar)
+        hr_buttons = [b for b in buttons if b.get_tooltip_text() == "Horizontal Rule"]
+        self.assertEqual(len(hr_buttons), 1)
+
+        win = Gtk.Window()
+        self.editor.setup_actions(win)
+        self.assertIsNotNone(self.editor.action_group)
+        self.assertTrue(self.editor.action_group.has_action("insert-divider"))
+
 
 if __name__ == "__main__":
     unittest.main()

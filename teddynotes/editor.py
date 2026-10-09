@@ -860,8 +860,10 @@ class NoteEditor(Gtk.Box):
         act("toggle-format-toolbar", lambda: self.format_btn.set_active(not self.format_btn.get_active()))
         act("insert-link",   lambda: self._exec_js_format("link"))
         act("insert-internal-link", lambda: self._exec_js_format("wiki-link"))
+        act("insert-divider", lambda: self._exec_js_format("divider"))
         act("delete",        self._on_delete)
 
+        self.action_group = ag
         self.insert_action_group("editor", ag)
         self.print_btn.set_action_name("editor.print")
 

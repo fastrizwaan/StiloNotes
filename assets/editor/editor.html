@@ -260,6 +260,13 @@
       margin-bottom: 4px;
     }
 
+    /* Horizontal Rule */
+    hr.stilo-hr, hr {
+      border: none;
+      border-top: 1px solid var(--hr-color);
+      margin: 18px 0;
+    }
+
     /* Blockquotes */
     blockquote.stilo-quote {
       font-size: var(--quote-font-size, 16pt);
@@ -3881,8 +3888,75 @@
 
     function insertDivider() {
       closeAllPopups();
-      const hrHtml = `<hr class="stilo-hr"><div><br></div>`;
-      document.execCommand('insertHTML', false, hrHtml);
+      saveUndoState();
+      const range = restoreSelectionIfNeeded();
+
+      const cell = getClosestElement('td, th');
+      if (cell) {
+        return;
+      }
+
+      let block = getClosestBlockElement();
+
+      if (range && !range.collapsed) {
+        range.deleteContents();
+        block = getClosestBlockElement();
+      }
+
+      const hr = document.createElement('hr');
+      hr.className = 'stilo-hr';
+      const nextDiv = document.createElement('div');
+      nextDiv.innerHTML = '<br>';
+
+      if (!block || block === editor) {
+        editor.appendChild(hr);
+        editor.appendChild(nextDiv);
+        setCursorAtStart(nextDiv);
+        notifyChange();
+        return;
+      }
+
+      const list = block.closest('ul, ol');
+      if (list) {
+        if (!block.textContent.trim()) {
+          block.remove();
+          if (!list.firstElementChild) {
+            list.parentNode.replaceChild(hr, list);
+            hr.parentNode.insertBefore(nextDiv, hr.nextSibling);
+            setCursorAtStart(nextDiv);
+            notifyChange();
+            return;
+          }
+        }
+        list.parentNode.insertBefore(hr, list.nextSibling);
+        hr.parentNode.insertBefore(nextDiv, hr.nextSibling);
+        setCursorAtStart(nextDiv);
+        notifyChange();
+        return;
+      }
+
+      const isBlockEmpty = !block.textContent.trim() || block.innerHTML.trim() === '<br>';
+      const isFirstH1 = (block.tagName === 'H1' && block === editor.firstElementChild);
+
+      if (isBlockEmpty && !isFirstH1 && block.parentNode) {
+        block.parentNode.replaceChild(hr, block);
+        hr.parentNode.insertBefore(nextDiv, hr.nextSibling);
+      } else {
+        if (range && block.contains(range.startContainer)) {
+          const tailRange = document.createRange();
+          tailRange.setStart(range.startContainer, range.startOffset);
+          tailRange.setEndAfter(block.lastChild || block);
+          const frag = tailRange.extractContents();
+          if (frag.textContent.trim() || frag.querySelector('img, table, br, code')) {
+            nextDiv.innerHTML = '';
+            nextDiv.appendChild(frag);
+          }
+        }
+        block.parentNode.insertBefore(hr, block.nextSibling);
+        hr.parentNode.insertBefore(nextDiv, hr.nextSibling);
+      }
+
+      setCursorAtStart(nextDiv);
       notifyChange();
     }
 
@@ -4800,6 +4874,7 @@
       else if (command === 'table-del-row') doDeleteTableRow();
       else if (command === 'table-del-col') doDeleteTableColumn();
       else if (command === 'table-delete') doDeleteActiveTable();
+      else if (command === 'divider' || command === 'horizontal-rule' || command === 'hr') insertDivider();
       else if (command === 'link') promptLink();
       else if (command === 'wiki-link' || command === 'internal-link' || command === 'note-link') promptInternalLink();
       else if (command === 'image') triggerImagePicker();
@@ -4808,6 +4883,7 @@
     window.clearFormatting = doClearFormatting;
     window.applyHighlight = doApplyHighlight;
     window.applyInlineCode = doApplyInlineCode;
+    window.insertDivider = insertDivider;
 
     window.insertTag = function(tagName) {
       if (!tagName) return;

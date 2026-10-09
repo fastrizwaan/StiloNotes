@@ -463,6 +463,13 @@ class TestMarkdown(unittest.TestCase):
             h2 = markdown_to_html(b)
             self.assertEqual(h1, h2, f"Roundtrip failed for {md}: {h1} != {h2}")
 
+    def test_horizontal_rule_conversion(self):
+        md = "Line 1\n\n---\n\nLine 2"
+        html = markdown_to_html(md)
+        self.assertIn('<hr class="stilo-hr">', html)
+        back_md = html_to_markdown(html)
+        self.assertIn("---", back_md)
+
 if __name__ == "__main__":
     unittest.main()
 
