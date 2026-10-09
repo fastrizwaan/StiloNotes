@@ -3,7 +3,7 @@
 
 project(
   'teddynotes',
-  version: '1.4',
+  version: '1.5',
   meson_version: '>= 0.62.0',
   license: 'GPL-3.0-or-later'
 )
